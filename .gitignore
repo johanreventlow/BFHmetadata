@@ -19,6 +19,8 @@ access_data_dump/
 
 # Genereret skema-output (regenereres af 01_generate_ddl.R)
 01_schema.sql
+01a_create_tables.sql
+01b_foreign_keys.sql
 
 # Logs
 introspection_log.txt
