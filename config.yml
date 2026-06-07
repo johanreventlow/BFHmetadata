@@ -12,13 +12,15 @@ default:
     dsn: "dataportal_2024"
     encoding: "UTF8"
 
-  # Target: Supabase EU-region
-  # Find disse værdier i Supabase Dashboard > Project Settings > Database
+  # Target: Supabase — Session pooler (IPv4, port 5432).
+  # Direct connection (db.<ref>.supabase.co) er IPv6-only → duer ej her.
+  # Strengen fra Dashboard > Connect > Connection String > Session pooler.
+  # Region: eu-west-1 (Irland) — EU/GDPR-dækket.
   supabase:
-    host: "db.<PROJECT-REF>.supabase.co"   # Erstattes med faktisk host
+    host: "aws-0-eu-west-1.pooler.supabase.com"
     port: 5432
     dbname: "postgres"
-    user: "postgres"
+    user: "postgres.ijgwlqpbjcfffdmxeahh"   # pooler-user = postgres.<ref>
     sslmode: "require"
     # password hentes via Sys.getenv("SUPABASE_DB_PASSWORD") fra .Renviron
 
