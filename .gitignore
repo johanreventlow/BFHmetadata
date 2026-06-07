@@ -1,0 +1,35 @@
+# =============================================================================
+# .gitignore — BFHmetadata migration-arbejdsmappe
+# =============================================================================
+# Strategi: track kode + docs + skema-metadata. Store data-dumps og binære
+# artefakter holdes ude (transporteres via ZIP/OneDrive, jf. PLAN.md).
+# =============================================================================
+
+# Secrets — ALDRIG i git
+.Renviron
+.env
+
+# Data-dumps (Parquet) — kilden transporteres via ZIP, ej git
+access_data_dump/
+*.parquet
+
+# Store binære artefakter fra Access GUI (Trin 0b)
+*.pdf
+*.png
+
+# Genereret skema-output (regenereres af 01_generate_ddl.R)
+01_schema.sql
+
+# Logs
+introspection_log.txt
+*.log
+
+# R session-artefakter
+.Rhistory
+.RData
+.Rproj.user/
+.Ruserdata
+
+# OS
+.DS_Store
+Thumbs.db

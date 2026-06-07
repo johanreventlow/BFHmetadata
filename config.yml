@@ -1,0 +1,38 @@
+# =============================================================================
+# Migration config — bfh_db_migration
+# =============================================================================
+# Connection-info til source (Access) og target (Supabase).
+# Hemmeligheder (passwords, service-role-keys) hører IKKE her — brug .Renviron.
+# Denne fil OK at zippe + transportere. .Renviron skal IKKE i ZIP.
+# =============================================================================
+
+default:
+  # Source: Access via ODBC (kun læses på Windows)
+  access:
+    dsn: "dataportal_2024"
+    encoding: "UTF8"
+
+  # Target: Supabase EU-region
+  # Find disse værdier i Supabase Dashboard > Project Settings > Database
+  supabase:
+    host: "db.<PROJECT-REF>.supabase.co"   # Erstattes med faktisk host
+    port: 5432
+    dbname: "postgres"
+    user: "postgres"
+    sslmode: "require"
+    # password hentes via Sys.getenv("SUPABASE_DB_PASSWORD") fra .Renviron
+
+  # Lokal Supabase-instans (valgfri, til udvikling via supabase CLI)
+  supabase_local:
+    host: "localhost"
+    port: 54322
+    dbname: "postgres"
+    user: "postgres"
+    sslmode: "disable"
+
+  # Output-stier (relative til arbejdsmappen)
+  paths:
+    schema_yaml: "access_schema.yaml"
+    data_dump_dir: "access_data_dump"
+    ddl_sql: "01_schema.sql"
+    log_file: "introspection_log.txt"

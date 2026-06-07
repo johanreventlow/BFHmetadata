@@ -1,0 +1,15 @@
+# Skabelon for credentials — kopiér til .Renviron og udfyld lokalt.
+# .Renviron commit'es ALDRIG og kommer ALDRIG i ZIP-overførsel til Mac.
+# Mac sætter sin egen .Renviron med samme nøgler men muligvis andre værdier.
+
+# Supabase database-password (fra Project Settings > Database > Connection string)
+SUPABASE_DB_PASSWORD=your-supabase-db-password-here
+
+# Supabase anon-key (offentlig API-key, fra Project Settings > API)
+SUPABASE_ANON_KEY=eyJhbGc...
+
+# Supabase service-role-key (HEMMELIG — kun til admin-operationer, fx schema-DDL)
+SUPABASE_SERVICE_ROLE_KEY=eyJhbGc...
+
+# Supabase project URL
+SUPABASE_URL=https://<PROJECT-REF>.supabase.co

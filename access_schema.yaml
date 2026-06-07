@@ -1,0 +1,1057 @@
+source_database: dataportal_2024.accdb
+source_dsn: dataportal_2024
+generated_at: 2026-06-07 21:13:28
+generated_on: PC315081 (x86_64-w64-mingw32)
+tabeller:
+  tblIndikatorer:
+    navn: tblIndikatorer
+    row_count: 836
+    kolonne_antal: 21
+    kolonner:
+    - navn: id
+      type: '4'
+      r_class: .na.character
+    - navn: indikator_hierarki
+      type: '4'
+      r_class: .na.character
+    - navn: indikator_navn
+      type: '12'
+      r_class: .na.character
+    - navn: indikator_navn_teknisk
+      type: '12'
+      r_class: .na.character
+    - navn: kontaktperson
+      type: '4'
+      r_class: .na.character
+    - navn: sp_rapport_id
+      type: '12'
+      r_class: .na.character
+    - navn: tillad_auto_opdatering
+      type: '-7'
+      r_class: .na.character
+    - navn: aktiv_indikator
+      type: '-7'
+      r_class: .na.character
+    - navn: nøgleindikator
+      type: '-7'
+      r_class: .na.character
+    - navn: definition_kort
+      type: '-1'
+      r_class: .na.character
+    - navn: definition_dataportal
+      type: '-1'
+      r_class: .na.character
+    - navn: tæller_beskrivelse
+      type: '-1'
+      r_class: .na.character
+    - navn: nævner_beskrivelse
+      type: '-1'
+      r_class: .na.character
+    - navn: indikator_ukompatibel_med
+      type: '-1'
+      r_class: .na.character
+    - navn: mål
+      type: '12'
+      r_class: .na.character
+    - navn: datakilde
+      type: '4'
+      r_class: .na.character
+    - navn: direkte_link
+      type: '12'
+      r_class: .na.character
+    - navn: ønsket_tendens
+      type: '12'
+      r_class: .na.character
+    - navn: antal_observationer
+      type: '4'
+      r_class: .na.character
+    - navn: periode_fra
+      type: '93'
+      r_class: .na.character
+    - navn: output_enhed
+      type: '12'
+      r_class: .na.character
+    sample_raekker:
+    - id: 450
+      indikator_hierarki: 21
+      indikator_navn: plan udleveret inden 30 dage
+      indikator_navn_teknisk: 'Udredningsret: Indikator D: Udredningsplaner - Somatik
+        (%)'
+      kontaktperson: 12
+      sp_rapport_id: .na.character
+      tillad_auto_opdatering: no
+      aktiv_indikator: yes
+      nøgleindikator: no
+      definition_kort: Andel udredningsplaner udleveret inden for fristen på 30 dage.
+      definition_dataportal: Andel udredningsplaner udleveret inden 30 dage. Dvs.
+        forløb hvor den første udredningsplan (AFX01D*) er registreret senest 30 dage
+        efter første 'henvist til udredning' (AFV01A1). Der kan forventes efterregistrering
+        for de seneste uger.
+      tæller_beskrivelse: .na.character
+      nævner_beskrivelse: .na.character
+      indikator_ukompatibel_med: .na.character
+      mål: .na.character
+      datakilde: 1
+      direkte_link: .na.character
+      ønsket_tendens: Opadgående
+      antal_observationer: .na.integer
+      periode_fra: .na.real
+      output_enhed: .na.character
+    - id: 452
+      indikator_hierarki: 21
+      indikator_navn: overholdelse af udredningsretten
+      indikator_navn_teknisk: 'Udredningsret: Indikator L - Overholdelse af udredningsretten
+        - Somatik (%)'
+      kontaktperson: 12
+      sp_rapport_id: .na.character
+      tillad_auto_opdatering: no
+      aktiv_indikator: yes
+      nøgleindikator: yes
+      definition_kort: Andel udredningsforløb, der overholder udredningsretten
+      definition_dataportal: Andel forløb m. klin. beslutn. (AFX01A ell. AFX01C) <
+        30 dage fra 'henvist til udredning', ell. hvor der er udleveret udredningsplan
+        < 30 dage med gyldig årsag til udredning efter 30 dage (AFX01D1*, AFX01D2,
+        AFX01D3).
+      tæller_beskrivelse: .na.character
+      nævner_beskrivelse: .na.character
+      indikator_ukompatibel_med: .na.character
+      mål: .na.character
+      datakilde: 1
+      direkte_link: .na.character
+      ønsket_tendens: .na.character
+      antal_observationer: .na.integer
+      periode_fra: .na.real
+      output_enhed: .na.character
+    - id: 454
+      indikator_hierarki: 21
+      indikator_navn: antal udredningsforløb
+      indikator_navn_teknisk: 'Udredningsret: Indikator L - Overholdelse af udredningsretten
+        - Somatik (antal)'
+      kontaktperson: 12
+      sp_rapport_id: .na.character
+      tillad_auto_opdatering: no
+      aktiv_indikator: yes
+      nøgleindikator: no
+      definition_kort: Antal udredningsforløb med både 'henvist til udredning' og
+        klinisk beslutning
+      definition_dataportal: Antal udredningsforløb med både 'henvist til udredning'
+        (AFV01A1) og klinisk beslutning (AFX01A ell. AFX01C), opgjort på enheden og
+        ugen for den første kliniske beslutning. Der kan forventes efterregistrering
+        for de seneste uger.
+      tæller_beskrivelse: .na.character
+      nævner_beskrivelse: .na.character
+      indikator_ukompatibel_med: .na.character
+      mål: .na.character
+      datakilde: 1
+      direkte_link: .na.character
+      ønsket_tendens: .na.character
+      antal_observationer: .na.integer
+      periode_fra: .na.real
+      output_enhed: .na.character
+    - id: 455
+      indikator_hierarki: 21
+      indikator_navn: 'årsag til mgl. overholdelse: Plan udleveret for sent'
+      indikator_navn_teknisk: 'Udredningsret: Indikator N9: Udredningsplan udleveret
+        for sent - Somatik (%)'
+      kontaktperson: 12
+      sp_rapport_id: .na.character
+      tillad_auto_opdatering: no
+      aktiv_indikator: yes
+      nøgleindikator: no
+      definition_kort: Andel udredningsforløb, hvor udredningsplanen er udleveret
+        for sent.
+      definition_dataportal: Andel forløb hvor udredningsplanen er udleveret for sent,
+        dvs. hvor første kliniske beslutning og første udredningsplan er registreret
+        > 30 dage fra 'henvist til udredning' (AFV01A1). Der kan forventes efterregistrering
+        for de seneste uger.
+      tæller_beskrivelse: .na.character
+      nævner_beskrivelse: .na.character
+      indikator_ukompatibel_med: .na.character
+      mål: .na.character
+      datakilde: 1
+      direkte_link: .na.character
+      ønsket_tendens: .na.character
+      antal_observationer: .na.integer
+      periode_fra: .na.real
+      output_enhed: .na.character
+    - id: 456
+      indikator_hierarki: 21
+      indikator_navn: 'årsag til mgl. overholdelse: Kapacitet'
+      indikator_navn_teknisk: 'Udredningsret: Indikator N7: Manglende kapacitet -
+        Somatik (%)'
+      kontaktperson: 12
+      sp_rapport_id: .na.character
+      tillad_auto_opdatering: no
+      aktiv_indikator: yes
+      nøgleindikator: no
+      definition_kort: Andel udredningsforløb, der ikke overholder udredningsretten
+        pga. manglende kapacitet.
+      definition_dataportal: Andel forløb der ikke overholder udredningsretten pga.
+        mgl. kapacitet, dvs. første kliniske beslutning > 30 dage fra 'henvist til
+        udredning' (AFV01A1), men første udredningsplan (AFX01D4) registreret < 30
+        dage fra 'henvist til udredning' (AFV01A1).
+      tæller_beskrivelse: .na.character
+      nævner_beskrivelse: .na.character
+      indikator_ukompatibel_med: .na.character
+      mål: .na.character
+      datakilde: 1
+      direkte_link: .na.character
+      ønsket_tendens: .na.character
+      antal_observationer: .na.integer
+      periode_fra: .na.real
+      output_enhed: .na.character
+  tblIndikatorHierarki:
+    navn: tblIndikatorHierarki
+    row_count: 156
+    kolonne_antal: 7
+    kolonner:
+    - navn: Id
+      type: '4'
+      r_class: .na.character
+    - navn: parent_id
+      type: '4'
+      r_class: .na.character
+    - navn: hierarki_navn
+      type: '12'
+      r_class: .na.character
+    - navn: hierarki_navn_kort
+      type: '12'
+      r_class: .na.character
+    - navn: indikator_niveau
+      type: '4'
+      r_class: .na.character
+    - navn: beskrivelse_kort
+      type: '-1'
+      r_class: .na.character
+    - navn: beskrivelse_lang
+      type: '-1'
+      r_class: .na.character
+    sample_raekker:
+    - Id: 1
+      parent_id: .na.integer
+      hierarki_navn: Det samarbejdende Hospital
+      hierarki_navn_kort: .na.character
+      indikator_niveau: 1
+      beskrivelse_kort: .na.character
+      beskrivelse_lang: .na.character
+    - Id: 4
+      parent_id: 1
+      hierarki_navn: Vi møder den enkelte patients behov
+      hierarki_navn_kort: .na.character
+      indikator_niveau: 2
+      beskrivelse_kort: .na.character
+      beskrivelse_lang: .na.character
+    - Id: 5
+      parent_id: 1
+      hierarki_navn: Vi forsker og forbedrer til gavn for patienterne
+      hierarki_navn_kort: .na.character
+      indikator_niveau: 2
+      beskrivelse_kort: .na.character
+      beskrivelse_lang: .na.character
+    - Id: 6
+      parent_id: 1
+      hierarki_navn: Vi engagerer og uddanner de bedste medarbejdere og ledere
+      hierarki_navn_kort: .na.character
+      indikator_niveau: 2
+      beskrivelse_kort: .na.character
+      beskrivelse_lang: .na.character
+    - Id: 7
+      parent_id: 1
+      hierarki_navn: Vi er en del af et samarbejdende sundhedsvæsen
+      hierarki_navn_kort: .na.character
+      indikator_niveau: 2
+      beskrivelse_kort: .na.character
+      beskrivelse_lang: .na.character
+  tblIndikatorNiveauer:
+    navn: tblIndikatorNiveauer
+    row_count: 7
+    kolonne_antal: 3
+    kolonner:
+    - navn: Id
+      type: '4'
+      r_class: .na.character
+    - navn: indikator_niveau
+      type: '4'
+      r_class: .na.character
+    - navn: indikator_niveau_navn
+      type: '12'
+      r_class: .na.character
+    sample_raekker:
+    - Id: 1
+      indikator_niveau: 1
+      indikator_niveau_navn: Hospitalsambition
+    - Id: 2
+      indikator_niveau: 2
+      indikator_niveau_navn: Strategisk pejlemærke
+    - Id: 3
+      indikator_niveau: 3
+      indikator_niveau_navn: Datapakke
+    - Id: 4
+      indikator_niveau: 4
+      indikator_niveau_navn: Datasæt
+    - Id: 5
+      indikator_niveau: 5
+      indikator_niveau_navn: Indikatorsamling
+  tblFaggrupper:
+    navn: tblFaggrupper
+    row_count: 10
+    kolonne_antal: 2
+    kolonner:
+    - navn: Id
+      type: '4'
+      r_class: .na.character
+    - navn: faggruppe
+      type: '12'
+      r_class: .na.character
+    sample_raekker:
+    - Id: 1
+      faggruppe: læger
+    - Id: 2
+      faggruppe: sygeplejersker
+    - Id: 3
+      faggruppe: social- og sundhedshjælpere
+    - Id: 4
+      faggruppe: social- og sundhedsassistenter
+    - Id: 5
+      faggruppe: bioanalytikere
+  tblDatakilder:
+    navn: tblDatakilder
+    row_count: 12
+    kolonne_antal: 3
+    kolonner:
+    - navn: Id
+      type: '4'
+      r_class: .na.character
+    - navn: datakilde_navn
+      type: '12'
+      r_class: .na.character
+    - navn: datakilde_beskrivelse
+      type: '-1'
+      r_class: .na.character
+    sample_raekker:
+    - Id: 1
+      datakilde_navn: Sundhedsplatformen
+      datakilde_beskrivelse: .na.character
+    - Id: 2
+      datakilde_navn: LABKA
+      datakilde_beskrivelse: .na.character
+    - Id: 3
+      datakilde_navn: Silkeborg Data
+      datakilde_beskrivelse: .na.character
+    - Id: 4
+      datakilde_navn: Kursusplatformen
+      datakilde_beskrivelse: .na.character
+    - Id: 5
+      datakilde_navn: FLIS
+      datakilde_beskrivelse: Fælles Ledelses InformationsSystem
+  tblPersoner:
+    navn: tblPersoner
+    row_count: 12
+    kolonne_antal: 6
+    kolonner:
+    - navn: Id
+      type: '4'
+      r_class: .na.character
+    - navn: fornavn
+      type: '12'
+      r_class: .na.character
+    - navn: efternavn
+      type: '12'
+      r_class: .na.character
+    - navn: titel
+      type: '12'
+      r_class: .na.character
+    - navn: email
+      type: '-1'
+      r_class: .na.character
+    - navn: organisatorisk_enhed
+      type: '4'
+      r_class: .na.character
+    sample_raekker:
+    - Id: 1
+      fornavn: Johan
+      efternavn: Reventlow
+      titel: Chefkonsulent
+      email: johan.reventlow@regionh.dk#mailto:johan.reventlow@regionh.dk#
+      organisatorisk_enhed: 22
+    - Id: 2
+      fornavn: Bjørn
+      efternavn: Hesselbo
+      titel: Seniorkonsulent
+      email: bjoern.hesselbo@regionh.dk#mailto:bjoern.hesselbo@regionh.dk#
+      organisatorisk_enhed: 22
+    - Id: 3
+      fornavn: Rie
+      efternavn: L R Johansen
+      titel: Specialkonsulent
+      email: rie.laurine.rosenthal.johansen@regionh.dk#mailto:rie.laurine.rosenthal.johansen@regionh.dk#
+      organisatorisk_enhed: 22
+    - Id: 4
+      fornavn: Liselotte
+      efternavn: Probst Brandum
+      titel: Stabschef
+      email: liselotte.probst.brandum.01@regionh.dk#mailto:liselotte.probst.brandum.01@regionh.dk#
+      organisatorisk_enhed: 22
+    - Id: 5
+      fornavn: Kristian
+      efternavn: Antonsen
+      titel: Hospitalsdirektør
+      email: kristian.antonsen.01@regionh.dk#mailto:kristian.antonsen.01@regionh.dk#
+      organisatorisk_enhed: 1
+  tblOrganisationStruktur:
+    navn: tblOrganisationStruktur
+    row_count: 335
+    kolonne_antal: 6
+    kolonner:
+    - navn: Id
+      type: '4'
+      r_class: .na.character
+    - navn: organisatorisk_navn_teknisk
+      type: '12'
+      r_class: .na.character
+    - navn: organisatorisk_navn_langt
+      type: '12'
+      r_class: .na.character
+    - navn: organisatorisk_navn_kort
+      type: '12'
+      r_class: .na.character
+    - navn: organisatorisk_niveau
+      type: '4'
+      r_class: .na.character
+    - navn: parent_Id
+      type: '4'
+      r_class: .na.character
+    sample_raekker:
+    - Id: 1
+      organisatorisk_navn_teknisk: BISPEBJERG OG FREDERIKSBERG HOSPITAL
+      organisatorisk_navn_langt: Bispebjerg og Frederiksberg Hospital
+      organisatorisk_navn_kort: BFH
+      organisatorisk_niveau: 2
+      parent_Id: .na.integer
+    - Id: 2
+      organisatorisk_navn_teknisk: K Abdominalcenter
+      organisatorisk_navn_langt: Abdominalcenter K
+      organisatorisk_navn_kort: K
+      organisatorisk_niveau: 5
+      parent_Id: 1
+    - Id: 3
+      organisatorisk_navn_teknisk: AMA Akutafdeling
+      organisatorisk_navn_langt: Akutafdeling
+      organisatorisk_navn_kort: AMA
+      organisatorisk_niveau: 5
+      parent_Id: 1
+    - Id: 4
+      organisatorisk_navn_teknisk: Z Anæstesiafdeling
+      organisatorisk_navn_langt: Anæstesiafdeling Z
+      organisatorisk_navn_kort: Z
+      organisatorisk_niveau: 5
+      parent_Id: 1
+    - Id: 5
+      organisatorisk_navn_teknisk: AMED Arbejds-og Miljømedicinsk Afdeling
+      organisatorisk_navn_langt: Arbejds- og Miljømedicinsk Afdeling
+      organisatorisk_navn_kort: AMED
+      organisatorisk_niveau: 5
+      parent_Id: 1
+  tblOrganisationOversaettelse:
+    navn: tblOrganisationOversaettelse
+    row_count: 404
+    kolonne_antal: 3
+    kolonner:
+    - navn: organisatorisk_navn_fra_data
+      type: '12'
+      r_class: .na.character
+    - navn: organisatorisk_navn_teknisk
+      type: '4'
+      r_class: .na.character
+    - navn: Id
+      type: '4'
+      r_class: .na.character
+    sample_raekker:
+    - organisatorisk_navn_fra_data: BFH, BISPEBJERG OG FREDERIKSBERG HOSPITALER
+      organisatorisk_navn_teknisk: 1
+      Id: 1
+    - organisatorisk_navn_fra_data: BFH 11, INSTITUT FOR IDRÆTSMEDICIN
+      organisatorisk_navn_teknisk: 13
+      Id: 2
+    - organisatorisk_navn_fra_data: BFH 82, SOCIALMEDICINSK CENTER
+      organisatorisk_navn_teknisk: 23
+      Id: 3
+    - organisatorisk_navn_fra_data: BFH AM, ARBEJDS- OG MILJØMEDICINSK OVERAFDELING
+      organisatorisk_navn_teknisk: 5
+      Id: 5
+    - organisatorisk_navn_fra_data: BFH D, DERMATO-VENEROLOGISK OVERAFD.
+      organisatorisk_navn_teknisk: 7
+      Id: 6
+  tblOrganisationNiveauer:
+    navn: tblOrganisationNiveauer
+    row_count: 9
+    kolonne_antal: 3
+    kolonner:
+    - navn: Id
+      type: '4'
+      r_class: .na.character
+    - navn: organisatorisk_niveau
+      type: '4'
+      r_class: .na.character
+    - navn: organisatorisk_niveau_navn
+      type: '12'
+      r_class: .na.character
+    sample_raekker:
+    - Id: 1
+      organisatorisk_niveau: 1
+      organisatorisk_niveau_navn: Region
+    - Id: 2
+      organisatorisk_niveau: 2
+      organisatorisk_niveau_navn: Hospital
+    - Id: 3
+      organisatorisk_niveau: 3
+      organisatorisk_niveau_navn: Center
+    - Id: 4
+      organisatorisk_niveau: 4
+      organisatorisk_niveau_navn: Klinik
+    - Id: 5
+      organisatorisk_niveau: 5
+      organisatorisk_niveau_navn: Overafdeling
+  tblForbindIndikatorerFaggrupper:
+    navn: tblForbindIndikatorerFaggrupper
+    row_count: 1823
+    kolonne_antal: 2
+    kolonner:
+    - navn: indikator_id
+      type: '4'
+      r_class: .na.character
+    - navn: faggruppe_id
+      type: '4'
+      r_class: .na.character
+    sample_raekker:
+    - indikator_id: 450
+      faggruppe_id: 1
+    - indikator_id: 450
+      faggruppe_id: 8
+    - indikator_id: 450
+      faggruppe_id: 9
+    - indikator_id: 452
+      faggruppe_id: 1
+    - indikator_id: 452
+      faggruppe_id: 2
+  tblForbindIndikatorerOrganisation:
+    navn: tblForbindIndikatorerOrganisation
+    row_count: 3852
+    kolonne_antal: 2
+    kolonner:
+    - navn: indikator_id
+      type: '4'
+      r_class: .na.character
+    - navn: organisations_id
+      type: '4'
+      r_class: .na.character
+    sample_raekker:
+    - indikator_id: 450
+      organisations_id: 2
+    - indikator_id: 450
+      organisations_id: 5
+    - indikator_id: 450
+      organisations_id: 7
+    - indikator_id: 450
+      organisations_id: 8
+    - indikator_id: 450
+      organisations_id: 11
+  tblForbindIndikatorerDataprodukter:
+    navn: tblForbindIndikatorerDataprodukter
+    row_count: 13
+    kolonne_antal: 2
+    kolonner:
+    - navn: dataprodukt_id
+      type: '4'
+      r_class: .na.character
+    - navn: indikator_id
+      type: '4'
+      r_class: .na.character
+    sample_raekker:
+    - dataprodukt_id: 1
+      indikator_id: 450
+    - dataprodukt_id: 6
+      indikator_id: 770
+    - dataprodukt_id: 6
+      indikator_id: 771
+    - dataprodukt_id: 6
+      indikator_id: 772
+    - dataprodukt_id: 3
+      indikator_id: 822
+  tblDiagrammer:
+    navn: tblDiagrammer
+    row_count: 1086
+    kolonne_antal: 7
+    kolonner:
+    - navn: id
+      type: '4'
+      r_class: .na.character
+    - navn: organisatorisk_navn_teknisk
+      type: '4'
+      r_class: .na.character
+    - navn: indikator
+      type: '4'
+      r_class: .na.character
+    - navn: diagram_type
+      type: '4'
+      r_class: .na.character
+    - navn: indgaar_i_aggregering
+      type: '-7'
+      r_class: .na.character
+    - navn: diagram_aktivt
+      type: '-7'
+      r_class: .na.character
+    - navn: direktionens_tavle
+      type: '-7'
+      r_class: .na.character
+    sample_raekker:
+    - id: 1
+      organisatorisk_navn_teknisk: 1
+      indikator: 452
+      diagram_type: 10
+      indgaar_i_aggregering: yes
+      diagram_aktivt: no
+      direktionens_tavle: yes
+    - id: 2
+      organisatorisk_navn_teknisk: 1
+      indikator: 769
+      diagram_type: 10
+      indgaar_i_aggregering: yes
+      diagram_aktivt: no
+      direktionens_tavle: yes
+    - id: 3
+      organisatorisk_navn_teknisk: 1
+      indikator: 714
+      diagram_type: 10
+      indgaar_i_aggregering: yes
+      diagram_aktivt: no
+      direktionens_tavle: yes
+    - id: 4
+      organisatorisk_navn_teknisk: 1
+      indikator: 745
+      diagram_type: 10
+      indgaar_i_aggregering: yes
+      diagram_aktivt: no
+      direktionens_tavle: yes
+    - id: 5
+      organisatorisk_navn_teknisk: 2
+      indikator: 452
+      diagram_type: 10
+      indgaar_i_aggregering: yes
+      diagram_aktivt: no
+      direktionens_tavle: no
+  tblDiagramTyper:
+    navn: tblDiagramTyper
+    row_count: 12
+    kolonne_antal: 3
+    kolonner:
+    - navn: Id
+      type: '4'
+      r_class: .na.character
+    - navn: diagram_type
+      type: '12'
+      r_class: .na.character
+    - navn: diagram_type_kommentar
+      type: '12'
+      r_class: .na.character
+    sample_raekker:
+    - Id: 1
+      diagram_type: Seriediagram
+      diagram_type_kommentar: Run chart
+    - Id: 2
+      diagram_type: I
+      diagram_type_kommentar: Individual measurements
+    - Id: 3
+      diagram_type: MR
+      diagram_type_kommentar: Moving ranges of individual measurements
+    - Id: 4
+      diagram_type: Xbar
+      diagram_type_kommentar: Sample means
+    - Id: 5
+      diagram_type: S
+      diagram_type_kommentar: Sample standard deviations
+  tblDiagramIndstillinger:
+    navn: tblDiagramIndstillinger
+    row_count: 135
+    kolonne_antal: 30
+    kolonner:
+    - navn: Id
+      type: '4'
+      r_class: .na.character
+    - navn: indikator_hierarki
+      type: '4'
+      r_class: .na.character
+    - navn: indikator_navn
+      type: '12'
+      r_class: .na.character
+    - navn: indikator_navn_teknisk
+      type: '12'
+      r_class: .na.character
+    - navn: indikator_navn_kort
+      type: '12'
+      r_class: .na.character
+    - navn: indikator_navn_fil_gem
+      type: '12'
+      r_class: .na.character
+    - navn: aktiv_indikator
+      type: '-7'
+      r_class: .na.character
+    - navn: definition_kort
+      type: '-1'
+      r_class: .na.character
+    - navn: definition_dataportal
+      type: '-1'
+      r_class: .na.character
+    - navn: definition_lang
+      type: '-1'
+      r_class: .na.character
+    - navn: tæller_beskrivelse
+      type: '12'
+      r_class: .na.character
+    - navn: nævner_beskrivelse
+      type: '12'
+      r_class: .na.character
+    - navn: datakilde
+      type: '4'
+      r_class: .na.character
+    - navn: sp_rapport_id
+      type: '12'
+      r_class: .na.character
+    - navn: kontaktperson
+      type: '-1'
+      r_class: .na.character
+    - navn: relevant_for_afdeling
+      type: '-1'
+      r_class: .na.character
+    - navn: ønsket_tendens
+      type: '12'
+      r_class: .na.character
+    - navn: antal_manglende_kommentar
+      type: '12'
+      r_class: .na.character
+    - navn: periode_fra
+      type: '93'
+      r_class: .na.character
+    - navn: periode_til
+      type: '93'
+      r_class: .na.character
+    - navn: fra-periode_flydende
+      type: '-7'
+      r_class: .na.character
+    - navn: periode_til_seneste
+      type: '-7'
+      r_class: .na.character
+    - navn: input_format
+      type: '12'
+      r_class: .na.character
+    - navn: output_format
+      type: '12'
+      r_class: .na.character
+    - navn: X-akse_format
+      type: '12'
+      r_class: .na.character
+    - navn: Y-akse_titel
+      type: '12'
+      r_class: .na.character
+    - navn: Y-akse_maxvaerdi
+      type: '12'
+      r_class: .na.character
+    - navn: Y-akse_minvaerdi
+      type: '12'
+      r_class: .na.character
+    - navn: Skjul_obs_info
+      type: '-7'
+      r_class: .na.character
+    - navn: Må_ikke_aggregeres
+      type: '-7'
+      r_class: .na.character
+    sample_raekker:
+    - Id: 6
+      indikator_hierarki: .na.integer
+      indikator_navn: PDA ved blodprøvetagning
+      indikator_navn_teknisk: pda_ved_blodproevetagning
+      indikator_navn_kort: .na.character
+      indikator_navn_fil_gem: .na.character
+      aktiv_indikator: yes
+      definition_kort: Andel blodprøvetagninger med brug af PDA/ROVER
+      definition_dataportal: .na.character
+      definition_lang: Andel blodprøvetagninger med anvendelse af PDA/ROVER, i forhold
+        til totale antal blodprøvetagninger
+      tæller_beskrivelse: Blodprøvetagninger med anvendelse af PDA
+      nævner_beskrivelse: Totale antal blodprøvetagninger
+      datakilde: 2
+      sp_rapport_id: .na.character
+      kontaktperson: ''
+      relevant_for_afdeling: ''
+      ønsket_tendens: Opadgående
+      antal_manglende_kommentar: På en gennemsnitlig uge tages [x1] prøver uden brug
+        af PDA
+      periode_fra: 1.6254432e+09
+      periode_til: .na.real
+      fra-periode_flydende: no
+      periode_til_seneste: yes
+      input_format: Tal (0 decimaler)
+      output_format: Procent (0 decimaler)
+      X-akse_format: Uge
+      Y-akse_titel: .na.character
+      Y-akse_maxvaerdi: '1'
+      Y-akse_minvaerdi: .na.character
+      Skjul_obs_info: no
+      Må_ikke_aggregeres: yes
+    - Id: 10
+      indikator_hierarki: .na.integer
+      indikator_navn: Belægning kl. 23
+      indikator_navn_teknisk: Belægning kl 23:00
+      indikator_navn_kort: .na.character
+      indikator_navn_fil_gem: .na.character
+      aktiv_indikator: no
+      definition_kort: Indlagte patienter ekskl. orlovspatienter og holdte senge i
+        forhold til antal disponible senge dagligt kl. 23
+      definition_dataportal: .na.character
+      definition_lang: Indlagte patienter ekskl. orlovspatienter og holdte senge i
+        forhold til antal disponible senge dagligt kl. 23
+      tæller_beskrivelse: .na.character
+      nævner_beskrivelse: .na.character
+      datakilde: 1
+      sp_rapport_id: .na.character
+      kontaktperson: ''
+      relevant_for_afdeling: ''
+      ønsket_tendens: .na.character
+      antal_manglende_kommentar: .na.character
+      periode_fra: .na.real
+      periode_til: .na.real
+      fra-periode_flydende: yes
+      periode_til_seneste: yes
+      input_format: Tal (0 decimaler)
+      output_format: Tal (0 decimaler)
+      X-akse_format: Dato (dd-mmm-åååå)
+      Y-akse_titel: .na.character
+      Y-akse_maxvaerdi: .na.character
+      Y-akse_minvaerdi: '0'
+      Skjul_obs_info: yes
+      Må_ikke_aggregeres: yes
+    - Id: 14
+      indikator_hierarki: .na.integer
+      indikator_navn: Belægning kl. 15
+      indikator_navn_teknisk: Belægning kl 15:00
+      indikator_navn_kort: .na.character
+      indikator_navn_fil_gem: .na.character
+      aktiv_indikator: no
+      definition_kort: Indlagte patienter ekskl. orlovspatienter og holdte senge i
+        forhold til antal disponible senge dagligt kl. 15
+      definition_dataportal: .na.character
+      definition_lang: Indlagte patienter ekskl. orlovspatienter og holdte senge i
+        forhold til antal disponible senge dagligt kl. 15
+      tæller_beskrivelse: .na.character
+      nævner_beskrivelse: .na.character
+      datakilde: 1
+      sp_rapport_id: .na.character
+      kontaktperson: ''
+      relevant_for_afdeling: ''
+      ønsket_tendens: .na.character
+      antal_manglende_kommentar: .na.character
+      periode_fra: .na.real
+      periode_til: .na.real
+      fra-periode_flydende: yes
+      periode_til_seneste: yes
+      input_format: Tal (0 decimaler)
+      output_format: Tal (0 decimaler)
+      X-akse_format: Dato (dd-mmm-åååå)
+      Y-akse_titel: .na.character
+      Y-akse_maxvaerdi: .na.character
+      Y-akse_minvaerdi: '0'
+      Skjul_obs_info: yes
+      Må_ikke_aggregeres: yes
+    - Id: 21
+      indikator_hierarki: .na.integer
+      indikator_navn: Afsluttede ophold
+      indikator_navn_teknisk: afsluttede ophold
+      indikator_navn_kort: .na.character
+      indikator_navn_fil_gem: .na.character
+      aktiv_indikator: yes
+      definition_kort: Antal afsluttede ophold, uanset behandlingsansvar, opholdslængde
+        eller evt. orlovsperioder
+      definition_dataportal: .na.character
+      definition_lang: Antal afsluttede fysiske ophold, uanset behandlingsansvar,
+        opholdslængde, eller at patienten kan være på orlov i en eller flere perioder.
+      tæller_beskrivelse: .na.character
+      nævner_beskrivelse: .na.character
+      datakilde: 1
+      sp_rapport_id: .na.character
+      kontaktperson: ''
+      relevant_for_afdeling: ''
+      ønsket_tendens: .na.character
+      antal_manglende_kommentar: .na.character
+      periode_fra: 1.6254432e+09
+      periode_til: .na.real
+      fra-periode_flydende: no
+      periode_til_seneste: yes
+      input_format: Tal (0 decimaler)
+      output_format: Tal (0 decimaler)
+      X-akse_format: Uge
+      Y-akse_titel: .na.character
+      Y-akse_maxvaerdi: .na.character
+      Y-akse_minvaerdi: .na.character
+      Skjul_obs_info: no
+      Må_ikke_aggregeres: yes
+    - Id: 23
+      indikator_hierarki: .na.integer
+      indikator_navn: Belægning kl. 09
+      indikator_navn_teknisk: Belægning kl 09:00
+      indikator_navn_kort: .na.character
+      indikator_navn_fil_gem: .na.character
+      aktiv_indikator: no
+      definition_kort: Indlagte patienter ekskl. orlovspatienter og holdte senge i
+        forhold til antal disponible senge dagligt kl. 09
+      definition_dataportal: .na.character
+      definition_lang: Indlagte patienter ekskl. orlovspatienter og holdte senge i
+        forhold til antal disponible senge dagligt kl. 09
+      tæller_beskrivelse: .na.character
+      nævner_beskrivelse: .na.character
+      datakilde: 1
+      sp_rapport_id: .na.character
+      kontaktperson: ''
+      relevant_for_afdeling: ''
+      ønsket_tendens: .na.character
+      antal_manglende_kommentar: .na.character
+      periode_fra: .na.real
+      periode_til: .na.real
+      fra-periode_flydende: yes
+      periode_til_seneste: yes
+      input_format: Tal (0 decimaler)
+      output_format: Tal (0 decimaler)
+      X-akse_format: Dato (dd-mmm-åååå)
+      Y-akse_titel: .na.character
+      Y-akse_maxvaerdi: .na.character
+      Y-akse_minvaerdi: '0'
+      Skjul_obs_info: yes
+      Må_ikke_aggregeres: yes
+  tblDiagrammerMaal:
+    navn: tblDiagrammerMaal
+    row_count: 2
+    kolonne_antal: 5
+    kolonner:
+    - navn: diagram
+      type: '4'
+      r_class: .na.character
+    - navn: maal_retning
+      type: '12'
+      r_class: .na.character
+    - navn: maal_vaerdi
+      type: '2'
+      r_class: .na.character
+    - navn: maal_gaeldende_fra
+      type: '93'
+      r_class: .na.character
+    - navn: id
+      type: '4'
+      r_class: .na.character
+    sample_raekker:
+    - diagram: 1
+      maal_retning: '>='
+      maal_vaerdi: 0.95
+      maal_gaeldende_fra: 1.4832288e+09
+      id: 1
+    - diagram: 5
+      maal_retning: '>='
+      maal_vaerdi: 0.95
+      maal_gaeldende_fra: 1.4832288e+09
+      id: 2
+  tblDiagrammerMedian:
+    navn: tblDiagrammerMedian
+    row_count: 9
+    kolonne_antal: 3
+    kolonner:
+    - navn: diagram
+      type: '4'
+      r_class: .na.character
+    - navn: laas_median
+      type: '93'
+      r_class: .na.character
+    - navn: id
+      type: '4'
+      r_class: .na.character
+    sample_raekker:
+    - diagram: 1
+      laas_median: 1.6369344e+09
+      id: 1
+    - diagram: 2
+      laas_median: 1.6369344e+09
+      id: 2
+    - diagram: 2
+      laas_median: 1.6435872e+09
+      id: 3
+    - diagram: 5
+      laas_median: 1.6308864e+09
+      id: 4
+    - diagram: 4
+      laas_median: 1.6296768e+09
+      id: 5
+  tblDiagrammerKommentar:
+    navn: tblDiagrammerKommentar
+    row_count: 1
+    kolonne_antal: 4
+    kolonner:
+    - navn: diagram
+      type: '4'
+      r_class: .na.character
+    - navn: kommentar
+      type: '12'
+      r_class: .na.character
+    - navn: kommentar_dato
+      type: '93'
+      r_class: .na.character
+    - navn: id
+      type: '4'
+      r_class: .na.character
+    sample_raekker:
+    - diagram: 1
+      kommentar: Mindre aktivitet pga jul og nytår
+      kommentar_dato: 1.6405632e+09
+      id: 1
+  tblDataprodukter:
+    navn: tblDataprodukter
+    row_count: 6
+    kolonne_antal: 4
+    kolonner:
+    - navn: Id
+      type: '4'
+      r_class: .na.character
+    - navn: dataprodukt_navn
+      type: '12'
+      r_class: .na.character
+    - navn: dataprodukt_kort_navn
+      type: '12'
+      r_class: .na.character
+    - navn: dataprodukt_beskrivelse
+      type: '-1'
+      r_class: .na.character
+    sample_raekker:
+    - Id: 1
+      dataprodukt_navn: Seriediagrammer med SPC
+      dataprodukt_kort_navn: .na.character
+      dataprodukt_beskrivelse: .na.character
+    - Id: 2
+      dataprodukt_navn: Data- og analyseplatformen
+      dataprodukt_kort_navn: DAP
+      dataprodukt_beskrivelse: .na.character
+    - Id: 3
+      dataprodukt_navn: Fælles ledelses og informationssystem
+      dataprodukt_kort_navn: FLIS
+      dataprodukt_beskrivelse: .na.character
+    - Id: 4
+      dataprodukt_navn: SlicerDicer
+      dataprodukt_kort_navn: .na.character
+      dataprodukt_beskrivelse: .na.character
+    - Id: 5
+      dataprodukt_navn: SP Dashboards
+      dataprodukt_kort_navn: .na.character
+      dataprodukt_beskrivelse: .na.character
+noter:
+- 'FK-relationer ER IKKE i denne fil — eksportér via Access GUI:'
+- '  Database Tools > Relationships > screenshot som access_relationships.png'
+- '  Database Tools > Database Documenter > PDF til access_database_documenter.pdf'
+- Indexes er heller ikke programmatisk hentet — Database Documenter ovenfor dækker
+  dem
+- 'Hvis flere tabeller findes i Access end de 19 kendte: tilføj dem til KENDTE_TABELLER
+  i 00_introspect_access.R og genkør'
