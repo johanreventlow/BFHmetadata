@@ -69,9 +69,21 @@ build_type_map <- function() {
   })
 }
 
+# Omdøb parquet-kolonner til de AUTORITATIVE skema-navne (fra YAML/DDL).
+# Windows-introspektionen R-sanitiserede navne i parquet (fx '-'→'.'), mens
+# YAML beholdt Access' ægte navne. make.names(yaml) == parquet → deterministisk.
+rename_to_schema <- function(df, schema_names) {
+  map <- setNames(schema_names, make.names(schema_names))  # sanitiseret → ægte
+  cur <- names(df)
+  hit <- cur %in% names(map)
+  names(df)[hit] <- unname(map[cur[hit]])
+  df
+}
+
 # Coerce df-kolonner til de typer DDL'en forventer (undgår dbWriteTable-mismatch)
 coerce_df <- function(df, coltypes) {
   for (cn in names(df)) {
+    if (!cn %in% names(coltypes)) next   # defensiv: ukendt kolonne urørt
     pgt <- coltypes[[cn]]
     if (is.null(pgt)) next
     df[[cn]] <- switch(pgt,
@@ -157,9 +169,12 @@ run_sql_file <- function(con, path, label) {
 load_tables <- function(con, dumps, type_map) {
   log_msg("Fase 3: Load data (FK-fri rækkefølge)")
   for (tname in names(dumps)) {
-    df <- dumps[[tname]]
+    df <- as.data.frame(dumps[[tname]])
     ct <- type_map[[tname]]
-    if (!is.null(ct)) df <- coerce_df(as.data.frame(df), ct)
+    if (!is.null(ct)) {
+      df <- rename_to_schema(df, names(ct))  # parquet-navne → autoritative skema-navne
+      df <- coerce_df(df, ct)
+    }
     DBI::dbWriteTable(con, DBI::Id(table = tname), df, append = TRUE)
     log_msg(sprintf("  %-38s %d rækker", tname, nrow(df)))
   }
@@ -179,12 +194,14 @@ reset_sequences <- function(con) {
       DBI::dbQuoteIdentifier(con, tname),
       DBI::dbQuoteString(con, pk)))$s[1]
     if (is.na(seq)) { log_msg("  ! ingen sequence for ", tname, ".", pk); next }
-    mx <- DBI::dbGetQuery(con, sprintf("SELECT COALESCE(MAX(%s),0) AS m FROM %s",
-            DBI::dbQuoteIdentifier(con, pk), DBI::dbQuoteIdentifier(con, tname)))$m[1]
-    # setval returnerer den satte værdi → ét kald, ingen rå sekvens-identifier i FROM
-    nv <- DBI::dbGetQuery(con, sprintf("SELECT setval('%s', %d, true) AS v", seq, max(mx, 1)))$v[1]
+    mx <- as.numeric(DBI::dbGetQuery(con, sprintf("SELECT COALESCE(MAX(%s),0) AS m FROM %s",
+            DBI::dbQuoteIdentifier(con, pk), DBI::dbQuoteIdentifier(con, tname)))$m[1])
+    # setval returnerer den satte værdi. bigint → integer64 i R; coerce til numeric
+    # FØR sprintf (ellers renderer %.0f forkert som 0).
+    nv <- as.numeric(DBI::dbGetQuery(con,
+            sprintf("SELECT setval('%s', %.0f, true) AS v", seq, max(mx, 1)))$v[1])
     if (nv < mx) die("Sequence ", seq, " (", nv, ") < max(", pk, ")=", mx, " for ", tname)
-    log_msg(sprintf("  %-38s seq=%d (max %s=%d)", tname, nv, pk, mx))
+    log_msg(sprintf("  %-38s seq=%.0f (max %s=%.0f)", tname, nv, pk, mx))
   }
 }
 
@@ -195,12 +212,12 @@ verify <- function(con, dumps) {
   log_msg("Fase 6: Verifikation")
   mismatch <- 0
   for (tname in names(dumps)) {
-    n_db <- DBI::dbGetQuery(con, sprintf("SELECT COUNT(*) AS n FROM %s",
-              DBI::dbQuoteIdentifier(con, tname)))$n[1]
+    n_db <- as.numeric(DBI::dbGetQuery(con, sprintf("SELECT COUNT(*) AS n FROM %s",
+              DBI::dbQuoteIdentifier(con, tname)))$n[1])
     n_pq <- nrow(dumps[[tname]])
     ok <- n_db == n_pq
     if (!ok) mismatch <- mismatch + 1
-    log_msg(sprintf("  %-38s parquet=%-5d db=%-5d %s", tname, n_pq, n_db,
+    log_msg(sprintf("  %-38s parquet=%-5d db=%-5.0f %s", tname, n_pq, n_db,
                     if (ok) "OK" else "MISMATCH"))
   }
   # æ/ø/å-stikprøve
