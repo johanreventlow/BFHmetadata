@@ -78,3 +78,33 @@ mk_fk_stmt <- function(fk) {
           qi(fk$child), qi(sprintf("fk_%s_%s", fk$child, fk$col)),
           qi(fk$col), qi(fk$parent), qi(fk$pcol))
 }
+
+# --- tblIndikatorer felt-metadata til CRUD-form ------------------------------
+# kind: pk | fk | text | textarea | bool | int | date
+INDIKATOR_FIELDS <- list(
+  list(col="id",                       kind="pk"),
+  list(col="indikator_hierarki",       kind="fk", parent="tblIndikatorHierarki", label="hierarki_navn"),
+  list(col="indikator_navn",           kind="text"),
+  list(col="indikator_navn_teknisk",   kind="text"),
+  list(col="kontaktperson",            kind="fk", parent="tblPersoner",          label="fornavn||' '||efternavn"),
+  list(col="sp_rapport_id",            kind="text"),
+  list(col="tillad_auto_opdatering",   kind="bool"),
+  list(col="aktiv_indikator",          kind="bool"),
+  list(col="nøgleindikator",           kind="bool"),
+  list(col="definition_kort",          kind="textarea"),
+  list(col="definition_dataportal",    kind="textarea"),
+  list(col="tæller_beskrivelse",       kind="textarea"),
+  list(col="nævner_beskrivelse",       kind="textarea"),
+  list(col="indikator_ukompatibel_med",kind="textarea"),
+  list(col="mål",                      kind="text"),
+  list(col="datakilde",                kind="fk", parent="tblDatakilder",        label="datakilde_navn"),
+  list(col="direkte_link",             kind="text"),
+  list(col="ønsket_tendens",           kind="text"),
+  list(col="antal_observationer",      kind="int"),
+  list(col="periode_fra",              kind="date"),
+  list(col="output_enhed",             kind="text")
+)
+
+# Felter sikre til inline DT-redigering (simple tekst/tal — ej FK/bool/date)
+INLINE_EDITABLE <- c("indikator_navn", "mål", "output_enhed",
+                     "direkte_link", "ønsket_tendens")
