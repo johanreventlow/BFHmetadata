@@ -23,7 +23,14 @@ mod_indikator_crud_ui <- function(id) {
   bslib::navset_tab(
     bslib::nav_panel("Oversigt",
       div(class = "mt-2",
-        checkboxInput(ns("show_inactive_ov"), "Vis inaktive", value = TRUE),
+        bslib::layout_columns(
+          col_widths = c(6, 6),
+          uiOutput(ns("filter_datasaet_ui")),
+          selectInput(ns("filter_status"), "Status",
+            choices = c("Alle" = "alle", "Kun aktive" = "aktiv",
+                        "Kun inaktive" = "inaktiv"),
+            selected = "alle")
+        ),
         DT::DTOutput(ns("oversigt")),
         verbatimTextOutput(ns("status"))
       )
@@ -86,8 +93,14 @@ mod_indikator_crud_server <- function(id, db) {
     .build_modal <- function(row) {
       ns <- session$ns
       vals <- as.list(row)
-      scalar_fk <- tagList(lapply(INDIKATOR_FIELDS, function(f)
+      # Skalar-/FK-felter fordeles på to kolonner (pk → NULL frasorteres)
+      inputs <- Filter(Negate(is.null), lapply(INDIKATOR_FIELDS, function(f)
         .field_input(ns, f, fk_choices, values = vals, prefix = "m_")))
+      half <- ceiling(length(inputs) / 2)
+      col1 <- do.call(tagList, inputs[seq_len(half)])
+      col2 <- do.call(tagList, inputs[(half + 1):length(inputs)])
+      scalar_fk <- bslib::layout_columns(col_widths = c(6, 6), col1, col2)
+      # m2m-relationer på tre kolonner (faggrupper/dataprodukter/organisation)
       m2m <- lapply(names(INDIKATOR_JUNCTIONS), function(key) {
         opts <- db$junction_options(key)
         sel <- db$get_junction(vals$id, key)
@@ -95,9 +108,11 @@ mod_indikator_crud_server <- function(id, db) {
           choices = stats::setNames(opts$id, opts$label),
           selected = sel, multiple = TRUE)
       })
-      modalDialog(title = paste("Redigér indikator", vals$id), size = "l",
+      m2m_row <- do.call(bslib::layout_columns,
+                         c(list(col_widths = c(4, 4, 4)), m2m))
+      modalDialog(title = paste("Redigér indikator", vals$id), size = "xl",
         easyClose = FALSE,
-        scalar_fk, hr(), h5("Relationer"), tagList(m2m),
+        scalar_fk, hr(), h5("Relationer"), m2m_row,
         footer = tagList(
           actionButton(ns("modal_save"), "Gem", class = "btn-primary"),
           modalButton("Annullér")))
@@ -140,26 +155,42 @@ mod_indikator_crud_server <- function(id, db) {
         editable = list(target = "cell", disable = list(columns = setdiff(seq_len(ncol(d))-1, editable_cols))))
     })
 
+    # Datasæt-filter: valg afledt af de hierarki-værdier der faktisk findes
+    output$filter_datasaet_ui <- renderUI({
+      ns <- session$ns
+      vals <- sort(unique(stats::na.omit(rows()[["label_indikator_hierarki"]])))
+      selectInput(ns("filter_datasaet"), "Datasæt",
+        choices = c("Alle" = "", stats::setNames(vals, vals)), selected = "")
+    })
+
     output$oversigt <- DT::renderDT({
       ns <- session$ns
       d <- rows()
-      if (!isTRUE(input$show_inactive_ov) && "aktiv_indikator" %in% names(d))
+      # Status-filter (Alle / kun aktive / kun inaktive)
+      status <- input$filter_status %||% "alle"
+      if (identical(status, "aktiv"))
         d <- d[d$aktiv_indikator %in% TRUE, , drop = FALSE]
+      if (identical(status, "inaktiv"))
+        d <- d[!(d$aktiv_indikator %in% TRUE), , drop = FALSE]
+      # Datasæt-filter (tom = alle)
+      fds <- input$filter_datasaet
+      if (!is.null(fds) && nzchar(fds))
+        d <- d[d$label_indikator_hierarki %in% fds, , drop = FALSE]
       btn <- vapply(d[["id"]], function(i) sprintf(
         '<button class="btn btn-sm btn-primary" onclick="Shiny.setInputValue(\'%s\', %d, {priority:\'event\'})">Åbn</button>',
         ns("open_id"), i), "")
+      # Kolonne-rækkefølge: knap → datasæt → indikator-id (teknisk navn) → navn
       out <- data.frame(
-        Aktiv = ifelse(d[["aktiv_indikator"]] %in% TRUE, "✓", "✗"),
-        Datasæt = d[["label_indikator_hierarki"]],
-        Id = d[["id"]],
-        Navn = d[["indikator_navn"]],
         Handling = btn,
+        Datasæt = d[["label_indikator_hierarki"]],
+        `Indikator-id` = d[["indikator_navn_teknisk"]],
+        Navn = d[["indikator_navn"]],
         check.names = FALSE, stringsAsFactors = FALSE)
       # escape alle kolonner undtagen knap-kolonnen (Handling) → ingen rå HTML
       # i DB-tekst (XSS-beskyttelse), men knappens markup bevares
       esc <- which(names(out) != "Handling")
       DT::datatable(out, escape = esc, rownames = FALSE, selection = "none",
-        options = list(pageLength = 25))
+        options = list(pageLength = 10))
     })
 
     selected_id <- reactive({
