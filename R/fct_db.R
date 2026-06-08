@@ -55,6 +55,29 @@ make_db <- function(pool) {
     soft_delete = function(id, active = FALSE) {
       assert_write_enabled()
       DBI::dbExecute(pool, build_soft_delete_sql(), params = list(active, id))
+    },
+    get_junction = function(indikator_id, key) {
+      j <- INDIKATOR_JUNCTIONS[[key]]
+      res <- DBI::dbGetQuery(pool, build_junction_select_sql(j),
+                             params = list(indikator_id))
+      res[[j$fk]]
+    },
+    junction_options = function(key) {
+      j <- INDIKATOR_JUNCTIONS[[key]]
+      DBI::dbGetQuery(pool, build_junction_options_sql(j))
+    },
+    set_junction = function(indikator_id, key, parent_ids) {
+      assert_write_enabled()
+      j <- INDIKATOR_JUNCTIONS[[key]]
+      parent_ids <- parent_ids[!is.na(parent_ids)]
+      pool::poolWithTransaction(pool, function(conn) {
+        DBI::dbExecute(conn, build_junction_delete_sql(j),
+                       params = list(indikator_id))
+        if (length(parent_ids)) {
+          DBI::dbExecute(conn, build_junction_insert_sql(j, length(parent_ids)),
+                         params = c(list(indikator_id), as.list(parent_ids)))
+        }
+      })
     }
   )
 }
