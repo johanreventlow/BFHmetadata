@@ -74,6 +74,14 @@ mod_indikator_crud_server <- function(id, db) {
 
     editing_id <- reactiveVal(NULL)
 
+    # Vis status som flydende notifikation: synlig OVER modal og uafhængigt af
+    # aktiv fane (status-tekstboksen sidder kun på Oversigt-fanen). Dækker både
+    # modal-valideringsfejl (modal forbliver åben) og fejl/kvittering på begge faner.
+    observeEvent(status_msg(), {
+      m <- status_msg()
+      if (nzchar(m)) showNotification(m, duration = 5)
+    }, ignoreInit = TRUE)
+
     # Bygger modal-indhold for én indikator (pre-udfyldt form + m2m-multiselect)
     .build_modal <- function(row) {
       ns <- session$ns
