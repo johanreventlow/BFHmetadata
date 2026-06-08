@@ -1,15 +1,19 @@
-#' Bygger ét form-input baseret på felt-kind
+#' Bygger ét form-input baseret på felt-kind. prefix giver distinkt id-rum
+#' (modal vs sidebar). values pre-udfylder.
 #' @noRd
-.field_input <- function(ns, f, fk_choices = list()) {
-  id <- ns(f$col)
+.field_input <- function(ns, f, fk_choices = list(), values = list(), prefix = "") {
+  id <- ns(paste0(prefix, f$col))
+  v <- values[[f$col]]
   switch(f$kind,
     "pk"       = NULL,
-    "fk"       = selectInput(id, f$col, choices = c("(ingen)" = "", fk_choices[[f$col]])),
-    "bool"     = checkboxInput(id, f$col, value = FALSE),
-    "date"     = dateInput(id, f$col, value = NULL),
-    "int"      = numericInput(id, f$col, value = NA),
-    "textarea" = textAreaInput(id, f$col, value = ""),
-    textInput(id, f$col, value = "")  # text (default)
+    "fk"       = selectInput(id, f$col, choices = c("(ingen)" = "", fk_choices[[f$col]]),
+                             selected = v %||% ""),
+    "bool"     = checkboxInput(id, f$col, value = isTRUE(v)),
+    "date"     = dateInput(id, f$col,
+                           value = if (is.null(v) || is.na(v)) NULL else as.Date(v)),
+    "int"      = numericInput(id, f$col, value = if (is.null(v)) NA else v),
+    "textarea" = textAreaInput(id, f$col, value = v %||% ""),
+    textInput(id, f$col, value = v %||% "")  # text (default)
   )
 }
 
@@ -36,13 +40,13 @@ mod_indikator_crud_ui <- function(id) {
 }
 
 #' @noRd
-.collect_form <- function(input, fields) {
+.collect_form <- function(input, fields, prefix = "") {
   vals <- list()
   for (f in fields) {
     if (f$kind == "pk") next
-    v <- input[[f$col]]
+    v <- input[[paste0(prefix, f$col)]]
     if (f$kind == "bool") v <- isTRUE(v)
-    if (f$kind %in% c("text","textarea","fk") && identical(v, "")) v <- NA
+    if (f$kind %in% c("text", "textarea", "fk") && identical(v, "")) v <- NA
     vals[[f$col]] <- v
   }
   vals

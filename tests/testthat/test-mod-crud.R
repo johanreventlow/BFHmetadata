@@ -45,3 +45,12 @@ test_that("inline-edit på editable felt kalder update", {
     expect_false(is.null(db$.calls()$updated))
   })
 })
+
+test_that(".collect_form med prefix læser præfiksede inputs", {
+  fields <- list(list(col = "indikator_navn", kind = "text"),
+                 list(col = "aktiv_indikator", kind = "bool"))
+  input <- list(m_indikator_navn = "Test", m_aktiv_indikator = TRUE)
+  vals <- .collect_form(input, fields, prefix = "m_")
+  expect_equal(vals$indikator_navn, "Test")
+  expect_true(vals$aktiv_indikator)
+})
