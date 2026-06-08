@@ -16,6 +16,11 @@ build_list_sql <- function() {
     joins  <- c(joins, sprintf('LEFT JOIN "%s" %s ON %s."Id" = i."%s"',
                   f$parent, al, al, f$col))
   }
+  # Datapakke = forælder-hierarki til datasæt-hierarkiet (selv-join på parent_id).
+  # Afhænger af alias p_indikator_hierarki fra loopet (FK-felt i v1).
+  joins  <- c(joins, paste0('LEFT JOIN "tblIndikatorHierarki" dp ',
+                'ON dp."Id" = p_indikator_hierarki."parent_id"'))
+  labels <- c(labels, 'dp."hierarki_navn" AS "label_datapakke"')
   sprintf('SELECT %s, %s FROM "tblIndikatorer" i %s ORDER BY i."id"',
           paste(base_cols, collapse = ", "), paste(labels, collapse = ", "),
           paste(joins, collapse = " "))

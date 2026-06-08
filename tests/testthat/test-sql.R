@@ -8,6 +8,13 @@ test_that("build_list_sql joiner alle 3 FK-parents med labels", {
   expect_match(sql, "datakilde_navn")
 })
 
+test_that("build_list_sql joiner datapakke (forælder-hierarki) som label", {
+  sql <- build_list_sql()
+  expect_match(sql, 'LEFT JOIN "tblIndikatorHierarki" dp')
+  expect_match(sql, 'dp."Id" = p_indikator_hierarki."parent_id"')
+  expect_match(sql, '"label_datapakke"')
+})
+
 test_that("build_fk_options_sql bygger id+label select for parent", {
   sql <- build_fk_options_sql("tblDatakilder", "datakilde_navn")
   expect_match(sql, '"Id"')

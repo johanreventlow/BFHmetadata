@@ -24,7 +24,8 @@ mod_indikator_crud_ui <- function(id) {
     bslib::nav_panel("Oversigt",
       div(class = "mt-2",
         bslib::layout_columns(
-          col_widths = c(6, 6),
+          col_widths = c(4, 4, 4),
+          uiOutput(ns("filter_datapakke_ui")),
           uiOutput(ns("filter_datasaet_ui")),
           selectInput(ns("filter_status"), "Status",
             choices = c("Alle" = "alle", "Kun aktive" = "aktiv",
@@ -155,10 +156,22 @@ mod_indikator_crud_server <- function(id, db) {
         editable = list(target = "cell", disable = list(columns = setdiff(seq_len(ncol(d))-1, editable_cols))))
     })
 
-    # Datasæt-filter: valg afledt af de hierarki-værdier der faktisk findes
+    # Datapakke-filter: valg afledt af de datapakke-værdier der faktisk findes
+    output$filter_datapakke_ui <- renderUI({
+      ns <- session$ns
+      vals <- sort(unique(stats::na.omit(rows()[["label_datapakke"]])))
+      selectInput(ns("filter_datapakke"), "Datapakke",
+        choices = c("Alle" = "", stats::setNames(vals, vals)), selected = "")
+    })
+
+    # Datasæt-filter: kaskaderer på valgt datapakke (viser kun datasæt derunder)
     output$filter_datasaet_ui <- renderUI({
       ns <- session$ns
-      vals <- sort(unique(stats::na.omit(rows()[["label_indikator_hierarki"]])))
+      d <- rows()
+      fdp <- input$filter_datapakke
+      if (!is.null(fdp) && nzchar(fdp))
+        d <- d[d$label_datapakke %in% fdp, , drop = FALSE]
+      vals <- sort(unique(stats::na.omit(d[["label_indikator_hierarki"]])))
       selectInput(ns("filter_datasaet"), "Datasæt",
         choices = c("Alle" = "", stats::setNames(vals, vals)), selected = "")
     })
@@ -172,6 +185,10 @@ mod_indikator_crud_server <- function(id, db) {
         d <- d[d$aktiv_indikator %in% TRUE, , drop = FALSE]
       if (identical(status, "inaktiv"))
         d <- d[!(d$aktiv_indikator %in% TRUE), , drop = FALSE]
+      # Datapakke-filter (tom = alle)
+      fdp <- input$filter_datapakke
+      if (!is.null(fdp) && nzchar(fdp))
+        d <- d[d$label_datapakke %in% fdp, , drop = FALSE]
       # Datasæt-filter (tom = alle)
       fds <- input$filter_datasaet
       if (!is.null(fds) && nzchar(fds))
@@ -179,9 +196,10 @@ mod_indikator_crud_server <- function(id, db) {
       btn <- vapply(d[["id"]], function(i) sprintf(
         '<button class="btn btn-sm btn-primary" onclick="Shiny.setInputValue(\'%s\', %d, {priority:\'event\'})">Åbn</button>',
         ns("open_id"), i), "")
-      # Kolonne-rækkefølge: knap → datasæt → indikator-id (teknisk navn) → navn
+      # Kolonner: knap → aktiv → datasæt → indikator-id (teknisk navn) → navn
       out <- data.frame(
         Handling = btn,
+        Aktiv = ifelse(d[["aktiv_indikator"]] %in% TRUE, "✓", "✗"),
         Datasæt = d[["label_indikator_hierarki"]],
         `Indikator-id` = d[["indikator_navn_teknisk"]],
         Navn = d[["indikator_navn"]],
