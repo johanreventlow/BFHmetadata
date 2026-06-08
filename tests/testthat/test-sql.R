@@ -29,3 +29,12 @@ test_that("build_insert_sql returnerer RETURNING id", {
   expect_match(res, "RETURNING \"id\"")
   expect_match(res, "\\$1, \\$2")
 })
+
+test_that("INDIKATOR_JUNCTIONS har 3 relationer med påkrævede felter", {
+  expect_named(INDIKATOR_JUNCTIONS, c("faggrupper", "dataprodukter", "organisation"))
+  for (j in INDIKATOR_JUNCTIONS) {
+    expect_true(all(c("table", "fk", "parent", "parent_pk", "label") %in% names(j)))
+  }
+  expect_equal(INDIKATOR_JUNCTIONS$faggrupper$table, "tblForbindIndikatorerFaggrupper")
+  expect_equal(INDIKATOR_JUNCTIONS$dataprodukter$fk, "dataprodukt_id")
+})

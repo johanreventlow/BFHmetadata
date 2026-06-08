@@ -108,3 +108,19 @@ INDIKATOR_FIELDS <- list(
 # Felter sikre til inline DT-redigering (simple tekst/tal — ej FK/bool/date)
 INLINE_EDITABLE <- c("indikator_navn", "mål", "output_enhed",
                      "direkte_link", "ønsket_tendens")
+
+# --- m2m junction-metadata for tblIndikatorer --------------------------------
+# Junctions har ingen PK (kun (indikator_id, parent_id)) → skrives via replace.
+# label: SQL-udtryk for parent-tekstværdi (double-quoted idents / COALESCE).
+INDIKATOR_JUNCTIONS <- list(
+  faggrupper    = list(table = "tblForbindIndikatorerFaggrupper",
+                       fk = "faggruppe_id",   parent = "tblFaggrupper",
+                       parent_pk = "Id", label = '"faggruppe"'),
+  dataprodukter = list(table = "tblForbindIndikatorerDataprodukter",
+                       fk = "dataprodukt_id", parent = "tblDataprodukter",
+                       parent_pk = "Id", label = '"dataprodukt_navn"'),
+  organisation  = list(table = "tblForbindIndikatorerOrganisation",
+                       fk = "organisations_id", parent = "tblOrganisationStruktur",
+                       parent_pk = "Id",
+                       label = 'COALESCE("organisatorisk_navn_langt","organisatorisk_navn_teknisk")')
+)
