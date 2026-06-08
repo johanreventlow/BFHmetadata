@@ -20,6 +20,11 @@ fake_db <- function() {
     set_junction = function(indikator_id, key, parent_ids) {
       calls$junction[[key]] <<- parent_ids; invisible(TRUE)
     },
+    save_indikator = function(id, values, picks) {
+      calls$updated <<- list(id, values)
+      for (key in names(picks)) calls$junction[[key]] <<- picks[[key]]
+      invisible(TRUE)
+    },
     .calls = function() calls
   )
 }

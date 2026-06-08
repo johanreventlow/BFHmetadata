@@ -108,12 +108,12 @@ mod_indikator_crud_server <- function(id, db) {
       vals <- .collect_form(input, INDIKATOR_FIELDS, prefix = "m_")
       errs <- validate_indikator(vals)
       if (length(errs) > 0) { status_msg(paste(errs, collapse = "; ")); return() }
+      # Saml alle valgte m2m-relationer → ét atomisk gem (scalar + junctions)
+      picks <- lapply(names(INDIKATOR_JUNCTIONS),
+                      function(key) as.integer(input[[paste0("m_j_", key)]]))
+      names(picks) <- names(INDIKATOR_JUNCTIONS)
       safe_operation("modal-gem", {
-        db$update_indikator(rid, vals)
-        for (key in names(INDIKATOR_JUNCTIONS)) {
-          picked <- as.integer(input[[paste0("m_j_", key)]])
-          db$set_junction(rid, key, picked)
-        }
+        db$save_indikator(rid, vals, picks)
         removeModal(); status_msg(paste("Gemt indikator", rid)); reload()
       }, fallback = status_msg("Fejl ved modal-gem (se log)"))
     })
@@ -147,7 +147,10 @@ mod_indikator_crud_server <- function(id, db) {
         Navn = d[["indikator_navn"]],
         Handling = btn,
         check.names = FALSE, stringsAsFactors = FALSE)
-      DT::datatable(out, escape = FALSE, rownames = FALSE, selection = "none",
+      # escape alle kolonner undtagen knap-kolonnen (Handling) → ingen rå HTML
+      # i DB-tekst (XSS-beskyttelse), men knappens markup bevares
+      esc <- which(names(out) != "Handling")
+      DT::datatable(out, escape = esc, rownames = FALSE, selection = "none",
         options = list(pageLength = 25))
     })
 

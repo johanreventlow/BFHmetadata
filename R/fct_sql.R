@@ -70,6 +70,8 @@ build_junction_insert_sql <- function(j, n) {
 }
 
 #' id + tekst-label for m2m-multiselect
+#' OBS: j$label er et betroet SQL-fragment fra INDIKATOR_JUNCTIONS (metadata.R),
+#' aldrig bruger-input. Interpoleres bevidst direkte (kan ej parametriseres).
 #' @noRd
 build_junction_options_sql <- function(j) {
   sprintf('SELECT "%s" AS id, (%s) AS label FROM "%s" ORDER BY 2',

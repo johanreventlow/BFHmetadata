@@ -78,6 +78,26 @@ make_db <- function(pool) {
                          params = c(list(indikator_id), as.list(parent_ids)))
         }
       })
+    },
+    # Samlet gem: scalar-UPDATE + replace af alle junctions i ÉN transaktion.
+    # Sikrer at modal-gem aldrig efterlader delvist skrevet tilstand (fx ved
+    # netværksfejl midt i gem). picks = named list (junction-key → parent-ids).
+    save_indikator = function(id, values, picks) {
+      assert_write_enabled()
+      pool::poolWithTransaction(pool, function(conn) {
+        cols <- names(values)
+        DBI::dbExecute(conn, build_update_sql(cols),
+                       params = c(unname(values), list(id)))
+        for (key in names(picks)) {
+          j <- INDIKATOR_JUNCTIONS[[key]]
+          ids <- picks[[key]][!is.na(picks[[key]])]
+          DBI::dbExecute(conn, build_junction_delete_sql(j), params = list(id))
+          if (length(ids)) {
+            DBI::dbExecute(conn, build_junction_insert_sql(j, length(ids)),
+                           params = c(list(id), as.list(ids)))
+          }
+        }
+      })
     }
   )
 }
