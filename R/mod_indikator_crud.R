@@ -100,7 +100,8 @@ mod_indikator_crud_server <- function(id, db) {
       half <- ceiling(length(inputs) / 2)
       col1 <- do.call(tagList, inputs[seq_len(half)])
       col2 <- do.call(tagList, inputs[(half + 1):length(inputs)])
-      scalar_fk <- bslib::layout_columns(col_widths = c(6, 6), col1, col2)
+      scalar_fk <- div(class = "bfh-inline-labels",
+        bslib::layout_columns(col_widths = c(6, 6), col1, col2))
       # m2m-relationer på tre kolonner (faggrupper/dataprodukter/organisation)
       m2m <- lapply(names(INDIKATOR_JUNCTIONS), function(key) {
         opts <- db$junction_options(key)
@@ -117,7 +118,14 @@ mod_indikator_crud_server <- function(id, db) {
         # ud af skærmen). Gælder kun mens denne modal er åben.
         tags$style(HTML(paste(
           ".modal-dialog{margin-top:24px;}",
-          ".modal-body{max-height:78vh;overflow-y:auto;}"))),
+          ".modal-body{max-height:78vh;overflow-y:auto;}",
+          # Label til venstre på samme linje som input (kun skalar-felter)
+          ".bfh-inline-labels .shiny-input-container{display:flex;",
+          "align-items:baseline;gap:.5rem;margin-bottom:.5rem;}",
+          ".bfh-inline-labels .shiny-input-container>label{flex:0 0 40%;",
+          "max-width:40%;text-align:right;margin:0;}",
+          ".bfh-inline-labels .shiny-input-container>:not(label){",
+          "flex:1 1 auto;min-width:0;}"))),
         scalar_fk, hr(), h5("Relationer"), m2m_row,
         footer = tagList(
           actionButton(ns("modal_save"), "Gem", class = "btn-primary"),
