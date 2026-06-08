@@ -113,6 +113,11 @@ mod_indikator_crud_server <- function(id, db) {
                          c(list(col_widths = c(4, 4, 4)), m2m))
       modalDialog(title = paste("Redigér indikator", vals$id), size = "xl",
         easyClose = FALSE,
+        # Placér modalen højere oppe + intern scroll (høj xl-modal skubbes ej
+        # ud af skærmen). Gælder kun mens denne modal er åben.
+        tags$style(HTML(paste(
+          ".modal-dialog{margin-top:24px;}",
+          ".modal-body{max-height:78vh;overflow-y:auto;}"))),
         scalar_fk, hr(), h5("Relationer"), m2m_row,
         footer = tagList(
           actionButton(ns("modal_save"), "Gem", class = "btn-primary"),
