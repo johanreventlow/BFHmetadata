@@ -158,10 +158,17 @@ Lokal Golem Shiny-app til redigering af `tblIndikatorer` i Supabase.
 ### Start app
 
 ```bash
-Rscript -e 'pkgload::load_all("."); run_app()'
+Rscript dev/run_dev.R
 ```
 
-Åbner på http://127.0.0.1 (kun lokal). Kræver `.Renviron` med `SUPABASE_DB_PASSWORD`.
+Åbner browser på http://127.0.0.1:3838 (kun lokal). Kræver `.Renviron` med
+`SUPABASE_DB_PASSWORD`. Alternativt i en interaktiv R-session:
+
+```r
+pkgload::load_all("."); run_app()   # auto-åbner browser interaktivt
+```
+
+(Bemærk: `Rscript R/run_app.R` virker IKKE — den fil *definerer* kun funktionen.)
 
 ### Skrive-guard
 
@@ -169,8 +176,8 @@ Skrivninger (create/update/soft-delete) er deaktiveret som standard. Aktivér be
 
 ```r
 options(bfhmeta.write_enabled = TRUE)   # i R-session før run_app()
-# eller
-BFHMETA_WRITE=1 Rscript -e 'pkgload::load_all("."); run_app()'
+# eller (med dev-launcher):
+BFHMETA_WRITE=1 Rscript dev/run_dev.R
 ```
 
 ### Smoke-test (read + write round-trip)
