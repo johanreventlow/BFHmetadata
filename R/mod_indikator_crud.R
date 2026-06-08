@@ -62,6 +62,52 @@ mod_indikator_crud_server <- function(id, db) {
 
     reload <- function() rows(db$list_indikatorer())
 
+    editing_id <- reactiveVal(NULL)
+
+    # Bygger modal-indhold for én indikator (pre-udfyldt form + m2m-multiselect)
+    .build_modal <- function(row) {
+      ns <- session$ns
+      vals <- as.list(row)
+      scalar_fk <- tagList(lapply(INDIKATOR_FIELDS, function(f)
+        .field_input(ns, f, fk_choices, values = vals, prefix = "m_")))
+      m2m <- lapply(names(INDIKATOR_JUNCTIONS), function(key) {
+        opts <- db$junction_options(key)
+        sel <- db$get_junction(vals$id, key)
+        selectInput(ns(paste0("m_j_", key)), key,
+          choices = stats::setNames(opts$id, opts$label),
+          selected = sel, multiple = TRUE)
+      })
+      modalDialog(title = paste("Redigér indikator", vals$id), size = "l",
+        easyClose = FALSE,
+        scalar_fk, hr(), h5("Relationer"), tagList(m2m),
+        footer = tagList(
+          actionButton(ns("modal_save"), "Gem", class = "btn-primary"),
+          modalButton("Annullér")))
+    }
+
+    observeEvent(input$open_id, {
+      rid <- as.integer(input$open_id)
+      editing_id(rid)
+      row <- rows()[rows()[["id"]] == rid, , drop = FALSE]
+      if (nrow(row) == 0) { status_msg("Indikator ikke fundet"); return() }
+      showModal(.build_modal(row[1, , drop = FALSE]))
+    })
+
+    observeEvent(input$modal_save, {
+      rid <- editing_id()
+      vals <- .collect_form(input, INDIKATOR_FIELDS, prefix = "m_")
+      errs <- validate_indikator(vals)
+      if (length(errs) > 0) { status_msg(paste(errs, collapse = "; ")); return() }
+      safe_operation("modal-gem", {
+        db$update_indikator(rid, vals)
+        for (key in names(INDIKATOR_JUNCTIONS)) {
+          picked <- as.integer(input[[paste0("m_j_", key)]])
+          db$set_junction(rid, key, picked)
+        }
+        removeModal(); status_msg(paste("Gemt indikator", rid)); reload()
+      }, fallback = status_msg("Fejl ved modal-gem (se log)"))
+    })
+
     output$form <- renderUI({
       ns <- session$ns
       tagList(lapply(INDIKATOR_FIELDS, function(f) .field_input(ns, f, fk_choices)))
@@ -119,7 +165,7 @@ mod_indikator_crud_server <- function(id, db) {
     output$status <- renderText(status_msg())
 
     # eksponér til test
-    list(rows = rows, status_msg = status_msg)
+    list(rows = rows, status_msg = status_msg, editing_id = editing_id)
   })
 }
 
