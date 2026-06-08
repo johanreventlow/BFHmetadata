@@ -1,6 +1,6 @@
 Package: BFHmetadata
 Title: BFH Metadata Admin (Indikator CRUD)
-Version: 0.1.0
+Version: 0.2.0
 Authors@R: person("Johan", "Reventlow", email = "johan@reventlow.dk", role = c("aut", "cre"))
 Description: Lokal admin-app til CRUD på BFH-metadata i Supabase. v0: tblIndikatorer.
 License: file LICENSE
