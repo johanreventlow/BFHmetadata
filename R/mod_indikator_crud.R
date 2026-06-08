@@ -67,7 +67,9 @@ mod_indikator_crud_server <- function(id, db) {
       d <- rows()
       if (!isTRUE(input$show_inactive) && "aktiv_indikator" %in% names(d))
         d <- d[d$aktiv_indikator %in% TRUE, , drop = FALSE]
-      DT::datatable(d, selection = "single", rownames = FALSE)
+      editable_cols <- which(names(d) %in% INLINE_EDITABLE) - 1
+      DT::datatable(d, selection = "single", rownames = FALSE,
+        editable = list(target = "cell", disable = list(columns = setdiff(seq_len(ncol(d))-1, editable_cols))))
     })
 
     selected_id <- reactive({
@@ -97,6 +99,17 @@ mod_indikator_crud_server <- function(id, db) {
       safe_operation("soft-delete", {
         db$soft_delete(sid, active = FALSE); status_msg("Deaktiveret"); reload()
       }, fallback = status_msg("Fejl ved deaktivering"))
+    })
+
+    observeEvent(input$tbl_cell_edit, {
+      info <- input$tbl_cell_edit
+      d <- rows(); col <- names(d)[info$col + 1]
+      if (!col %in% INLINE_EDITABLE) { status_msg("Kolonne ej redigerbar inline"); return() }
+      rid <- d[["id"]][info$row]
+      safe_operation("inline-update", {
+        db$update_indikator(rid, stats::setNames(list(info$value), col))
+        status_msg(paste("Opdateret", col)); reload()
+      }, fallback = status_msg("Fejl ved inline-update"))
     })
 
     output$status <- renderText(status_msg())

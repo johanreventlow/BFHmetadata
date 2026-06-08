@@ -37,3 +37,11 @@ test_that("soft_delete kalder db.soft_delete med active=FALSE", {
     expect_equal(db$.calls()$deleted[[2]], FALSE)
   })
 })
+
+test_that("inline-edit på editable felt kalder update", {
+  db <- fake_db()
+  testServer(mod_indikator_crud_server, args = list(db = db), {
+    session$setInputs(tbl_cell_edit = list(row = 1, col = which(names(db$list_indikatorer())=="indikator_navn")-1, value = "Nyt navn"))
+    expect_false(is.null(db$.calls()$updated))
+  })
+})
