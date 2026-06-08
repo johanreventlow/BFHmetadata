@@ -94,14 +94,33 @@ mod_indikator_crud_server <- function(id, db) {
     .build_modal <- function(row) {
       ns <- session$ns
       vals <- as.list(row)
-      # Skalar-/FK-felter fordeles på to kolonner (pk → NULL frasorteres)
-      inputs <- Filter(Negate(is.null), lapply(INDIKATOR_FIELDS, function(f)
-        .field_input(ns, f, fk_choices, values = vals, prefix = "m_")))
-      half <- ceiling(length(inputs) / 2)
-      col1 <- do.call(tagList, inputs[seq_len(half)])
-      col2 <- do.call(tagList, inputs[(half + 1):length(inputs)])
+      # Eksplicit feltrækkefølge i modalen. Resten placeres nedenunder.
+      LEFT_COLS  <- c("indikator_navn", "indikator_navn_teknisk",
+                      "indikator_hierarki", "datakilde", "kontaktperson",
+                      "ønsket_tendens", "mål")
+      RIGHT_COLS <- c("definition_kort", "definition_dataportal",
+                      "tæller_beskrivelse", "nævner_beskrivelse",
+                      "indikator_ukompatibel_med")
+      # Byg input for ét kolonnenavn (slår feltdefinition op i INDIKATOR_FIELDS)
+      fld <- function(col) {
+        f <- Find(function(x) x$col == col, INDIKATOR_FIELDS)
+        if (is.null(f)) NULL else .field_input(ns, f, fk_choices,
+                                               values = vals, prefix = "m_")
+      }
+      col1 <- do.call(tagList, lapply(LEFT_COLS, fld))
+      col2 <- do.call(tagList, lapply(RIGHT_COLS, fld))
       scalar_fk <- div(class = "bfh-inline-labels",
         bslib::layout_columns(col_widths = c(6, 6), col1, col2))
+      # Øvrige ikke-pk-felter (endnu ikke placeret) → to-kolonne-grid nedenunder
+      placed <- c(LEFT_COLS, RIGHT_COLS)
+      rest_fields <- Filter(function(f)
+        f$kind != "pk" && !(f$col %in% placed), INDIKATOR_FIELDS)
+      rest_inputs <- lapply(rest_fields, function(f)
+        .field_input(ns, f, fk_choices, values = vals, prefix = "m_"))
+      rest_block <- div(class = "bfh-inline-labels",
+        tags$h6("Øvrige felter", class = "mt-3 text-muted"),
+        do.call(bslib::layout_columns,
+                c(list(col_widths = c(6, 6)), rest_inputs)))
       # m2m-relationer på tre kolonner (faggrupper/dataprodukter/organisation)
       m2m <- lapply(names(INDIKATOR_JUNCTIONS), function(key) {
         opts <- db$junction_options(key)
@@ -126,7 +145,7 @@ mod_indikator_crud_server <- function(id, db) {
           "max-width:40%;text-align:right;margin:0;}",
           ".bfh-inline-labels .shiny-input-container>:not(label){",
           "flex:1 1 auto;min-width:0;}"))),
-        scalar_fk, hr(), h5("Relationer"), m2m_row,
+        scalar_fk, rest_block, hr(), h5("Relationer"), m2m_row,
         footer = tagList(
           actionButton(ns("modal_save"), "Gem", class = "btn-primary"),
           modalButton("Annullér")))
