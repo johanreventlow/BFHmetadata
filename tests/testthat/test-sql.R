@@ -38,3 +38,23 @@ test_that("INDIKATOR_JUNCTIONS har 3 relationer med påkrævede felter", {
   expect_equal(INDIKATOR_JUNCTIONS$faggrupper$table, "tblForbindIndikatorerFaggrupper")
   expect_equal(INDIKATOR_JUNCTIONS$dataprodukter$fk, "dataprodukt_id")
 })
+
+test_that("junction-byggere bygger parametriseret SQL", {
+  j <- INDIKATOR_JUNCTIONS$faggrupper
+  expect_match(build_junction_select_sql(j),
+    'SELECT "faggruppe_id" FROM "tblForbindIndikatorerFaggrupper" WHERE "indikator_id" = \\$1')
+  expect_match(build_junction_delete_sql(j),
+    'DELETE FROM "tblForbindIndikatorerFaggrupper" WHERE "indikator_id" = \\$1')
+  # 2 parent-ids → $1 (indikator) genbrugt, $2+$3 = parents
+  ins <- build_junction_insert_sql(j, 2)
+  expect_match(ins, 'INSERT INTO "tblForbindIndikatorerFaggrupper" \\("indikator_id", "faggruppe_id"\\)')
+  expect_match(ins, 'VALUES \\(\\$1, \\$2\\), \\(\\$1, \\$3\\)')
+  opt <- build_junction_options_sql(j)
+  expect_match(opt, '"Id" AS id')
+  expect_match(opt, 'FROM "tblFaggrupper"')
+})
+
+test_that("organisation-options bruger COALESCE-label", {
+  expect_match(build_junction_options_sql(INDIKATOR_JUNCTIONS$organisation),
+    "COALESCE")
+})

@@ -48,3 +48,30 @@ build_insert_sql <- function(cols) {
 build_soft_delete_sql <- function() {
   'UPDATE "tblIndikatorer" SET "aktiv_indikator" = $1 WHERE "id" = $2'
 }
+
+#' SELECT parent-ids for én indikators junction-rækker
+#' @noRd
+build_junction_select_sql <- function(j) {
+  sprintf('SELECT "%s" FROM "%s" WHERE "indikator_id" = $1', j$fk, j$table)
+}
+
+#' DELETE alle junction-rækker for én indikator
+#' @noRd
+build_junction_delete_sql <- function(j) {
+  sprintf('DELETE FROM "%s" WHERE "indikator_id" = $1', j$table)
+}
+
+#' Multi-row INSERT: $1 = indikator_id (genbrugt), $2..$(n+1) = parent-ids
+#' @noRd
+build_junction_insert_sql <- function(j, n) {
+  vals <- vapply(seq_len(n), function(i) sprintf("($1, $%d)", i + 1), "")
+  sprintf('INSERT INTO "%s" ("indikator_id", "%s") VALUES %s',
+          j$table, j$fk, paste(vals, collapse = ", "))
+}
+
+#' id + tekst-label for m2m-multiselect
+#' @noRd
+build_junction_options_sql <- function(j) {
+  sprintf('SELECT "%s" AS id, (%s) AS label FROM "%s" ORDER BY 2',
+          j$parent_pk, j$label, j$parent)
+}
