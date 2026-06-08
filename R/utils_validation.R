@@ -4,7 +4,7 @@
 validate_indikator <- function(values) {
   errs <- character(0)
   nm <- values[["indikator_navn"]]
-  if (is.null(nm) || !nzchar(trimws(as.character(nm %||% "")))) {
+  if (is.null(nm) || is.na(nm) || !nzchar(trimws(as.character(nm %||% "")))) {
     errs <- c(errs, "indikator_navn må ikke være tom")
   }
   ao <- values[["antal_observationer"]]

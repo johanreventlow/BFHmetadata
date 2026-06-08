@@ -6,7 +6,7 @@
     "pk"       = NULL,
     "fk"       = selectInput(id, f$col, choices = c("(ingen)" = "", fk_choices[[f$col]])),
     "bool"     = checkboxInput(id, f$col, value = FALSE),
-    "date"     = dateInput(id, f$col, value = NA),
+    "date"     = dateInput(id, f$col, value = NULL),
     "int"      = numericInput(id, f$col, value = NA),
     "textarea" = textAreaInput(id, f$col, value = ""),
     textInput(id, f$col, value = "")  # text (default)
@@ -33,4 +33,84 @@ mod_indikator_crud_ui <- function(id) {
       DT::DTOutput(ns("tbl"))
     )
   )
+}
+
+#' @noRd
+.collect_form <- function(input, fields) {
+  vals <- list()
+  for (f in fields) {
+    if (f$kind == "pk") next
+    v <- input[[f$col]]
+    if (f$kind == "bool") v <- isTRUE(v)
+    if (f$kind %in% c("text","textarea","fk") && identical(v, "")) v <- NA
+    vals[[f$col]] <- v
+  }
+  vals
+}
+
+#' @noRd
+mod_indikator_crud_server <- function(id, db) {
+  moduleServer(id, function(input, output, session) {
+    rows <- reactiveVal(db$list_indikatorer())
+    status_msg <- reactiveVal("")
+    fk <- db$fk_options()
+    fk_choices <- lapply(fk, function(d) stats::setNames(d$id, d$label))
+
+    reload <- function() rows(db$list_indikatorer())
+
+    output$form <- renderUI({
+      ns <- session$ns
+      tagList(lapply(INDIKATOR_FIELDS, function(f) .field_input(ns, f, fk_choices)))
+    })
+
+    output$tbl <- DT::renderDT({
+      d <- rows()
+      if (!isTRUE(input$show_inactive) && "aktiv_indikator" %in% names(d))
+        d <- d[d$aktiv_indikator %in% TRUE, , drop = FALSE]
+      DT::datatable(d, selection = "single", rownames = FALSE)
+    })
+
+    selected_id <- reactive({
+      sel <- input$tbl_rows_selected
+      if (is.null(sel)) return(NULL)
+      rows()[["id"]][sel]
+    })
+
+    observeEvent(input$save, {
+      vals <- .collect_form(input, INDIKATOR_FIELDS)
+      errs <- validate_indikator(vals)
+      if (length(errs) > 0) { status_msg(paste(errs, collapse = "; ")); return() }
+      safe_operation("gem indikator", {
+        sid <- selected_id()
+        if (is.null(sid)) {
+          newid <- db$create_indikator(vals); status_msg(paste("Oprettet id", newid))
+        } else {
+          db$update_indikator(sid, vals); status_msg("Gemt")
+        }
+        reload()
+      }, fallback = status_msg("Fejl ved gem (se log)"))
+    })
+
+    observeEvent(input$soft_delete, {
+      sid <- selected_id()
+      if (is.null(sid)) { status_msg("Vælg en række først"); return() }
+      safe_operation("soft-delete", {
+        db$soft_delete(sid, active = FALSE); status_msg("Deaktiveret"); reload()
+      }, fallback = status_msg("Fejl ved deaktivering"))
+    })
+
+    output$status <- renderText(status_msg())
+
+    # eksponér til test
+    list(rows = rows, status_msg = status_msg)
+  })
+}
+
+#' Minimal safe_operation (logger + fallback)
+#' @noRd
+safe_operation <- function(op, code, fallback = NULL) {
+  tryCatch(force(code), error = function(e) {
+    message(sprintf("[ERROR] %s: %s", op, conditionMessage(e)))
+    force(fallback)
+  })
 }
