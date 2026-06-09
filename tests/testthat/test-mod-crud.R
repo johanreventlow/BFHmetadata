@@ -108,6 +108,16 @@ test_that("modal-gem med tomt navn validerer, ingen update", {
   })
 })
 
+test_that("hel-række-klik (rows_selected) sætter editing_id + åbner", {
+  db <- fake_db()
+  testServer(mod_indikator_crud_server, args = list(db = db), {
+    session$setInputs(filter_status = "alle", filter_datapakke = "",
+                      filter_datasaet = "")
+    session$setInputs(oversigt_rows_selected = 1)
+    expect_equal(editing_id(), 1L)
+  })
+})
+
 test_that("Ny indikator nulstiller editing_id (opret-tilstand)", {
   db <- fake_db()
   testServer(mod_indikator_crud_server, args = list(db = db), {

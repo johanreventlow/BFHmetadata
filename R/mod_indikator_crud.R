@@ -47,6 +47,9 @@ mod_indikator_crud_ui <- function(id) {
   ns <- NS(id)
   bslib::navset_tab(
     bslib::nav_panel("Oversigt",
+      tags$style(HTML(paste0(
+        "#", ns("oversigt"), " table.dataTable tbody tr{cursor:pointer;}",
+        "#", ns("oversigt"), " table.dataTable tbody tr:hover{background-color:#e9f2ff;}"))),
       div(class = "mt-2",
         div(class = "d-flex justify-content-end mb-2",
           actionButton(ns("new_modal"), "Ny indikator", class = "btn-success")),
@@ -56,7 +59,8 @@ mod_indikator_crud_ui <- function(id) {
           uiOutput(ns("filter_datasaet_ui")),
           selectInput(ns("filter_status"), "Status",
             choices = c("Alle" = "alle", "Kun aktive" = "aktiv",
-                        "Kun inaktive" = "inaktiv"),
+                        "Kun inaktive" = "inaktiv",
+                        "Nøgleindikatorer" = "noegle"),
             selected = "alle")
         ),
         DT::DTOutput(ns("oversigt")),
@@ -280,39 +284,67 @@ mod_indikator_crud_server <- function(id, db) {
         choices = c("Alle" = "", stats::setNames(vals, vals)), selected = "")
     })
 
-    output$oversigt <- DT::renderDT({
-      ns <- session$ns
+    # Filtreret datasæt til oversigten (delt af render + række-klik-observer)
+    oversigt_rows <- reactive({
       d <- rows()
-      # Status-filter (Alle / kun aktive / kun inaktive)
       status <- input$filter_status %||% "alle"
       if (identical(status, "aktiv"))
         d <- d[d$aktiv_indikator %in% TRUE, , drop = FALSE]
       if (identical(status, "inaktiv"))
         d <- d[!(d$aktiv_indikator %in% TRUE), , drop = FALSE]
-      # Datapakke-filter (tom = alle)
+      if (identical(status, "noegle"))
+        d <- d[d$nøgleindikator %in% TRUE, , drop = FALSE]
       fdp <- input$filter_datapakke
       if (!is.null(fdp) && nzchar(fdp))
         d <- d[d$label_datapakke %in% fdp, , drop = FALSE]
-      # Datasæt-filter (tom = alle)
       fds <- input$filter_datasaet
       if (!is.null(fds) && nzchar(fds))
         d <- d[d$label_indikator_hierarki %in% fds, , drop = FALSE]
-      btn <- vapply(d[["id"]], function(i) sprintf(
-        '<button class="btn btn-sm btn-primary" onclick="Shiny.setInputValue(\'%s\', %d, {priority:\'event\'})">Åbn</button>',
-        ns("open_id"), i), "")
-      # Kolonner: knap → aktiv → datasæt → indikator-id (teknisk navn) → navn
+      d
+    })
+
+    output$oversigt <- DT::renderDT({
+      d <- oversigt_rows()
+      # Aktiv: grøn ✓ / grå streg
+      aktiv <- ifelse(d[["aktiv_indikator"]] %in% TRUE,
+        '<span style="color:#198754;font-weight:700;">&#10003;</span>',
+        '<span style="color:#adb5bd;">&mdash;</span>')
+      # Indikator-id (teknisk navn) + gul "Nøgle"-badge ved nøgleindikator
+      idtxt <- d[["indikator_navn_teknisk"]]
+      idtxt[is.na(idtxt)] <- ""
+      idcol <- mapply(function(txt, key) {
+        txt <- htmltools::htmlEscape(txt)
+        if (isTRUE(key)) paste0(txt, ' <span class="badge text-bg-warning">Nøgle</span>') else txt
+      }, idtxt, d[["nøgleindikator"]] %in% TRUE, USE.NAMES = FALSE)
+      btn <- '<span class="btn btn-outline-secondary btn-sm">Åbn &rsaquo;</span>'
+      # Kolonner: knap → aktiv → datapakke → datasæt → indikator-id → navn
       out <- data.frame(
-        Handling = btn,
-        Aktiv = ifelse(d[["aktiv_indikator"]] %in% TRUE, "✓", "✗"),
+        ` ` = btn,
+        Aktiv = aktiv,
+        Datapakke = d[["label_datapakke"]],
         Datasæt = d[["label_indikator_hierarki"]],
-        `Indikator-id` = d[["indikator_navn_teknisk"]],
+        `Indikator-id` = idcol,
         Navn = d[["indikator_navn"]],
         check.names = FALSE, stringsAsFactors = FALSE)
-      # escape alle kolonner undtagen knap-kolonnen (Handling) → ingen rå HTML
-      # i DB-tekst (XSS-beskyttelse), men knappens markup bevares
-      esc <- which(names(out) != "Handling")
-      DT::datatable(out, escape = esc, rownames = FALSE, selection = "none",
-        options = list(pageLength = 10))
+      # Knap/Aktiv/Id indeholder bevidst HTML; escape kun rene tekstkolonner (XSS)
+      esc <- which(names(out) %in% c("Datapakke", "Datasæt", "Navn"))
+      DT::datatable(out, escape = esc, rownames = FALSE, selection = "single",
+        options = list(pageLength = 10, columnDefs = list(
+          list(orderable = FALSE, targets = 0))))
+    })
+
+    # Hel-række-klik åbner modal (design: hele rækken er klikbar)
+    oversigt_proxy <- DT::dataTableProxy("oversigt", session)
+    observeEvent(input$oversigt_rows_selected, {
+      idx <- input$oversigt_rows_selected
+      d <- oversigt_rows()
+      if (idx > nrow(d)) return()
+      rid <- as.integer(d[["id"]][idx])
+      editing_id(rid)
+      row <- rows()[rows()[["id"]] == rid, , drop = FALSE]
+      if (nrow(row) == 0) { status_msg("Indikator ikke fundet"); return() }
+      showModal(.build_modal(row[1, , drop = FALSE]))
+      DT::selectRows(oversigt_proxy, NULL)  # nulstil → samme række kan genåbnes
     })
 
     selected_id <- reactive({
