@@ -1,21 +1,46 @@
 #' Bygger ét form-input baseret på felt-kind. prefix giver distinkt id-rum
-#' (modal vs sidebar). values pre-udfylder.
+#' (modal vs sidebar). values pre-udfylder. label kan overstyre (default = col-navn).
 #' @noRd
-.field_input <- function(ns, f, fk_choices = list(), values = list(), prefix = "") {
+.field_input <- function(ns, f, fk_choices = list(), values = list(),
+                         prefix = "", label = NULL) {
   id <- ns(paste0(prefix, f$col))
   v <- values[[f$col]]
+  lab <- label %||% f$col
   switch(f$kind,
     "pk"       = NULL,
-    "fk"       = selectInput(id, f$col, choices = c("(ingen)" = "", fk_choices[[f$col]]),
+    "fk"       = selectInput(id, lab, choices = c("(ingen)" = "", fk_choices[[f$col]]),
                              selected = v %||% ""),
-    "bool"     = checkboxInput(id, f$col, value = isTRUE(v)),
-    "date"     = dateInput(id, f$col,
+    "bool"     = checkboxInput(id, lab, value = isTRUE(v)),
+    "date"     = dateInput(id, lab,
                            value = if (is.null(v) || is.na(v)) NULL else as.Date(v)),
-    "int"      = numericInput(id, f$col, value = if (is.null(v)) NA else v),
-    "textarea" = textAreaInput(id, f$col, value = v %||% ""),
-    textInput(id, f$col, value = v %||% "")  # text (default)
+    "int"      = numericInput(id, lab, value = if (is.null(v)) NA else v),
+    "textarea" = textAreaInput(id, lab, value = v %||% ""),
+    textInput(id, lab, value = v %||% "")  # text (default)
   )
 }
+
+# Felter modalen viser (design-retning C). indikator_navn_teknisk + output_enhed
+# udelades bevidst → modal-gem rører dem ej (bevares). Danske labels + required/
+# rosa-markering styres i .build_modal.
+INDIKATOR_MODAL_COLS <- c(
+  "indikator_navn", "indikator_hierarki", "datakilde", "kontaktperson",
+  "ønsket_tendens", "mål", "sp_rapport_id", "direkte_link",
+  "definition_kort", "definition_dataportal", "tæller_beskrivelse",
+  "nævner_beskrivelse", "indikator_ukompatibel_med", "antal_observationer",
+  "periode_fra", "aktiv_indikator", "nøgleindikator", "tillad_auto_opdatering")
+
+# Danske felt-labels i modalen (col → vist tekst)
+INDIKATOR_MODAL_LABELS <- c(
+  indikator_navn = "Navn på indikator", indikator_hierarki = "Datasæt",
+  datakilde = "Datakilde", kontaktperson = "Kontaktperson",
+  ønsket_tendens = "Ønsket retning", mål = "Generelt indikatormål",
+  sp_rapport_id = "Evt. SP rapport id", direkte_link = "Evt. direkte link",
+  definition_kort = "Kort definition", definition_dataportal = "Definition til dataportal",
+  tæller_beskrivelse = "Beskrivelse af tæller", nævner_beskrivelse = "Beskrivelse af nævner",
+  indikator_ukompatibel_med = "Kommentarer vedr. anvendelse",
+  antal_observationer = "Antal observationer", periode_fra = "Periode fra",
+  aktiv_indikator = "Aktiv indikator", nøgleindikator = "Nøgleindikator",
+  tillad_auto_opdatering = "Auto-opdatér rosa felter")
 
 #' @noRd
 mod_indikator_crud_ui <- function(id) {
@@ -90,65 +115,79 @@ mod_indikator_crud_server <- function(id, db) {
       if (nzchar(m)) showNotification(m, duration = 5)
     }, ignoreInit = TRUE)
 
-    # Bygger modal-indhold for én indikator (pre-udfyldt form + m2m-multiselect)
+    # Bygger modal-indhold (design-retning C: to kolonner 5/7, sektioner, rosa).
     .build_modal <- function(row) {
       ns <- session$ns
       vals <- as.list(row)
-      # Eksplicit feltrækkefølge i modalen. Resten placeres nedenunder.
-      LEFT_COLS  <- c("indikator_navn", "indikator_navn_teknisk",
-                      "indikator_hierarki", "datakilde", "kontaktperson",
-                      "ønsket_tendens", "mål")
-      RIGHT_COLS <- c("definition_kort", "definition_dataportal",
-                      "tæller_beskrivelse", "nævner_beskrivelse",
-                      "indikator_ukompatibel_med")
-      # Byg input for ét kolonnenavn (slår feltdefinition op i INDIKATOR_FIELDS)
-      fld <- function(col) {
+      req_cols  <- c("indikator_navn", "indikator_hierarki", "definition_kort")
+      rosa_cols <- c("definition_dataportal", "tæller_beskrivelse", "nævner_beskrivelse")
+      # Skalar/FK-felt med dansk label + evt. required-* + rosa-wrap
+      fin <- function(col) {
         f <- Find(function(x) x$col == col, INDIKATOR_FIELDS)
-        if (is.null(f)) NULL else .field_input(ns, f, fk_choices,
-                                               values = vals, prefix = "m_")
+        lab <- INDIKATOR_MODAL_LABELS[[col]] %||% col
+        if (col %in% req_cols) lab <- tagList(lab, tags$span(" *", class = "req"))
+        w <- .field_input(ns, f, fk_choices, values = vals, prefix = "m_", label = lab)
+        if (col %in% rosa_cols) w <- div(class = "rosa-field", w)
+        w
       }
-      col1 <- do.call(tagList, lapply(LEFT_COLS, fld))
-      col2 <- do.call(tagList, lapply(RIGHT_COLS, fld))
-      scalar_fk <- div(class = "bfh-inline-labels",
-        bslib::layout_columns(col_widths = c(6, 6), col1, col2))
-      # Øvrige ikke-pk-felter (endnu ikke placeret) → to-kolonne-grid nedenunder
-      placed <- c(LEFT_COLS, RIGHT_COLS)
-      rest_fields <- Filter(function(f)
-        f$kind != "pk" && !(f$col %in% placed), INDIKATOR_FIELDS)
-      rest_inputs <- lapply(rest_fields, function(f)
-        .field_input(ns, f, fk_choices, values = vals, prefix = "m_"))
-      rest_block <- div(class = "bfh-inline-labels",
-        tags$h6("Øvrige felter", class = "mt-3 text-muted"),
-        do.call(bslib::layout_columns,
-                c(list(col_widths = c(6, 6)), rest_inputs)))
-      # m2m-relationer på tre kolonner (faggrupper/dataprodukter/organisation)
-      m2m <- lapply(names(INDIKATOR_JUNCTIONS), function(key) {
+      sect <- function(txt, sub = NULL) div(class = "form-section", txt,
+        if (!is.null(sub)) tags$span(class = "sub", sub))
+      # m2m-multiselect med dansk label
+      mfin <- function(key, lab) {
         opts <- db$junction_options(key)
         sel <- db$get_junction(vals$id, key)
-        selectInput(ns(paste0("m_j_", key)), key,
+        selectInput(ns(paste0("m_j_", key)), lab,
           choices = stats::setNames(opts$id, opts$label),
           selected = sel, multiple = TRUE)
-      })
-      m2m_row <- do.call(bslib::layout_columns,
-                         c(list(col_widths = c(4, 4, 4)), m2m))
-      modalDialog(title = paste("Redigér indikator", vals$id), size = "xl",
-        easyClose = FALSE,
-        # Placér modalen højere oppe + intern scroll (høj xl-modal skubbes ej
-        # ud af skærmen). Gælder kun mens denne modal er åben.
-        tags$style(HTML(paste(
+      }
+
+      left <- tagList(
+        sect("Stamdata"),
+        fin("indikator_navn"),
+        fin("indikator_hierarki"),
+        bslib::layout_columns(col_widths = c(6, 6), fin("datakilde"), fin("kontaktperson")),
+        bslib::layout_columns(col_widths = c(6, 6), fin("ønsket_tendens"), fin("mål")),
+        sect("Relationer"),
+        mfin("dataprodukter", "Indgår i dataprodukter"),
+        mfin("faggrupper", "Relevant for faggrupper"),
+        mfin("organisation", "Relevant for afdelinger"),
+        bslib::layout_columns(col_widths = c(5, 7), fin("sp_rapport_id"), fin("direkte_link")))
+
+      right <- tagList(
+        sect("Definitioner & beskrivelser", "rosa felter auto-opdateres"),
+        fin("definition_kort"),
+        fin("definition_dataportal"),
+        fin("tæller_beskrivelse"),
+        fin("nævner_beskrivelse"),
+        fin("indikator_ukompatibel_med"),
+        sect("Datagrundlag & status"),
+        bslib::layout_columns(col_widths = c(6, 6),
+          fin("antal_observationer"), fin("periode_fra")),
+        div(class = "d-flex flex-wrap gap-4 pt-1",
+          fin("aktiv_indikator"), fin("nøgleindikator"), fin("tillad_auto_opdatering")))
+
+      modalDialog(title = "Redigér indikator", size = "xl", easyClose = FALSE,
+        tags$style(HTML(paste0(
           ".modal-dialog{margin-top:24px;}",
-          ".modal-body{max-height:78vh;overflow-y:auto;}",
-          # Label til venstre på samme linje som input (kun skalar-felter)
-          ".bfh-inline-labels .shiny-input-container{display:flex;",
-          "align-items:baseline;gap:.5rem;margin-bottom:.5rem;}",
-          ".bfh-inline-labels .shiny-input-container>label{flex:0 0 40%;",
-          "max-width:40%;text-align:right;margin:0;}",
-          ".bfh-inline-labels .shiny-input-container>:not(label){",
-          "flex:1 1 auto;min-width:0;}"))),
-        scalar_fk, rest_block, hr(), h5("Relationer"), m2m_row,
-        footer = tagList(
-          actionButton(ns("modal_save"), "Gem", class = "btn-primary"),
-          modalButton("Annullér")))
+          ".modal-body{max-height:80vh;overflow-y:auto;}",
+          ".form-section{font-size:.75rem;font-weight:700;letter-spacing:.06em;",
+          "text-transform:uppercase;color:#0d6efd;margin:1.25rem 0 .75rem;",
+          "padding-bottom:.4rem;border-bottom:1px solid #e7ebf0;}",
+          ".form-section:first-child{margin-top:0;}",
+          ".form-section .sub{font-weight:500;letter-spacing:0;text-transform:none;",
+          "color:#8a9099;font-size:.8rem;margin-left:.5rem;}",
+          ".shiny-input-container label .req,.footer-note .req{color:#dc3545;font-weight:700;}",
+          ".rosa-field textarea.form-control{background-color:#fbe4ea;border-color:#e7a9b8;}",
+          ".rosa-field textarea.form-control:focus{",
+          "box-shadow:0 0 0 .25rem rgba(231,169,184,.4);border-color:#e7a9b8;}",
+          ".footer-note{font-size:.82rem;color:#6c757d;}"))),
+        bslib::layout_columns(col_widths = c(5, 7), left, right),
+        footer = div(class = "d-flex justify-content-between align-items-center w-100",
+          span(class = "footer-note", HTML(
+            '<span class="req">*</span> = obligatorisk')),
+          div(class = "d-flex gap-2",
+            modalButton("Annullér"),
+            actionButton(ns("modal_save"), "Gem og luk", class = "btn-primary"))))
     }
 
     observeEvent(input$open_id, {
@@ -161,7 +200,11 @@ mod_indikator_crud_server <- function(id, db) {
 
     observeEvent(input$modal_save, {
       rid <- editing_id()
-      vals <- .collect_form(input, INDIKATOR_FIELDS, prefix = "m_")
+      # Saml KUN de felter modalen viser → udeladte kolonner (teknisk navn,
+      # output_enhed) røres ej i UPDATE og bevarer deres værdi.
+      modal_fields <- Filter(function(f) f$col %in% INDIKATOR_MODAL_COLS,
+                             INDIKATOR_FIELDS)
+      vals <- .collect_form(input, modal_fields, prefix = "m_")
       errs <- validate_indikator(vals)
       if (length(errs) > 0) { status_msg(paste(errs, collapse = "; ")); return() }
       # Saml alle valgte m2m-relationer → ét atomisk gem (scalar + junctions)
