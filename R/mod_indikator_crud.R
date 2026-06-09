@@ -145,7 +145,7 @@ mod_indikator_crud_server <- function(id, db) {
       }
       # 2-up række med almindelig Bootstrap-grid (g-3) — undgår bslib-grid'ets
       # ekstra margin, så felterne ikke skubber følgende sektion for langt ned.
-      two_up <- function(a, b, w = c(6, 6)) div(class = "row g-3",
+      two_up <- function(a, b, w = c(6, 6)) div(class = "row gx-3",
         div(class = paste0("col-", w[1]), a), div(class = paste0("col-", w[2]), b))
 
       left <- tagList(
@@ -176,6 +176,10 @@ mod_indikator_crud_server <- function(id, db) {
         tags$style(HTML(paste0(
           ".modal-dialog{margin-top:24px;}",
           ".modal-body{max-height:80vh;overflow-y:auto;}",
+          # Stram feltafstand i modalen (default shiny-margin er for stor her)
+          ".modal-body .shiny-input-container,.modal-body .form-group{margin-bottom:.55rem;}",
+          ".modal-body .shiny-input-container>label,.modal-body .control-label{",
+          "margin-bottom:.15rem;font-weight:600;font-size:.85rem;color:#343a40;}",
           ".form-section{font-size:.75rem;font-weight:700;letter-spacing:.06em;",
           "text-transform:uppercase;color:#0d6efd;margin:1.25rem 0 .75rem;",
           "padding-bottom:.4rem;border-bottom:1px solid #e7ebf0;}",
