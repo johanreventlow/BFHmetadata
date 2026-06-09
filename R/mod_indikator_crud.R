@@ -48,6 +48,8 @@ mod_indikator_crud_ui <- function(id) {
   bslib::navset_tab(
     bslib::nav_panel("Oversigt",
       div(class = "mt-2",
+        div(class = "d-flex justify-content-end mb-2",
+          actionButton(ns("new_modal"), "Ny indikator", class = "btn-success")),
         bslib::layout_columns(
           col_widths = c(4, 4, 4),
           uiOutput(ns("filter_datapakke_ui")),
@@ -116,9 +118,13 @@ mod_indikator_crud_server <- function(id, db) {
     }, ignoreInit = TRUE)
 
     # Bygger modal-indhold (design-retning C: to kolonner 5/7, sektioner, rosa).
-    .build_modal <- function(row) {
+    # row = NULL → blank "Ny indikator"-tilstand med fornuftige defaults.
+    .build_modal <- function(row = NULL) {
       ns <- session$ns
-      vals <- as.list(row)
+      is_new <- is.null(row)
+      # Defaults for ny indikator (design: aktiv + auto-opdatering tændt)
+      vals <- if (is_new) list(aktiv_indikator = TRUE, tillad_auto_opdatering = TRUE)
+              else as.list(row)
       req_cols  <- c("indikator_navn", "indikator_hierarki", "definition_kort")
       rosa_cols <- c("definition_dataportal", "tæller_beskrivelse", "nævner_beskrivelse")
       # Skalar/FK-felt med dansk label + evt. required-* + rosa-wrap
@@ -138,7 +144,7 @@ mod_indikator_crud_server <- function(id, db) {
       # m2m-multiselect med dansk label
       mfin <- function(key, lab) {
         opts <- db$junction_options(key)
-        sel <- db$get_junction(vals$id, key)
+        sel <- if (is_new) integer(0) else db$get_junction(vals$id, key)
         selectInput(ns(paste0("m_j_", key)), lab,
           choices = stats::setNames(opts$id, opts$label),
           selected = sel, multiple = TRUE)
@@ -172,7 +178,8 @@ mod_indikator_crud_server <- function(id, db) {
         div(class = "d-flex flex-wrap gap-4 pt-1",
           fin("aktiv_indikator"), fin("nøgleindikator"), fin("tillad_auto_opdatering")))
 
-      modalDialog(title = "Redigér indikator", size = "xl", easyClose = FALSE,
+      modalDialog(title = if (is_new) "Ny indikator" else "Redigér indikator",
+        size = "xl", easyClose = FALSE,
         tags$style(HTML(paste0(
           ".modal-dialog{margin-top:24px;}",
           ".modal-body{max-height:80vh;overflow-y:auto;}",
@@ -208,8 +215,14 @@ mod_indikator_crud_server <- function(id, db) {
       showModal(.build_modal(row[1, , drop = FALSE]))
     })
 
+    # Ny blank indikator → samme modal, oprettes først ved Gem
+    observeEvent(input$new_modal, {
+      editing_id(NULL)
+      showModal(.build_modal(NULL))
+    })
+
     observeEvent(input$modal_save, {
-      rid <- editing_id()
+      rid <- editing_id()  # NULL → opret ny
       # Saml KUN de felter modalen viser → udeladte kolonner (teknisk navn,
       # output_enhed) røres ej i UPDATE og bevarer deres værdi.
       modal_fields <- Filter(function(f) f$col %in% INDIKATOR_MODAL_COLS,
@@ -222,8 +235,14 @@ mod_indikator_crud_server <- function(id, db) {
                       function(key) as.integer(input[[paste0("m_j_", key)]]))
       names(picks) <- names(INDIKATOR_JUNCTIONS)
       safe_operation("modal-gem", {
-        db$save_indikator(rid, vals, picks)
-        removeModal(); status_msg(paste("Gemt indikator", rid)); reload()
+        if (is.null(rid)) {
+          newid <- db$create_indikator_full(vals, picks)
+          status_msg(paste("Oprettet indikator", newid))
+        } else {
+          db$save_indikator(rid, vals, picks)
+          status_msg(paste("Gemt indikator", rid))
+        }
+        removeModal(); reload()
       }, fallback = status_msg("Fejl ved modal-gem (se log)"))
     })
 

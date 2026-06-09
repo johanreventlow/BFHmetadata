@@ -25,6 +25,9 @@ fake_db <- function() {
       for (key in names(picks)) calls$junction[[key]] <<- picks[[key]]
       invisible(TRUE)
     },
+    create_indikator_full = function(values, picks) {
+      calls$created <<- list(values, picks); 99L
+    },
     .calls = function() calls
   )
 }
@@ -102,5 +105,30 @@ test_that("modal-gem med tomt navn validerer, ingen update", {
                       modal_save = 1)
     expect_match(status_msg(), "indikator_navn")
     expect_null(db$.calls()$updated)
+  })
+})
+
+test_that("Ny indikator nulstiller editing_id (opret-tilstand)", {
+  db <- fake_db()
+  testServer(mod_indikator_crud_server, args = list(db = db), {
+    session$setInputs(open_id = 1)          # vælg eksisterende
+    expect_equal(editing_id(), 1L)
+    session$setInputs(new_modal = 1)         # skift til ny
+    expect_null(editing_id())
+  })
+})
+
+test_that("Ny + Gem kalder create_indikator_full, ikke update", {
+  db <- fake_db()
+  testServer(mod_indikator_crud_server, args = list(db = db), {
+    session$setInputs(new_modal = 1)
+    session$setInputs(m_indikator_navn = "Helt ny", m_aktiv_indikator = TRUE,
+                      m_j_faggrupper = c("1"),
+                      m_j_dataprodukter = character(0),
+                      m_j_organisation = character(0),
+                      modal_save = 1)
+    expect_false(is.null(db$.calls()$created))   # create-stien ramt
+    expect_null(db$.calls()$updated)             # ikke update
+    expect_match(status_msg(), "Oprettet")
   })
 })

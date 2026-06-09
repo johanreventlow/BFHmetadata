@@ -98,6 +98,25 @@ make_db <- function(pool) {
           }
         }
       })
+    },
+    # Samlet opret: INSERT (RETURNING id) + junction-inserts i ÉN transaktion.
+    # Returnerer ny id. Bruges af modal-flow ved oprettelse af blank indikator.
+    create_indikator_full = function(values, picks) {
+      assert_write_enabled()
+      pool::poolWithTransaction(pool, function(conn) {
+        cols <- names(values)
+        newid <- DBI::dbGetQuery(conn, build_insert_sql(cols),
+                                 params = unname(values))$id[1]
+        for (key in names(picks)) {
+          j <- INDIKATOR_JUNCTIONS[[key]]
+          ids <- picks[[key]][!is.na(picks[[key]])]
+          if (length(ids)) {
+            DBI::dbExecute(conn, build_junction_insert_sql(j, length(ids)),
+                           params = c(list(newid), as.list(ids)))
+          }
+        }
+        newid
+      })
     }
   )
 }
