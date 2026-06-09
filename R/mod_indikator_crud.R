@@ -127,7 +127,10 @@ mod_indikator_crud_server <- function(id, db) {
         lab <- INDIKATOR_MODAL_LABELS[[col]] %||% col
         if (col %in% req_cols) lab <- tagList(lab, tags$span(" *", class = "req"))
         w <- .field_input(ns, f, fk_choices, values = vals, prefix = "m_", label = lab)
-        if (col %in% rosa_cols) w <- div(class = "rosa-field", w)
+        # Rosa-klasse direkte på textarea (ej wrapper-div → bevarer fuld bredde
+        # i bslib-grid'ets flex-kontekst).
+        if (col %in% rosa_cols)
+          w <- htmltools::tagQuery(w)$find("textarea")$addClass("rosa")$allTags()
         w
       }
       sect <- function(txt, sub = NULL) div(class = "form-section", txt,
@@ -177,8 +180,8 @@ mod_indikator_crud_server <- function(id, db) {
           ".form-section .sub{font-weight:500;letter-spacing:0;text-transform:none;",
           "color:#8a9099;font-size:.8rem;margin-left:.5rem;}",
           ".shiny-input-container label .req,.footer-note .req{color:#dc3545;font-weight:700;}",
-          ".rosa-field textarea.form-control{background-color:#fbe4ea;border-color:#e7a9b8;}",
-          ".rosa-field textarea.form-control:focus{",
+          "textarea.form-control.rosa{background-color:#fbe4ea;border-color:#e7a9b8;}",
+          "textarea.form-control.rosa:focus{",
           "box-shadow:0 0 0 .25rem rgba(231,169,184,.4);border-color:#e7a9b8;}",
           ".footer-note{font-size:.82rem;color:#6c757d;}"))),
         bslib::layout_columns(col_widths = c(5, 7), left, right),
