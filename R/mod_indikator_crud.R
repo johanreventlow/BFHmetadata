@@ -143,18 +143,22 @@ mod_indikator_crud_server <- function(id, db) {
           choices = stats::setNames(opts$id, opts$label),
           selected = sel, multiple = TRUE)
       }
+      # 2-up række med almindelig Bootstrap-grid (g-3) — undgår bslib-grid'ets
+      # ekstra margin, så felterne ikke skubber følgende sektion for langt ned.
+      two_up <- function(a, b, w = c(6, 6)) div(class = "row g-3",
+        div(class = paste0("col-", w[1]), a), div(class = paste0("col-", w[2]), b))
 
       left <- tagList(
         sect("Stamdata"),
         fin("indikator_navn"),
         fin("indikator_hierarki"),
-        bslib::layout_columns(col_widths = c(6, 6), fin("datakilde"), fin("kontaktperson")),
-        bslib::layout_columns(col_widths = c(6, 6), fin("ønsket_tendens"), fin("mål")),
+        two_up(fin("datakilde"), fin("kontaktperson")),
+        two_up(fin("ønsket_tendens"), fin("mål")),
         sect("Relationer"),
         mfin("dataprodukter", "Indgår i dataprodukter"),
         mfin("faggrupper", "Relevant for faggrupper"),
         mfin("organisation", "Relevant for afdelinger"),
-        bslib::layout_columns(col_widths = c(5, 7), fin("sp_rapport_id"), fin("direkte_link")))
+        two_up(fin("sp_rapport_id"), fin("direkte_link"), w = c(5, 7)))
 
       right <- tagList(
         sect("Definitioner & beskrivelser", "rosa felter auto-opdateres"),
@@ -164,8 +168,7 @@ mod_indikator_crud_server <- function(id, db) {
         fin("nævner_beskrivelse"),
         fin("indikator_ukompatibel_med"),
         sect("Datagrundlag & status"),
-        bslib::layout_columns(col_widths = c(6, 6),
-          fin("antal_observationer"), fin("periode_fra")),
+        two_up(fin("antal_observationer"), fin("periode_fra")),
         div(class = "d-flex flex-wrap gap-4 pt-1",
           fin("aktiv_indikator"), fin("nøgleindikator"), fin("tillad_auto_opdatering")))
 
