@@ -14,7 +14,7 @@
 # =============================================================================
 
 options(shiny.autoreload = TRUE)
-suppressMessages({library(shiny); library(bslib); library(DT)})
+suppressMessages({library(shiny); library(bslib); library(rhandsontable)})
 
 # --- Prototype-config (delmængde af planlagt LOOKUP_TABLES) ------------------
 LAB_TABLES <- list(
@@ -82,7 +82,7 @@ col_type <- function(cfg, col) {
   if (is.null(m)) "text" else m$type
 }
 
-# --- Generisk tabel-UI/server (prototype af planlagt modul) ------------------
+# --- Generisk tabel-UI/server (rhandsontable = Excel-agtig grid) -------------
 lab_table_ui <- function(id, cfg) {
   ns <- NS(id)
   tagList(
@@ -92,61 +92,68 @@ lab_table_ui <- function(id, cfg) {
         uiOutput(ns("delete_btn"), inline = TRUE),
         actionButton(ns("add_row"), "Ny række", class = "btn-success btn-sm"))),
     p(class = "text-muted small",
-      "Klik i en celle for at redigere. Ændringer gemmes når du forlader cellen."),
-    DT::DTOutput(ns("tbl"))
+      "Alle celler er redigerbare (som i Excel). Ændringer gemmes løbende. ",
+      "Id-kolonnen er låst."),
+    rhandsontable::rHandsontableOutput(ns("hot"))
   )
 }
 
 lab_table_server <- function(id, db, cfg) {
   moduleServer(id, function(input, output, session) {
-    rows <- reactiveVal(db$list_rows())
-    proxy <- DT::dataTableProxy("tbl")
-    reload <- function() { rows(db$list_rows()); DT::replaceData(proxy, rows(), rownames = FALSE) }
+    rows <- reactiveVal(db$list_rows())   # aktuel data (til pk-opslag)
+    refresh <- reactiveVal(0)             # bump → re-render grid (ny/slet række)
 
-    output$tbl <- DT::renderDT({
+    output$hot <- rhandsontable::renderRHandsontable({
+      refresh()                           # re-render kun ved strukturændring
       d <- isolate(rows())
-      DT::datatable(d, rownames = FALSE, selection = "single",
-        editable = list(target = "cell", disable = list(columns = 0)),  # pk (col 0) låst
-        options = list(pageLength = 10, dom = "tip"))
+      ht <- rhandsontable::rhandsontable(d, rowHeaders = NULL, stretchH = "all",
+        height = 420, selectCallback = TRUE)
+      ht <- rhandsontable::hot_col(ht, cfg$pk, readOnly = TRUE, colWidths = 60)
+      for (cc in cfg$cols) if (identical(cc$type, "int"))
+        ht <- rhandsontable::hot_col(ht, cc$col, type = "numeric", format = "0")
+      ht
     })
 
-    observeEvent(input$tbl_cell_edit, {
-      info <- input$tbl_cell_edit
-      d <- rows()
-      col <- names(d)[info$col + 1]
-      pk_val <- d[[cfg$pk]][info$row]
-      val <- info$value
-      if (col_type(cfg, col) == "int") {
-        val <- suppressWarnings(as.integer(val))
-        if (is.na(val)) {
-          showNotification("Forventet et heltal", type = "error", duration = 3)
-          reload(); return()
-        }
+    # Celle-ændringer (rhandsontable sender kun de ændrede celler)
+    observeEvent(input$hot$changes$changes, {
+      chs <- input$hot$changes$changes
+      d <- rows(); changed <- FALSE
+      for (ch in chs) {
+        r <- ch[[1]] + 1L; cidx <- ch[[2]] + 1L
+        oldv <- ch[[3]]; newv <- ch[[4]]
+        if (identical(oldv, newv)) next
+        col <- names(d)[cidx]; pk_val <- d[[cfg$pk]][r]
+        val <- newv
+        if (identical(col_type(cfg, col), "int") && !is.null(val))
+          val <- suppressWarnings(as.integer(val))
+        db$update_cell(pk_val, col, val)
+        d[r, col] <- if (is.null(val)) NA else val
+        changed <- TRUE
       }
-      db$update_cell(pk_val, col, val)
-      showNotification(paste0("Gemt: ", col), type = "message", duration = 2)
-      reload()
-    })
+      if (changed) { rows(d); showNotification("Gemt", type = "message", duration = 1) }
+    }, ignoreNULL = TRUE)
 
     observeEvent(input$add_row, {
-      db$add_row(); showNotification("Ny række tilføjet — udfyld felterne", duration = 2)
-      reload()
+      db$add_row(); rows(db$list_rows()); refresh(refresh() + 1)
+      showNotification("Ny række tilføjet — udfyld felterne", duration = 2)
     })
 
     output$delete_btn <- renderUI({
-      if (is.null(input$tbl_rows_selected)) return(NULL)
-      actionButton(session$ns("delete"), "Slet valgte", class = "btn-outline-danger btn-sm")
+      sel <- input$hot_select
+      if (is.null(sel) || is.null(sel$select$r)) return(NULL)
+      actionButton(session$ns("delete"), "Slet valgte række", class = "btn-outline-danger btn-sm")
     })
 
     observeEvent(input$delete, {
-      sel <- input$tbl_rows_selected; if (is.null(sel)) return()
-      pk_val <- rows()[[cfg$pk]][sel]
+      sel <- input$hot_select; if (is.null(sel$select$r)) return()
+      pk_val <- rows()[[cfg$pk]][sel$select$r + 1L]
       n <- db$ref_count(pk_val)
       if (n > 0) {
         showNotification(sprintf("Kan ikke slettes — i brug af %d post(er)", n),
           type = "error", duration = 4); return()
       }
-      db$delete_row(pk_val); showNotification("Slettet", duration = 2); reload()
+      db$delete_row(pk_val); rows(db$list_rows()); refresh(refresh() + 1)
+      showNotification("Slettet", duration = 2)
     })
   })
 }
