@@ -14,7 +14,9 @@
 # =============================================================================
 
 options(shiny.autoreload = TRUE)
-suppressMessages({library(shiny); library(bslib); library(rhandsontable)})
+suppressMessages({library(shiny); library(bslib); library(rhandsontable); library(DT)})
+
+`%||%` <- function(a, b) if (is.null(a)) b else a
 
 # --- Prototype-config (delmængde af planlagt LOOKUP_TABLES) ------------------
 LAB_TABLES <- list(
@@ -82,30 +84,59 @@ col_type <- function(cfg, col) {
   if (is.null(m)) "text" else m$type
 }
 
-# --- Generisk tabel-UI/server (rhandsontable = Excel-agtig grid) -------------
+# --- Generisk tabel-UI/server med motor-skifter (DT vs rhandsontable) --------
 lab_table_ui <- function(id, cfg) {
   ns <- NS(id)
   tagList(
-    div(class = "d-flex justify-content-between align-items-center mb-2",
+    div(class = "d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2",
       h4(cfg$label, class = "m-0"),
-      div(class = "d-flex gap-2",
-        uiOutput(ns("delete_btn"), inline = TRUE),
-        actionButton(ns("add_row"), "Ny række", class = "btn-success btn-sm"))),
-    p(class = "text-muted small",
-      "Alle celler er redigerbare (som i Excel). Ændringer gemmes løbende. ",
-      "Id-kolonnen er låst."),
-    rhandsontable::rHandsontableOutput(ns("hot"))
+      div(class = "d-flex gap-3 align-items-center",
+        radioButtons(ns("engine"), NULL, inline = TRUE,
+          choices = c("Tabel (DT)" = "dt", "Excel-grid" = "rhot"), selected = "dt"),
+        actionButton(ns("add_row"), "Ny række", class = "btn-success btn-sm"),
+        actionButton(ns("delete"), "Slet valgte række", class = "btn-outline-danger btn-sm"))),
+    p(class = "text-muted small", textOutput(ns("hint"), inline = TRUE)),
+    uiOutput(ns("grid"))
   )
 }
 
 lab_table_server <- function(id, db, cfg) {
   moduleServer(id, function(input, output, session) {
-    rows <- reactiveVal(db$list_rows())   # aktuel data (til pk-opslag)
-    refresh <- reactiveVal(0)             # bump → re-render grid (ny/slet række)
+    ns <- session$ns
+    rows <- reactiveVal(db$list_rows())
+    refresh <- reactiveVal(0)
+    engine <- reactive(input$engine %||% "dt")
 
+    output$hint <- renderText(if (engine() == "rhot")
+      "Excel-grid: alle celler åbne på én gang; tal-kolonner accepterer kun tal; Id låst."
+      else "DT: dobbeltklik en celle for at redigere; vælg en række for at slette; Id låst.")
+
+    output$grid <- renderUI(if (engine() == "rhot")
+      rhandsontable::rHandsontableOutput(ns("hot")) else DT::DTOutput(ns("dt")))
+
+    # --- DT-motor (konsistent med indikator-oversigten) ----------------------
+    output$dt <- DT::renderDT({
+      refresh(); d <- isolate(rows())
+      DT::datatable(d, rownames = FALSE, selection = "single",
+        editable = list(target = "cell", disable = list(columns = 0)),
+        options = list(dom = "t", paging = FALSE, scrollY = "380px", scrollCollapse = TRUE))
+    })
+    observeEvent(input$dt_cell_edit, {
+      info <- input$dt_cell_edit; d <- rows()
+      col <- names(d)[info$col + 1]; pk_val <- d[[cfg$pk]][info$row]
+      val <- info$value
+      if (identical(col_type(cfg, col), "int")) {
+        val <- suppressWarnings(as.integer(val))
+        if (is.na(val)) { showNotification("Forventet et heltal", type = "error", duration = 3)
+          refresh(refresh() + 1); return() }   # snap tilbage
+      }
+      db$update_cell(pk_val, col, val); d[info$row, col] <- val; rows(d)
+      showNotification("Gemt", type = "message", duration = 1)
+    })
+
+    # --- rhandsontable-motor (Excel-agtig) -----------------------------------
     output$hot <- rhandsontable::renderRHandsontable({
-      refresh()                           # re-render kun ved strukturændring
-      d <- isolate(rows())
+      refresh(); d <- isolate(rows())
       ht <- rhandsontable::rhandsontable(d, rowHeaders = NULL, stretchH = "all",
         height = 420, selectCallback = TRUE)
       ht <- rhandsontable::hot_col(ht, cfg$pk, readOnly = TRUE, colWidths = 60)
@@ -113,45 +144,35 @@ lab_table_server <- function(id, db, cfg) {
         ht <- rhandsontable::hot_col(ht, cc$col, type = "numeric", format = "0")
       ht
     })
-
-    # Celle-ændringer (rhandsontable sender kun de ændrede celler)
     observeEvent(input$hot$changes$changes, {
-      chs <- input$hot$changes$changes
-      d <- rows(); changed <- FALSE
+      chs <- input$hot$changes$changes; d <- rows(); changed <- FALSE
       for (ch in chs) {
         r <- ch[[1]] + 1L; cidx <- ch[[2]] + 1L
-        oldv <- ch[[3]]; newv <- ch[[4]]
-        if (identical(oldv, newv)) next
-        col <- names(d)[cidx]; pk_val <- d[[cfg$pk]][r]
-        val <- newv
+        if (identical(ch[[3]], ch[[4]])) next
+        col <- names(d)[cidx]; pk_val <- d[[cfg$pk]][r]; val <- ch[[4]]
         if (identical(col_type(cfg, col), "int") && !is.null(val))
           val <- suppressWarnings(as.integer(val))
-        db$update_cell(pk_val, col, val)
-        d[r, col] <- if (is.null(val)) NA else val
+        db$update_cell(pk_val, col, val); d[r, col] <- if (is.null(val)) NA else val
         changed <- TRUE
       }
       if (changed) { rows(d); showNotification("Gemt", type = "message", duration = 1) }
     }, ignoreNULL = TRUE)
 
+    # --- Fælles: ny / slet række ---------------------------------------------
     observeEvent(input$add_row, {
       db$add_row(); rows(db$list_rows()); refresh(refresh() + 1)
       showNotification("Ny række tilføjet — udfyld felterne", duration = 2)
     })
-
-    output$delete_btn <- renderUI({
-      sel <- input$hot_select
-      if (is.null(sel) || is.null(sel$select$r)) return(NULL)
-      actionButton(session$ns("delete"), "Slet valgte række", class = "btn-outline-danger btn-sm")
-    })
-
     observeEvent(input$delete, {
-      sel <- input$hot_select; if (is.null(sel$select$r)) return()
-      pk_val <- rows()[[cfg$pk]][sel$select$r + 1L]
-      n <- db$ref_count(pk_val)
-      if (n > 0) {
-        showNotification(sprintf("Kan ikke slettes — i brug af %d post(er)", n),
-          type = "error", duration = 4); return()
+      r <- if (engine() == "rhot") {
+        s <- input$hot_select; if (is.null(s$select$r)) NULL else s$select$r + 1L
+      } else input$dt_rows_selected
+      if (is.null(r) || length(r) == 0) {
+        showNotification("Vælg en række først", type = "warning", duration = 2); return()
       }
+      pk_val <- rows()[[cfg$pk]][r]; n <- db$ref_count(pk_val)
+      if (n > 0) { showNotification(sprintf("Kan ikke slettes — i brug af %d post(er)", n),
+        type = "error", duration = 4); return() }
       db$delete_row(pk_val); rows(db$list_rows()); refresh(refresh() + 1)
       showNotification("Slettet", duration = 2)
     })
