@@ -124,3 +124,38 @@ INDIKATOR_JUNCTIONS <- list(
                        parent_pk = "Id",
                        label = 'COALESCE("organisatorisk_navn_langt","organisatorisk_navn_teknisk")')
 )
+
+# --- Simple opslagstabeller (Class A) til generisk inline-redigering ----------
+# Hver: id (modul-namespace/nav-value), table, pk ("Id" for alle), label (vist),
+# cols (ordnet: col/type/label; type "int" coerces + valideres). ref_check kun
+# hvor DB ikke enforcer FK (tblDatakilder) → app-niveau "i brug"-tjek før slet.
+# Verificeret mod access_schema.yaml 2026-06-10.
+LOOKUP_TABLES <- list(
+  list(id = "faggrupper", table = "tblFaggrupper", pk = "Id", label = "Faggrupper",
+       cols = list(
+         list(col = "faggruppe", type = "text", label = "Faggruppe"))),
+  list(id = "datakilder", table = "tblDatakilder", pk = "Id", label = "Datakilder",
+       ref_check = list(child = "tblIndikatorer", col = "datakilde"),
+       cols = list(
+         list(col = "datakilde_navn",        type = "text", label = "Navn"),
+         list(col = "datakilde_beskrivelse", type = "text", label = "Beskrivelse"))),
+  list(id = "dataprodukter", table = "tblDataprodukter", pk = "Id", label = "Dataprodukter",
+       cols = list(
+         list(col = "dataprodukt_navn",        type = "text", label = "Navn"),
+         list(col = "dataprodukt_kort_navn",   type = "text", label = "Kort navn"),
+         list(col = "dataprodukt_beskrivelse", type = "text", label = "Beskrivelse"))),
+  list(id = "diagramtyper", table = "tblDiagramTyper", pk = "Id", label = "Diagramtyper",
+       cols = list(
+         list(col = "diagram_type",           type = "text", label = "Type"),
+         list(col = "diagram_type_kommentar", type = "text", label = "Kommentar"))),
+  list(id = "org_niveauer", table = "tblOrganisationNiveauer", pk = "Id",
+       label = "Organisations-niveauer",
+       cols = list(
+         list(col = "organisatorisk_niveau",      type = "int",  label = "Niveau (tal)"),
+         list(col = "organisatorisk_niveau_navn", type = "text", label = "Niveau-navn"))),
+  list(id = "indikator_niveauer", table = "tblIndikatorNiveauer", pk = "Id",
+       label = "Indikator-niveauer",
+       cols = list(
+         list(col = "indikator_niveau",      type = "int",  label = "Niveau (tal)"),
+         list(col = "indikator_niveau_navn", type = "text", label = "Niveau-navn")))
+)

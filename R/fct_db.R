@@ -120,3 +120,33 @@ make_db <- function(pool) {
     }
   )
 }
+
+#' Byg db-accessors for én simpel opslagstabel (inline-redigering).
+#' cfg = element fra LOOKUP_TABLES. Genbruger pool + write-guard.
+#' @noRd
+make_lookup_db <- function(pool, cfg) {
+  list(
+    list_rows = function() DBI::dbGetQuery(pool, build_lookup_list_sql(cfg$table, cfg$pk)),
+    add_row = function() {
+      assert_write_enabled()
+      DBI::dbGetQuery(pool, build_lookup_insert_sql(cfg$table, cfg$pk))[[1]][1]
+    },
+    update_cell = function(pk_val, col, value) {
+      assert_write_enabled()
+      DBI::dbExecute(pool, build_lookup_update_sql(cfg$table, cfg$pk, col),
+                     params = list(value, pk_val))
+    },
+    delete_row = function(pk_val) {
+      assert_write_enabled()
+      DBI::dbExecute(pool, build_lookup_delete_sql(cfg$table, cfg$pk),
+                     params = list(pk_val))
+    },
+    # 0 hvis ingen ref_check defineret; ellers antal child-rækker der peger hertil
+    ref_count = function(pk_val) {
+      rc <- cfg$ref_check
+      if (is.null(rc)) return(0L)
+      as.integer(DBI::dbGetQuery(pool, build_lookup_refcount_sql(rc$child, rc$col),
+                                 params = list(pk_val))[[1]][1])
+    }
+  )
+}

@@ -82,3 +82,36 @@ build_junction_options_sql <- function(j) {
   sprintf('SELECT "%s" AS id, (%s) AS label FROM "%s" ORDER BY 2',
           j$parent_pk, j$label, j$parent)
 }
+
+# --- Generiske byggere for simple opslagstabeller (inline-redigering) --------
+# pk gives eksplicit (alle opslagstabeller bruger "Id" med stort — ikke "id").
+
+#' Hent alle rækker, ordnet på pk
+#' @noRd
+build_lookup_list_sql <- function(table, pk) {
+  sprintf('SELECT * FROM "%s" ORDER BY "%s"', table, pk)
+}
+
+#' Opdatér én celle: værdi=$1, pk=$2
+#' @noRd
+build_lookup_update_sql <- function(table, pk, col) {
+  sprintf('UPDATE "%s" SET "%s" = $1 WHERE "%s" = $2', table, col, pk)
+}
+
+#' Indsæt blank række (kun pk auto-genereres), returnér ny pk
+#' @noRd
+build_lookup_insert_sql <- function(table, pk) {
+  sprintf('INSERT INTO "%s" DEFAULT VALUES RETURNING "%s"', table, pk)
+}
+
+#' Slet række på pk
+#' @noRd
+build_lookup_delete_sql <- function(table, pk) {
+  sprintf('DELETE FROM "%s" WHERE "%s" = $1', table, pk)
+}
+
+#' Tæl referencer fra en child-tabel (app-niveau FK-guard hvor DB ej enforcer)
+#' @noRd
+build_lookup_refcount_sql <- function(child, col) {
+  sprintf('SELECT count(*) AS n FROM "%s" WHERE "%s" = $1', child, col)
+}

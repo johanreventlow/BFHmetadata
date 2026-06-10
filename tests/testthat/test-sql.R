@@ -1,3 +1,30 @@
+test_that("lookup-byggere bruger pk-kolonne (Id) korrekt parametriseret", {
+  expect_match(build_lookup_list_sql("tblFaggrupper", "Id"),
+    'SELECT \\* FROM "tblFaggrupper" ORDER BY "Id"')
+  expect_match(build_lookup_update_sql("tblFaggrupper", "Id", "faggruppe"),
+    'UPDATE "tblFaggrupper" SET "faggruppe" = \\$1 WHERE "Id" = \\$2')
+  expect_no_match(build_lookup_update_sql("tblFaggrupper", "Id", "faggruppe"),
+    'WHERE "id"')   # MÅ ej bruge lille-bogstav id
+  expect_match(build_lookup_insert_sql("tblFaggrupper", "Id"),
+    'INSERT INTO "tblFaggrupper" DEFAULT VALUES RETURNING "Id"')
+  expect_match(build_lookup_delete_sql("tblFaggrupper", "Id"),
+    'DELETE FROM "tblFaggrupper" WHERE "Id" = \\$1')
+  expect_match(build_lookup_refcount_sql("tblIndikatorer", "datakilde"),
+    'FROM "tblIndikatorer" WHERE "datakilde" = \\$1')
+})
+
+test_that("LOOKUP_TABLES dækker de 6 opslagstabeller med pk=Id", {
+  expect_length(LOOKUP_TABLES, 6)
+  for (cfg in LOOKUP_TABLES) {
+    expect_true(all(c("id", "table", "pk", "label", "cols") %in% names(cfg)))
+    expect_equal(cfg$pk, "Id")
+    expect_true(length(cfg$cols) >= 1)
+  }
+  dk <- Find(function(c) c$id == "datakilder", LOOKUP_TABLES)
+  expect_equal(dk$ref_check$child, "tblIndikatorer")
+  expect_equal(dk$ref_check$col, "datakilde")
+})
+
 test_that("build_list_sql joiner alle 3 FK-parents med labels", {
   sql <- build_list_sql()
   expect_match(sql, 'FROM "tblIndikatorer"')
