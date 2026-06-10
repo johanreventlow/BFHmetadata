@@ -13,8 +13,8 @@ test_that("lookup-byggere bruger pk-kolonne (Id) korrekt parametriseret", {
     'FROM "tblIndikatorer" WHERE "datakilde" = \\$1')
 })
 
-test_that("LOOKUP_TABLES dækker de 6 opslagstabeller med pk=Id", {
-  expect_length(LOOKUP_TABLES, 6)
+test_that("LOOKUP_TABLES har pk=Id + datakilder-refcheck + personer-fk", {
+  expect_gte(length(LOOKUP_TABLES), 7)
   for (cfg in LOOKUP_TABLES) {
     expect_true(all(c("id", "table", "pk", "label", "cols") %in% names(cfg)))
     expect_equal(cfg$pk, "Id")
@@ -23,6 +23,12 @@ test_that("LOOKUP_TABLES dækker de 6 opslagstabeller med pk=Id", {
   dk <- Find(function(c) c$id == "datakilder", LOOKUP_TABLES)
   expect_equal(dk$ref_check$child, "tblIndikatorer")
   expect_equal(dk$ref_check$col, "datakilde")
+  # Personer: FK-kolonne med parent + label_expr
+  pe <- Find(function(c) c$id == "personer", LOOKUP_TABLES)
+  fk <- Find(function(c) identical(c$type, "fk"), pe$cols)
+  expect_equal(fk$col, "organisatorisk_enhed")
+  expect_equal(fk$parent, "tblOrganisationStruktur")
+  expect_true(grepl("COALESCE", fk$label_expr))
 })
 
 test_that("build_list_sql joiner alle 3 FK-parents med labels", {

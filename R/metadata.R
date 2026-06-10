@@ -157,5 +157,16 @@ LOOKUP_TABLES <- list(
        label = "Indikator-niveauer",
        cols = list(
          list(col = "indikator_niveau",      type = "int",  label = "Niveau (tal)"),
-         list(col = "indikator_niveau_navn", type = "text", label = "Niveau-navn")))
+         list(col = "indikator_niveau_navn", type = "text", label = "Niveau-navn"))),
+  # FK-tabel: organisatorisk_enhed redigeres via dropdown (label fra org-struktur).
+  # Slet-guard via DB-FK (tblIndikatorer.kontaktperson → Personer).
+  list(id = "personer", table = "tblPersoner", pk = "Id", label = "Personer",
+       cols = list(
+         list(col = "fornavn",   type = "text", label = "Fornavn"),
+         list(col = "efternavn", type = "text", label = "Efternavn"),
+         list(col = "titel",     type = "text", label = "Titel"),
+         list(col = "email",     type = "text", label = "E-mail"),
+         list(col = "organisatorisk_enhed", type = "fk", label = "Organisatorisk enhed",
+              parent = "tblOrganisationStruktur", parent_pk = "Id",
+              label_expr = 'COALESCE("organisatorisk_navn_langt","organisatorisk_navn_teknisk")')))
 )

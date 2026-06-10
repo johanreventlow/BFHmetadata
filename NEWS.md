@@ -5,6 +5,8 @@
 * Generisk inline-redigering af de 6 simple opslagstabeller (Faggrupper,
   Datakilder, Dataprodukter, Diagramtyper, Organisations-niveauer,
   Indikator-niveauer): redigér celler direkte i tabellen, tilføj og slet rækker.
+* Personer-tabel med inline-redigering inkl. relations-kolonne: organisatorisk
+  enhed vælges via dropdown direkte i cellen (viser navn, gemmer id).
 * Slet-beskyttelse: en post der er i brug kan ikke slettes (DB-FK fanges, og
   datakilder tjekkes på app-niveau da relationen ikke er DB-enforced).
 

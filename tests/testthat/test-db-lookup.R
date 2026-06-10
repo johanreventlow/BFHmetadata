@@ -46,3 +46,33 @@ test_that("slet af brugt faggruppe afvises af DB (FK-RESTRICT)", {
     'SELECT "faggruppe_id" FROM "tblForbindIndikatorerFaggrupper" LIMIT 1')[[1]][1]
   expect_error(db$delete_row(used))   # modulets tryCatch oversætter → "i brug"
 })
+
+test_that("personer: fk_options loader org-enheder + fk-update round-trip", {
+  skip_if_no_db()
+  pool <- db_connect()
+  cfg <- Find(function(c) c$id == "personer", LOOKUP_TABLES)
+  db <- make_lookup_db(pool, cfg)
+  opts <- db$fk_options("organisatorisk_enhed")
+  expect_true(nrow(opts) > 0)
+  expect_true(all(c("id", "label") %in% names(opts)))
+
+  pid <- db$list_rows()$Id[1]
+  orig <- db$list_rows()$organisatorisk_enhed[db$list_rows()$Id == pid]
+  # Gendan FØR poolClose (FIFO): restore registreres først, poolClose sidst
+  on.exit(db$update_cell(pid, "organisatorisk_enhed", orig), add = TRUE)
+  on.exit(pool::poolClose(pool), add = TRUE)
+  target <- opts$id[opts$id != orig][1]
+  db$update_cell(pid, "organisatorisk_enhed", target)
+  now <- db$list_rows()$organisatorisk_enhed[db$list_rows()$Id == pid]
+  expect_equal(as.integer(now), as.integer(target))
+})
+
+test_that("slet af brugt person afvises af DB (kontaktperson-FK)", {
+  skip_if_no_db()
+  pool <- db_connect(); on.exit(pool::poolClose(pool))
+  cfg <- Find(function(c) c$id == "personer", LOOKUP_TABLES)
+  db <- make_lookup_db(pool, cfg)
+  used <- DBI::dbGetQuery(pool,
+    'SELECT "kontaktperson" FROM "tblIndikatorer" WHERE "kontaktperson" IS NOT NULL LIMIT 1')[[1]][1]
+  expect_error(db$delete_row(used))
+})

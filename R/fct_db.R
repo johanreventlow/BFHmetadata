@@ -147,6 +147,12 @@ make_lookup_db <- function(pool, cfg) {
       if (is.null(rc)) return(0L)
       as.integer(DBI::dbGetQuery(pool, build_lookup_refcount_sql(rc$child, rc$col),
                                  params = list(pk_val))[[1]][1])
+    },
+    # id+label for en FK-kolonnes dropdown (NULL hvis kolonnen ej er fk)
+    fk_options = function(col) {
+      fc <- Find(function(c) identical(c$type, "fk") && c$col == col, cfg$cols)
+      if (is.null(fc)) return(NULL)
+      DBI::dbGetQuery(pool, build_fk_options_sql(fc$parent, fc$label_expr))
     }
   )
 }

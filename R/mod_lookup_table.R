@@ -1,6 +1,20 @@
-# Generisk modul til inline-redigering af én simpel opslagstabel (Class A).
+# Generisk modul til inline-redigering af én opslags-/stamtabel.
 # Drevet af et LOOKUP_TABLES-cfg-element. Bruger DT editable celler (konsistent
-# med indikator-oversigten). Genbruger safe_operation() fra mod_indikator_crud.R.
+# med indikator-oversigten). FK-kolonner (type="fk") renderes som <select>-celler
+# med onchange → Shiny-input. Genbruger safe_operation() fra mod_indikator_crud.R.
+
+#' Bygger HTML <select> til en FK-celle (label fra opts, rå id som value).
+#' onchange sætter fk_edit-input med {id (pk), col, value (parent-id)}.
+#' @noRd
+.fk_select_html <- function(ns, pk_val, col, current, opts) {
+  o <- paste0(sprintf('<option value="%s"%s>%s</option>',
+    opts$id, ifelse(opts$id %in% current, " selected", ""),
+    htmltools::htmlEscape(opts$label)), collapse = "")
+  sprintf(paste0('<select class="form-select form-select-sm" ',
+    'onchange="Shiny.setInputValue(\'%s\', {id:%s, col:\'%s\', value:this.value}, ',
+    '{priority:\'event\'})">%s</select>'),
+    ns("fk_edit"), pk_val, col, o)
+}
 
 #' @noRd
 mod_lookup_table_ui <- function(id, cfg) {
@@ -23,7 +37,10 @@ mod_lookup_table_server <- function(id, db, cfg) {
     rows <- reactiveVal(db$list_rows())
     refresh <- reactiveVal(0)        # bump → re-render (ny/slet række + revert)
     status_msg <- reactiveVal("")
-    editable_cols <- vapply(cfg$cols, function(c) c$col, "")
+    fk_cols <- Filter(function(c) identical(c$type, "fk"), cfg$cols)
+    fk_names <- vapply(fk_cols, function(c) c$col, "")
+    # Tekst/int-kolonner der redigeres via DT (fk redigeres via <select>)
+    text_editable <- setdiff(vapply(cfg$cols, function(c) c$col, ""), fk_names)
 
     # Status som flydende notifikation (samme mønster som indikator-modulet)
     observeEvent(status_msg(), {
@@ -33,12 +50,29 @@ mod_lookup_table_server <- function(id, db, cfg) {
     output$tbl <- DT::renderDT({
       refresh()
       d <- isolate(rows())
-      # Lås pk + alle ikke-editerbare kolonner (0-baseret, rownames=FALSE)
-      disable <- which(!(names(d) %in% editable_cols)) - 1
-      DT::datatable(d, rownames = FALSE, selection = "single",
+      disp <- d
+      # FK-kolonner → <select>-celler (label fra parent, rå id pre-valgt)
+      for (fc in fk_cols) {
+        opts <- db$fk_options(fc$col)
+        disp[[fc$col]] <- vapply(seq_len(nrow(d)), function(i)
+          .fk_select_html(session$ns, d[[cfg$pk]][i], fc$col, d[[fc$col]][i], opts), "")
+      }
+      # Lås pk + fk + ikke-editerbare; escape alt undtagen fk-select-kolonner
+      disable <- which(!(names(disp) %in% text_editable)) - 1
+      esc <- which(!(names(disp) %in% fk_names))
+      DT::datatable(disp, rownames = FALSE, selection = "single", escape = esc,
         editable = list(target = "cell", disable = list(columns = disable)),
         options = list(dom = "t", paging = FALSE, scrollY = "420px",
                        scrollCollapse = TRUE))
+    })
+
+    # FK-celle ændret via dropdown → opdatér (value = parent-id)
+    observeEvent(input$fk_edit, {
+      e <- input$fk_edit
+      val <- suppressWarnings(as.integer(e$value))
+      safe_operation("opdatér relation", {
+        db$update_cell(e$id, e$col, val); status_msg("Gemt")
+      }, fallback = status_msg("Fejl ved gem (se log)"))
     })
 
     observeEvent(input$tbl_cell_edit, {
