@@ -14,7 +14,10 @@ Imports:
     RPostgres,
     pool,
     config,
-    yaml
+    yaml,
+    arrow,
+    dplyr,
+    BFHcharts
 Suggests:
     testthat (>= 3.0.0),
     withr
