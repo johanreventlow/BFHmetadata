@@ -53,3 +53,29 @@ scan_diagram <- function(row, base_path, medians_df, variants_df, window_n = NUL
     }
   }, fallback = empty("fejl"))
 }
+
+# De 5 filter-dimensioner (kolonnenavne i diagram-indekset).
+.SIGNAL_FILTER_DIMS <- c("overafdeling", "afsnit", "datapakke",
+                         "datasaet", "indikator_navn")
+
+#' Sorterede unikke valg pr. filter-dimension (NA/tomme droppes).
+#' @noRd
+index_filter_choices <- function(index) {
+  stats::setNames(lapply(.SIGNAL_FILTER_DIMS, function(col) {
+    v <- index[[col]]
+    v <- v[!is.na(v) & nzchar(v)]
+    sort(unique(v))
+  }), .SIGNAL_FILTER_DIMS)
+}
+
+#' Subset diagram-indeks på et named filter (AND). Tomme/NULL-værdier ignoreres.
+#' @noRd
+apply_index_filters <- function(index, filters) {
+  keep <- rep(TRUE, nrow(index))
+  for (col in names(filters)) {
+    val <- filters[[col]]
+    if (is.null(val) || !nzchar(val) || !col %in% names(index)) next
+    keep <- keep & !is.na(index[[col]]) & index[[col]] == val
+  }
+  index[keep, , drop = FALSE]
+}

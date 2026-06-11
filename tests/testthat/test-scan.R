@@ -104,3 +104,33 @@ test_that("scan_diagram: ingen enhed-varianter → ingen_data (ingen blandet-enh
   res <- scan_diagram(row, base, medians_df = NULL, variants_df = vdf)
   expect_equal(res$status, "ingen_data")
 })
+
+test_that("index_filter_choices: sorterede unikke valg pr. dimension (drop NA)", {
+  idx <- data.frame(
+    overafdeling = c("B", "A", "A", NA),
+    afsnit = NA_character_,
+    datapakke = c("P", "P", "Q", "P"),
+    datasaet = c("d1", "d2", "d1", "d3"),
+    indikator_navn = c("i2", "i1", "i1", "i3"),
+    stringsAsFactors = FALSE)
+  ch <- index_filter_choices(idx)
+  expect_equal(ch$overafdeling, c("A", "B"))     # sorteret, NA væk
+  expect_equal(ch$afsnit, character(0))           # helt NA → tom
+  expect_equal(ch$indikator_navn, c("i1", "i2", "i3"))
+})
+
+test_that("apply_index_filters: AND på tværs af dimensioner; tom filter = alt", {
+  idx <- data.frame(
+    diagram_id = 1:4,
+    overafdeling = c("A", "A", "B", "A"),
+    afsnit = NA_character_,
+    datapakke = c("P", "Q", "P", "P"),
+    datasaet = c("d1", "d1", "d1", "d2"),
+    indikator_navn = c("i1", "i1", "i1", "i1"),
+    stringsAsFactors = FALSE)
+  expect_equal(nrow(apply_index_filters(idx, list())), 4)
+  r <- apply_index_filters(idx, list(overafdeling = "A", datapakke = "P"))
+  expect_equal(r$diagram_id, c(1L, 4L))
+  # tom streng/NULL pr. dimension ignoreres
+  expect_equal(nrow(apply_index_filters(idx, list(overafdeling = ""))), 4)
+})
