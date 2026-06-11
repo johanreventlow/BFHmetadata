@@ -117,6 +117,22 @@ make_db <- function(pool) {
         }
         newid
       })
+    },
+    # --- Signal-gennemgang: diagram-indeks + median-knæk ------------------
+    list_active_seriediagrammer = function() {
+      DBI::dbGetQuery(pool, build_diagram_index_sql())
+    },
+    diagram_medians = function(diagram_id) {
+      DBI::dbGetQuery(pool, build_median_list_sql(), params = list(diagram_id))
+    },
+    add_median_break = function(diagram_id, dato) {
+      assert_write_enabled()
+      DBI::dbGetQuery(pool, build_median_insert_sql(),
+                      params = list(diagram_id, as.character(as.Date(dato))))[[1]][1]
+    },
+    delete_median_break = function(median_id) {
+      assert_write_enabled()
+      DBI::dbExecute(pool, build_median_delete_sql(), params = list(median_id))
     }
   )
 }
