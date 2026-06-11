@@ -57,8 +57,10 @@ gennemgang, og lader brugeren registrere et faseskift direkte i
   indikator_navn_teknisk, datasaet (=hierarki_navn), datapakke (=forælder-hierarki),
   org_id, org_navn_teknisk, afdeling, afsnit`. Supabase-query joiner tblDiagrammer +
   tblIndikatorer + tblIndikatorHierarki(+self-join forælder) + tblOrganisationStruktur.
-  **Afdeling/Afsnit** løses via rekursiv CTE op ad org-træet til de relevante
-  `organisatorisk_niveau`-niveauer (defineres ud fra tblOrganisationNiveauer).
+  **Org-niveauer** (overafdeling=5, afdeling=6, afsnit=7) løses via rekursiv ancestry-
+  CTE (selv + forældre op ad `parent_Id`) → kolonner `overafdeling/afdeling/afsnit`.
+  Verificeret: 268 diagrammer på Overafdeling, 285 på Hospital (NULL), afsnit tom nu
+  men fremtidssikret (populerer når diagrammer opstår på niveau 7).
 - **`R/fct_signal.R`**: `resolve_median_breaks(median_rows, x_dates)` (vendored),
   `resolve_target(target_rows)` (vendored), `compute_signal(slice, parts, target,
   window)` → kører `bfh_qic(chart_type="run", part=parts, ...)` med **alle**

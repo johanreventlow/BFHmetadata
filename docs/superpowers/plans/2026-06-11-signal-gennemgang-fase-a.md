@@ -10,7 +10,12 @@
 
 **Spec:** `docs/superpowers/specs/2026-06-11-signal-gennemgang-design.md` (Fase A-delen).
 
-**Note (åben, Fase B):** Diagrammernes org-noder ligger på Hospital(niveau 2)/Overafdeling(niveau 5) — IKKE Afdeling(6)/Afsnit(7). "Afdeling/Afsnit"-filteret skal afklares i Fase B. Fase A-indekset eksponerer org-node (id/teknisk/navn/niveau-navn) råt; ingen Afdeling/Afsnit-kolonner endnu.
+**Org-niveau-filter (afklaret):** Filtrér på org-NIVEAU via ancestry (selv + forældre
+op ad træet). Niveauer: Overafdeling=5, Afdeling=6, Afsnit=7. Diagrammernes org-noder
+ligger pt. på Hospital(2, 285 diag, ingen overafdeling) og Overafdeling(5, 268 diag,
+= sig selv). `afsnit` er tom nu, men populerer automatisk når diagrammer/data opstår på
+niveau 7 (fremtidssikret). Indekset (Task 4) resolver `overafdeling/afdeling/afsnit`
+via rekursiv CTE — verificeret mod DB: 268 overafdeling, 0 afsnit, 285 NULL (Hospital).
 
 ---
 
@@ -339,7 +344,7 @@ git commit -m "feat(signal): compute_signal (Anhøj pr. seneste fase via bfh_qic
 Append til `tests/testthat/test-sql.R`:
 
 ```r
-test_that("build_diagram_index_sql joiner indikator/hierarki/datapakke/org", {
+test_that("build_diagram_index_sql joiner indikator/hierarki/datapakke/org + org-niveauer", {
   sql <- build_diagram_index_sql()
   expect_match(sql, 'FROM "tblDiagrammer"')
   expect_match(sql, '"diagram_type" = 1')
@@ -350,6 +355,11 @@ test_that("build_diagram_index_sql joiner indikator/hierarki/datapakke/org", {
   expect_match(sql, "datapakke")       # forælder-hierarki
   expect_match(sql, "datasaet")
   expect_match(sql, "indikator_navn_teknisk")
+  # Org-niveau-ancestry (rekursiv CTE)
+  expect_match(sql, "WITH RECURSIVE")
+  expect_match(sql, "overafdeling")
+  expect_match(sql, "afdeling")
+  expect_match(sql, "afsnit")
 })
 
 test_that("median SQL-byggere er parametriserede", {
@@ -375,22 +385,38 @@ Append til `R/fct_sql.R`:
 # --- Signal-gennemgang: diagram-indeks + median-knæk ------------------------
 
 #' Ét row pr. aktivt Seriediagram med resolvede labels til filtrering/visning.
-#' datapakke = forælder-hierarki (h.parent_id → dp). Org-node råt (Afdeling/Afsnit
-#' afklares i Fase B). diagram_type=1 (Seriediagram) + diagram_aktivt.
+#' datapakke = forælder-hierarki (h.parent_id → dp). Org-niveauer (overafdeling=5/
+#' afdeling=6/afsnit=7) resolves via rekursiv ancestry (selv + forældre op ad
+#' parent_Id-træet) → fremtidssikret når diagrammer opstår på dybere niveauer.
+#' diagram_type=1 (Seriediagram) + diagram_aktivt.
 #' @noRd
 build_diagram_index_sql <- function() {
   paste0(
+    'WITH RECURSIVE anc AS (',
+    ' SELECT "Id" AS start_id, "parent_Id", "organisatorisk_niveau", "organisatorisk_navn_langt"',
+    ' FROM "tblOrganisationStruktur"',
+    ' UNION ALL',
+    ' SELECT a.start_id, p."parent_Id", p."organisatorisk_niveau", p."organisatorisk_navn_langt"',
+    ' FROM anc a JOIN "tblOrganisationStruktur" p ON p."Id" = a."parent_Id"',
+    '), lvl AS (',
+    ' SELECT start_id,',
+    ' max("organisatorisk_navn_langt") FILTER (WHERE "organisatorisk_niveau" = 5) AS overafdeling,',
+    ' max("organisatorisk_navn_langt") FILTER (WHERE "organisatorisk_niveau" = 6) AS afdeling,',
+    ' max("organisatorisk_navn_langt") FILTER (WHERE "organisatorisk_niveau" = 7) AS afsnit',
+    ' FROM anc GROUP BY start_id',
+    ') ',
     'SELECT d."id" AS diagram_id, ',
     'i."id" AS indikator_id, i."indikator_navn", i."indikator_navn_teknisk", ',
     'h."hierarki_navn" AS datasaet, dp."hierarki_navn" AS datapakke, ',
     'o."Id" AS org_id, o."organisatorisk_navn_teknisk" AS org_teknisk, ',
-    'o."organisatorisk_navn_langt" AS org_navn, ',
-    'o."organisatorisk_niveau" AS org_niveau ',
+    'o."organisatorisk_navn_langt" AS org_navn, o."organisatorisk_niveau" AS org_niveau, ',
+    'lvl.overafdeling, lvl.afdeling, lvl.afsnit ',
     'FROM "tblDiagrammer" d ',
     'JOIN "tblIndikatorer" i ON i."id" = d."indikator" ',
     'LEFT JOIN "tblIndikatorHierarki" h ON h."Id" = i."indikator_hierarki" ',
     'LEFT JOIN "tblIndikatorHierarki" dp ON dp."Id" = h."parent_id" ',
     'LEFT JOIN "tblOrganisationStruktur" o ON o."Id" = d."organisatorisk_navn_teknisk" ',
+    'LEFT JOIN lvl ON lvl.start_id = o."Id" ',
     'WHERE d."diagram_type" = 1 AND d."diagram_aktivt" ',
     'ORDER BY i."indikator_navn", o."organisatorisk_navn_langt"')
 }
@@ -520,7 +546,10 @@ test_that("diagram-indeks returnerer aktive Seriediagrammer med labels", {
   idx <- db$list_active_seriediagrammer()
   expect_gt(nrow(idx), 100)
   expect_true(all(c("diagram_id", "indikator_navn_teknisk", "datasaet",
-                    "datapakke", "org_teknisk") %in% names(idx)))
+                    "datapakke", "org_teknisk", "overafdeling", "afdeling",
+                    "afsnit") %in% names(idx)))
+  # Org-niveau-ancestry: ~268 diagrammer på Overafdeling-niveau har overafdeling
+  expect_gt(sum(!is.na(idx$overafdeling)), 100)
 })
 
 test_that("median-knæk INSERT → læs → DELETE round-trip", {
