@@ -130,7 +130,8 @@ test_that("build_org_enhed_variants_sql joiner org + oversaettelse på int-FK", 
   sql <- build_org_enhed_variants_sql()
   expect_match(sql, '"tblOrganisationStruktur"')
   expect_match(sql, '"tblOrganisationOversaettelse"')
-  # FK er integer org_id = o."Id" (ikke et strengnavn)
+  # ov."organisatorisk_navn_teknisk" er INTEGER FK til tblOrganisationStruktur."Id"
+  # (trods det forvirrende kolonnenavn) → joines på o."Id", ikke på et strengnavn.
   expect_match(sql, 'ov\\."organisatorisk_navn_teknisk" = o\\."Id"')
   expect_match(sql, 'organisatorisk_navn_fra_data')
   expect_match(sql, 'organisatorisk_navn_kort')

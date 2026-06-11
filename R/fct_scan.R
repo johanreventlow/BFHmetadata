@@ -8,6 +8,8 @@ enhed_variants_for <- function(variants_df, org_id) {
   if (is.null(variants_df) || nrow(variants_df) == 0) return(character(0))
   rows <- variants_df[variants_df$org_id == org_id, , drop = FALSE]
   if (nrow(rows) == 0) return(character(0))
+  # teknisk/kort/langt kommer fra org-siden af LEFT JOIN → identiske for alle
+  # rækker af samme org_id; derfor [1]. fra_data varierer pr. oversættelse.
   v <- c(rows$fra_data, rows$teknisk[1], rows$kort[1], rows$langt[1])
   v <- tolower(v[!is.na(v) & nzchar(v)])
   unique(v)

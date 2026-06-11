@@ -19,3 +19,7 @@ test_that("enhed_variants_for: ukendt org_id → character(0)", {
                     fra_data = NA, stringsAsFactors = FALSE)
   expect_equal(enhed_variants_for(vdf, 777L), character(0))
 })
+
+test_that("enhed_variants_for: NULL df → character(0)", {
+  expect_equal(enhed_variants_for(NULL, 1L), character(0))
+})
