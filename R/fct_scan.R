@@ -74,7 +74,8 @@ apply_index_filters <- function(index, filters) {
   keep <- rep(TRUE, nrow(index))
   for (col in names(filters)) {
     val <- filters[[col]]
-    if (is.null(val) || !nzchar(val) || !col %in% names(index)) next
+    # length-0-guard FØR nzchar: tom character(0) (fx multi-select) → spring over
+    if (is.null(val) || length(val) == 0L || !nzchar(val) || !col %in% names(index)) next
     keep <- keep & !is.na(index[[col]]) & index[[col]] == val
   }
   index[keep, , drop = FALSE]
