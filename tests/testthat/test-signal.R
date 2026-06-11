@@ -14,3 +14,28 @@ test_that("resolve_median_breaks returnerer NULL uden data/match", {
   expect_null(resolve_median_breaks(99, data.frame(diagram = 7,
     laas_median = as.Date("2020-03-01")), as.Date("2020-01-01") + 0:5 * 30))
 })
+
+test_that("compute_signal flagger langt løb (seneste fase ustabil)", {
+  # 12 høje + 12 lave → langt løb, signal i (eneste) fase
+  d <- data.frame(dato = as.Date("2020-01-01") + 0:23 * 30,
+                  vaerdi = c(rep(10, 12), rep(2, 12)), naevner = NA_real_)
+  r <- compute_signal(d)
+  expect_true(r$signal)
+  expect_equal(max(r$summary_all$fase), 1)
+})
+
+test_that("compute_signal: stabil serie giver intet signal", {
+  set.seed(1)
+  d <- data.frame(dato = as.Date("2020-01-01") + 0:23 * 30,
+                  vaerdi = rep(c(4, 6), 12), naevner = NA_real_)  # krydser median tit
+  expect_false(compute_signal(d)$signal)
+})
+
+test_that("compute_signal: kun seneste fase afgør (tidligt løb ignoreres)", {
+  # Fase 1 (1:12) langt løb; fase 2 (13:24) stabil krydsende → seneste = stabil
+  d <- data.frame(dato = as.Date("2020-01-01") + 0:23 * 30,
+                  vaerdi = c(rep(10, 12), rep(c(4, 6), 6)), naevner = NA_real_)
+  r <- compute_signal(d, parts = 13L)
+  expect_equal(max(r$summary_all$fase), 2)
+  expect_false(r$signal)
+})

@@ -29,3 +29,26 @@ resolve_median_breaks <- function(diagram_id, all_medians, x_dates) {
   pos <- sort(unique(pos))
   if (length(pos) == 0) NULL else pos
 }
+
+#' Beregn run chart + Anhøj-signal for ét diagram-slice.
+#' Alle faser beregnes (historik); signal-flag = seneste fase (max fase).
+#' @param slice data.frame med dato/vaerdi (+ evt. taeller/naevner)
+#' @param parts integer-vektor af part-positioner (fra resolve_median_breaks) el. NULL
+#' @return list(signal, latest, summary_all, qic_result)
+#' @noRd
+compute_signal <- function(slice, parts = NULL) {
+  has_n <- "naevner" %in% names(slice) && any(!is.na(slice$naevner))
+  res <- if (has_n)
+    BFHcharts::bfh_qic(slice, x = dato, y = taeller, n = naevner,
+                       chart_type = "run", part = parts, multiply = 100)
+  else
+    BFHcharts::bfh_qic(slice, x = dato, y = vaerdi, chart_type = "run", part = parts)
+  s <- res$summary
+  latest <- s[s$fase == max(s$fase), , drop = FALSE]
+  list(
+    signal = isTRUE(latest$anhoej_signal[1]),
+    latest = latest,
+    summary_all = s,
+    qic_result = res
+  )
+}
