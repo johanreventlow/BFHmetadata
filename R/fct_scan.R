@@ -14,3 +14,32 @@ enhed_variants_for <- function(variants_df, org_id) {
   v <- tolower(v[!is.na(v) & nzchar(v)])
   unique(v)
 }
+
+#' Scan ét diagram: byg enhed-filter → load parquet-slice → (vindue) → resolve
+#' median-knæk → compute_signal. Fanger fejl pr. diagram (safe_operation).
+#' @param row liste/df-række med indikator_navn_teknisk, org_id, diagram_id
+#' @param base_path bruger-valgt parquet-rodmappe
+#' @param medians_df alle median-rækker for diagrammet (kolonner diagram, laas_median) el. NULL
+#' @param variants_df org_enhed_variants()-output
+#' @param window_n behold seneste N observationer (NULL = alle)
+#' @return list(diagram_id, status, signal, n_obs, slice, qic_result, summary)
+#' @noRd
+scan_diagram <- function(row, base_path, medians_df, variants_df, window_n = NULL) {
+  empty <- function(status) list(diagram_id = row$diagram_id, status = status,
+    signal = FALSE, n_obs = 0L, slice = NULL, qic_result = NULL, summary = NULL)
+  out <- safe_operation(sprintf("scan diagram %s", row$diagram_id), {
+    path <- parquet_indicator_path(base_path, row$indikator_navn_teknisk)
+    variants <- enhed_variants_for(variants_df, row$org_id)
+    enhed <- if (length(variants)) variants else NULL
+    slice <- parquet_load_slice(path, enhed = enhed)
+    if (is.null(slice) || nrow(slice) == 0) return(empty("ingen_data"))
+    if (!is.null(window_n)) slice <- parquet_limit_observations(slice, window_n)
+    slice <- slice[order(slice$dato), , drop = FALSE]
+    parts <- resolve_median_breaks(row$diagram_id, medians_df, slice$dato)
+    sig <- compute_signal(slice, parts = parts)
+    list(diagram_id = row$diagram_id, status = "ok", signal = isTRUE(sig$signal),
+         n_obs = length(unique(slice$dato)), slice = slice,
+         qic_result = sig$qic_result, summary = sig$summary_all)
+  }, fallback = empty("fejl"))
+  out
+}
