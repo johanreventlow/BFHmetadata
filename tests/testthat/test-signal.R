@@ -31,6 +31,19 @@ test_that("compute_signal: stabil serie giver intet signal", {
   expect_false(compute_signal(d)$signal)
 })
 
+test_that("compute_signal: proportion-serie bruger rate (taeller/naevner), ej rå tal", {
+  # Rå taeller = rep(c(4,6),12) krydser median 5 → intet signal hvis brugt rå.
+  # naevner valgt så rate = taeller/naevner*100 danner langt løb (50/75 vs 10/15):
+  # seks 10, seks 15, seks 50, seks 75 → median 32.5 → fase 1-12 over, 13-24 under.
+  d <- data.frame(dato = as.Date("2020-01-01") + 0:23 * 30,
+                  taeller = rep(c(4, 6), 12),
+                  naevner = c(rep(8, 12), rep(40, 12)))
+  r <- compute_signal(d)
+  expect_equal(head(r$qic_result$qic_data$y, 2), c(50, 75))  # rate, ej rå 4/6
+  expect_true(r$signal)
+  expect_equal(max(r$summary_all$fase), 1)
+})
+
 test_that("compute_signal: kun seneste fase afgør (tidligt løb ignoreres)", {
   # Fase 1 (1:12) langt løb; fase 2 (13:24) stabil krydsende → seneste = stabil
   d <- data.frame(dato = as.Date("2020-01-01") + 0:23 * 30,
