@@ -34,3 +34,14 @@ test_that("median-knæk INSERT → læs → DELETE round-trip", {
   db$delete_median_break(newid)
   expect_false(newid %in% db$diagram_medians(did)$id)
 })
+
+test_that("org_enhed_variants returnerer org-navne + fra-data-varianter", {
+  skip_if_no_db()
+  pool <- db_connect(); on.exit(pool::poolClose(pool))
+  db <- make_db(pool)
+  vdf <- db$org_enhed_variants()
+  expect_true(all(c("org_id", "teknisk", "kort", "langt", "fra_data") %in% names(vdf)))
+  expect_gt(nrow(vdf), 100)
+  # Mindst én org har en fra-data-oversættelse
+  expect_gt(sum(!is.na(vdf$fra_data)), 0)
+})

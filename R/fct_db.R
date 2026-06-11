@@ -133,6 +133,9 @@ make_db <- function(pool) {
     delete_median_break = function(median_id) {
       assert_write_enabled()
       DBI::dbExecute(pool, build_median_delete_sql(), params = list(median_id))
+    },
+    org_enhed_variants = function() {
+      DBI::dbGetQuery(pool, build_org_enhed_variants_sql())
     }
   )
 }

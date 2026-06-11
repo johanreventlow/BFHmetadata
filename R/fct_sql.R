@@ -169,3 +169,18 @@ build_median_insert_sql <- function() {
 build_median_delete_sql <- function() {
   'DELETE FROM "tblDiagrammerMedian" WHERE "id" = $1'
 }
+
+#' Én række pr. (org, enhed-fra-data-variant). LEFT JOIN bevarer organisationer
+#' uden oversættelse. Bruges til at bygge parquet-enhed-filter pr. diagram.
+#' @noRd
+build_org_enhed_variants_sql <- function() {
+  paste0(
+    'SELECT o."Id" AS org_id, ',
+    'o."organisatorisk_navn_teknisk" AS teknisk, ',
+    'o."organisatorisk_navn_kort" AS kort, ',
+    'o."organisatorisk_navn_langt" AS langt, ',
+    'ov."organisatorisk_navn_fra_data" AS fra_data ',
+    'FROM "tblOrganisationStruktur" o ',
+    'LEFT JOIN "tblOrganisationOversaettelse" ov ',
+    'ON ov."organisatorisk_navn_teknisk" = o."Id"')
+}

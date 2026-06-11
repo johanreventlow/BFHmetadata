@@ -125,3 +125,14 @@ test_that("median SQL-byggere er parametriserede", {
   expect_match(build_median_delete_sql(),
     'DELETE FROM "tblDiagrammerMedian" WHERE "id" = \\$1')
 })
+
+test_that("build_org_enhed_variants_sql joiner org + oversaettelse på int-FK", {
+  sql <- build_org_enhed_variants_sql()
+  expect_match(sql, '"tblOrganisationStruktur"')
+  expect_match(sql, '"tblOrganisationOversaettelse"')
+  # FK er integer org_id = o."Id" (ikke et strengnavn)
+  expect_match(sql, 'ov\\."organisatorisk_navn_teknisk" = o\\."Id"')
+  expect_match(sql, 'organisatorisk_navn_fra_data')
+  expect_match(sql, 'organisatorisk_navn_kort')
+  expect_match(sql, 'LEFT JOIN')   # org uden oversaettelse bevares
+})
