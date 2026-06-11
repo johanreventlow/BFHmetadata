@@ -115,3 +115,57 @@ build_lookup_delete_sql <- function(table, pk) {
 build_lookup_refcount_sql <- function(child, col) {
   sprintf('SELECT count(*) AS n FROM "%s" WHERE "%s" = $1', child, col)
 }
+
+# --- Signal-gennemgang: diagram-indeks + median-knæk ------------------------
+
+#' Ét row pr. aktivt Seriediagram med resolvede labels til filtrering/visning.
+#' datapakke = forælder-hierarki (h.parent_id → dp). Org-niveauer (overafdeling=5/
+#' afdeling=6/afsnit=7) resolves via rekursiv ancestry (selv + forældre op ad
+#' parent_Id-træet) → fremtidssikret når diagrammer opstår på dybere niveauer.
+#' diagram_type=1 (Seriediagram) + diagram_aktivt.
+#' @noRd
+build_diagram_index_sql <- function() {
+  paste0(
+    'WITH RECURSIVE anc AS (',
+    ' SELECT "Id" AS start_id, "parent_Id", "organisatorisk_niveau", "organisatorisk_navn_langt"',
+    ' FROM "tblOrganisationStruktur"',
+    ' UNION ALL',
+    ' SELECT a.start_id, p."parent_Id", p."organisatorisk_niveau", p."organisatorisk_navn_langt"',
+    ' FROM anc a JOIN "tblOrganisationStruktur" p ON p."Id" = a."parent_Id"',
+    '), lvl AS (',
+    ' SELECT start_id,',
+    ' max("organisatorisk_navn_langt") FILTER (WHERE "organisatorisk_niveau" = 5) AS overafdeling,',
+    ' max("organisatorisk_navn_langt") FILTER (WHERE "organisatorisk_niveau" = 6) AS afdeling,',
+    ' max("organisatorisk_navn_langt") FILTER (WHERE "organisatorisk_niveau" = 7) AS afsnit',
+    ' FROM anc GROUP BY start_id',
+    ') ',
+    'SELECT d."id" AS diagram_id, ',
+    'i."id" AS indikator_id, i."indikator_navn", i."indikator_navn_teknisk", ',
+    'h."hierarki_navn" AS datasaet, dp."hierarki_navn" AS datapakke, ',
+    'o."Id" AS org_id, o."organisatorisk_navn_teknisk" AS org_teknisk, ',
+    'o."organisatorisk_navn_langt" AS org_navn, o."organisatorisk_niveau" AS org_niveau, ',
+    'lvl.overafdeling, lvl.afdeling, lvl.afsnit ',
+    'FROM "tblDiagrammer" d ',
+    'JOIN "tblIndikatorer" i ON i."id" = d."indikator" ',
+    'LEFT JOIN "tblIndikatorHierarki" h ON h."Id" = i."indikator_hierarki" ',
+    'LEFT JOIN "tblIndikatorHierarki" dp ON dp."Id" = h."parent_id" ',
+    'LEFT JOIN "tblOrganisationStruktur" o ON o."Id" = d."organisatorisk_navn_teknisk" ',
+    'LEFT JOIN lvl ON lvl.start_id = o."Id" ',
+    'WHERE d."diagram_type" = 1 AND d."diagram_aktivt" ',
+    'ORDER BY i."indikator_navn", o."organisatorisk_navn_langt"')
+}
+
+#' @noRd
+build_median_list_sql <- function() {
+  'SELECT * FROM "tblDiagrammerMedian" WHERE "diagram" = $1 ORDER BY "laas_median"'
+}
+
+#' @noRd
+build_median_insert_sql <- function() {
+  'INSERT INTO "tblDiagrammerMedian" ("diagram", "laas_median") VALUES ($1, $2) RETURNING "id"'
+}
+
+#' @noRd
+build_median_delete_sql <- function() {
+  'DELETE FROM "tblDiagrammerMedian" WHERE "id" = $1'
+}

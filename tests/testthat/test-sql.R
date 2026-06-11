@@ -98,3 +98,30 @@ test_that("organisation-options bruger COALESCE-label", {
   expect_match(build_junction_options_sql(INDIKATOR_JUNCTIONS$organisation),
     "COALESCE")
 })
+
+test_that("build_diagram_index_sql joiner indikator/hierarki/datapakke/org + org-niveauer", {
+  sql <- build_diagram_index_sql()
+  expect_match(sql, 'FROM "tblDiagrammer"')
+  expect_match(sql, '"diagram_type" = 1')
+  expect_match(sql, '"diagram_aktivt"')
+  expect_match(sql, '"tblIndikatorer"')
+  expect_match(sql, '"tblIndikatorHierarki"')
+  expect_match(sql, '"tblOrganisationStruktur"')
+  expect_match(sql, "datapakke")       # forælder-hierarki
+  expect_match(sql, "datasaet")
+  expect_match(sql, "indikator_navn_teknisk")
+  # Org-niveau-ancestry (rekursiv CTE)
+  expect_match(sql, "WITH RECURSIVE")
+  expect_match(sql, "overafdeling")
+  expect_match(sql, "afdeling")
+  expect_match(sql, "afsnit")
+})
+
+test_that("median SQL-byggere er parametriserede", {
+  expect_match(build_median_list_sql(),
+    'FROM "tblDiagrammerMedian" WHERE "diagram" = \\$1')
+  expect_match(build_median_insert_sql(),
+    'INSERT INTO "tblDiagrammerMedian" \\("diagram", "laas_median"\\) VALUES \\(\\$1, \\$2\\) RETURNING "id"')
+  expect_match(build_median_delete_sql(),
+    'DELETE FROM "tblDiagrammerMedian" WHERE "id" = \\$1')
+})
