@@ -21,7 +21,7 @@ gennemgang, og lader brugeren registrere et faseskift direkte i
 | Scan-strategi | **Scan filtreret undersæt + progress + session-cache** |
 | Faseskift | **Tilføj + fjern + forhåndsvis** (INSERT/DELETE `tblDiagrammerMedian`) |
 | Scope | **Kun aktive Seriediagrammer**: `diagram_type = 1 AND diagram_aktivt` (553 stk) |
-| Signal-fase | **Seneste fase** (efter sidste eksisterende median-knæk) |
+| Signal-fase | **Alle faser beregnes** (median + stats pr. fase → fuld historik vises i grafen); diagrammet **flagges/vises kun** hvis SENESTE fase (efter sidste median-knæk) er ustabil |
 | Dato-vindue | **UI-toggle**: Alle data ↔ Seneste N punkter (N konfigurerbar) |
 | Levering | **To faser**: A (headless engine) → B (review-UI) |
 
@@ -61,10 +61,14 @@ gennemgang, og lader brugeren registrere et faseskift direkte i
   `organisatorisk_niveau`-niveauer (defineres ud fra tblOrganisationNiveauer).
 - **`R/fct_signal.R`**: `resolve_median_breaks(median_rows, x_dates)` (vendored),
   `resolve_target(target_rows)` (vendored), `compute_signal(slice, parts, target,
-  window)` → kører `bfh_qic(chart_type="run", part=parts, ...)`, læser sidste række af
-  `$summary`/`bfh_extract_spc_stats` for seneste fase → `list(signal=TRUE/FALSE,
-  runs=…, crossings=…, qic_result=…)`. y/n-mapping: hvis `naevner` findes → proportion
-  (y=taeller, n=naevner, multiply=100); ellers run på `vaerdi`.
+  window)` → kører `bfh_qic(chart_type="run", part=parts, ...)` med **alle**
+  eksisterende median-knæk → `$qic_data`/`$summary` indeholder median + Anhøj-stats
+  **pr. fase** (hele historikken). Signal-flag afgøres **kun** af SENESTE fase (sidste
+  række af `$summary` / `bfh_extract_spc_stats` på data efter sidste knæk):
+  `list(signal=TRUE/FALSE, latest_runs=…, latest_crossings=…, summary_all=…,
+  qic_result=…)`. `summary_all` (alle faser) bruges til at vise historik i UI'et.
+  y/n-mapping: hvis `naevner` findes → proportion (y=taeller, n=naevner, multiply=100);
+  ellers run på `vaerdi`.
 - **`R/fct_db.R`** (udvid `make_db`): `list_active_seriediagrammer()`,
   `diagram_medians(diagram_id)`, `diagram_targets(diagram_id)`,
   `add_median_break(diagram_id, dato)` (INSERT, write-guard, RETURNING id),
