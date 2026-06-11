@@ -562,11 +562,40 @@ mod_signal_review_ui <- function(id) {
 
 - [ ] **Step 3: Verificér load** `Rscript -e 'pkgload::load_all("."); cat("ok\n")'` → "ok" (ingen parse-fejl).
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 4: GATE — verificér ggiraph-input-wiring end-to-end [MANUELT TRIN].**
+testServer-tests i Task 6-7 *injicerer* `input$chart_selected` direkte og beviser
+derfor IKKE at det rigtige input-navn virker. Den ene integrationsdetalje der ikke
+kan verificeres headless — at `girafeOutput(ns("chart"))` faktisk dukker op som
+`input$chart_selected` inde i modulet — skal bekræftes HER, før Task 6-7 bygger
+oven på navnet. Opret `dev/signal_chart_probe.R`:
+
+```r
+# Minimal probe: monter modul-UI'ets graf-output i dets ns + en triviel server
+# der printer input$chart_selected. Klik et punkt → ISO-dato skal printes.
+pkgload::load_all(".")
+library(shiny)
+ui <- fluidPage(ggiraph::girafeOutput("signal-chart"))
+server <- function(input, output, session) {
+  output[["signal-chart"]] <- ggiraph::renderGirafe({
+    d <- data.frame(dato = as.Date("2020-01-01") + 0:9 * 30, vaerdi = 1:10,
+                    naevner = NA_real_)
+    interactive_run_chart(compute_signal(d)$qic_result)
+  })
+  # Modul-namespace 'signal' → fuldt input-id er 'signal-chart_selected'
+  observe(message("chart_selected = ", input[["signal-chart_selected"]]))
+}
+shiny::runApp(shinyApp(ui, server), port = 3902, launch.browser = TRUE)
+```
+Kør `Rscript dev/signal_chart_probe.R`, klik et punkt → konsollen SKAL printe
+`chart_selected = 2020-…`. **Hvis input-navnet afviger** (intet printes ved klik):
+ret det rigtige navn nu og opdatér Task 6-7's `input$chart_selected`-referencer
+før du fortsætter. Cheap insurance — byg ikke Task 6-7 på et uverificeret navn.
+
+- [ ] **Step 5: Commit**
 
 ```bash
-git add R/mod_signal_review.R DESCRIPTION
-git commit -m "feat(signal): mod_signal_review UI (sidebar-filtre + graf + faseskift-kontroller)"
+git add R/mod_signal_review.R DESCRIPTION dev/signal_chart_probe.R
+git commit -m "feat(signal): mod_signal_review UI + ggiraph-input-wiring-probe (gate)"
 ```
 
 ---
@@ -672,6 +701,11 @@ mod_signal_review_server <- function(id, db) {
     signal_list <- reactiveVal(NULL)      # df: diagrammer med signal
     cursor <- reactiveVal(1L)
     preview_parts <- reactiveVal(NULL)    # ekstra forhåndsvist knæk (dato)
+    selected_cursor <- reactiveVal(NULL)  # cursor-stempel da punkt sidst blev klikket
+
+    # ggiraph-input kan ikke nulstilles fra server → stempl med cursor ved klik,
+    # så et valg fra ET diagram aldrig læses som gyldigt på et ANDET (Task 7-guard).
+    observeEvent(input$chart_selected, selected_cursor(cursor()))
 
     # Populér filter-valg ved start
     observeEvent(index(), {
@@ -787,7 +821,7 @@ git commit -m "feat(signal): review-server scan+cache+navigation (testServer-dæ
 - Modify: `R/mod_signal_review.R` (tilføj render + faseskift-observers)
 - Test: `tests/testthat/test-mod-signal-review.R`
 
-Graf renderes fra `scan_of_current()$qic_result`. `input$chart_selected` (verificeret ggiraph-input under ns) = valgt ISO-dato. Forhåndsvis re-kører `compute_signal` med ekstra knæk. Gem → `db$add_median_break(diagram_id, as.Date(valgt))` → invalidér diagram-cache + re-scan → typisk forsvinder signalet → Næste. Fjern → `delete_median_break`. Klik på første observation kan ikke splitte (`resolve_median_breaks` dropper rp==1) → brugerbesked, intet skrives.
+Graf renderes fra `scan_of_current()$qic_result`. `input$chart_selected` (verificeret ggiraph-input under ns) = valgt ISO-dato, men læses ALTID via `valid_selected_date()` der gater på cursor-stemplet fra Task 6 — så et valg fra ét diagram aldrig skrives på et andet efter navigation. Forhåndsvis re-kører `compute_signal` med ekstra knæk. Gem → `db$add_median_break(diagram_id, as.Date(valgt))` → invalidér diagram-cache + re-scan → typisk forsvinder signalet → Næste. Fjern → `delete_median_break`. Klik på første observation kan ikke splitte (`resolve_median_breaks` dropper rp==1) → brugerbesked, intet skrives.
 
 - [ ] **Step 1: Skriv fejlende test** — tilføj i `tests/testthat/test-mod-signal-review.R`:
 
@@ -843,6 +877,34 @@ test_that("klik på første observation → ingen skrivning (kan ikke splitte)",
     expect_equal(called$n, 0)
   })
 })
+
+test_that("valg fra ét diagram skrives ALDRIG på et andet efter navigation", {
+  skip_if_not_installed("arrow")
+  base <- withr::local_tempdir()
+  for (ind in c("a", "b")) {
+    dir.create(file.path(base, ind))
+    arrow::write_parquet(data.frame(dato = as.Date("2020-01-01") + 0:23 * 30,
+      vaerdi = c(rep(10, 12), rep(2, 12)), taeller = NA_real_,
+      naevner = NA_real_, enhed = "e"), file.path(base, ind, "p.parquet"))
+  }
+  idx <- data.frame(diagram_id = c(10L, 20L), indikator_id = c(1L, 2L),
+    indikator_navn = c("A", "B"), indikator_navn_teknisk = c("a", "b"),
+    datasaet = "d", datapakke = "p", org_id = 5L, org_teknisk = "E",
+    org_navn = "E", org_niveau = 5L, overafdeling = "OA", afdeling = NA,
+    afsnit = NA, stringsAsFactors = FALSE)
+  called <- new.env(); called$n <- 0
+  db <- make_fake_signal_db(base, idx)
+  db$add_median_break <- function(diagram_id, dato) { called$n <- called$n + 1; 1L }
+  shiny::testServer(mod_signal_review_server, args = list(db = db), {
+    session$setInputs(parquet_dir = base, window_mode = "all", window_n = 24,
+      f_overafdeling = "", f_afsnit = "", f_datapakke = "", f_datasaet = "",
+      f_indikator_navn = "", scan = 1)
+    session$setInputs(chart_selected = "2020-07-28")  # valgt på diagram 10
+    session$setInputs(next_ = 1)                      # naviger til diagram 20
+    session$setInputs(save_break = 1)                 # stale valg → ingen skrivning
+    expect_equal(called$n, 0)
+  })
+})
 ```
 
 - [ ] **Step 2: Kør → FAIL.**
@@ -850,6 +912,17 @@ test_that("klik på første observation → ingen skrivning (kan ikke splitte)",
 - [ ] **Step 3: Implementér render + faseskift** — tilføj inde i `mod_signal_review_server` (før `list(...)`-returneringen), og tilføj de nye felter til den eksponerede liste:
 
 ```r
+    # Cursor-stemplet valg: returnér KUN den valgte dato hvis klikket skete på
+    # det diagram der vises NU. ggiraph-input kan ikke nulstilles fra server, så
+    # uden dette stempel ville et valg fra forrige diagram læses som gyldigt på
+    # det aktuelle → faseskift på FORKERT diagram (korrekthedsfejl, ikke nit).
+    valid_selected_date <- reactive({
+      sel <- input$chart_selected
+      if (is.null(sel) || !nzchar(sel) || !identical(selected_cursor(), cursor()))
+        return(NULL)
+      sel
+    })
+
     # --- Graf -------------------------------------------------------------
     output$chart <- ggiraph::renderGirafe({
       sc <- .scan_of_current(); if (is.null(sc) || is.null(sc$qic_result)) return(NULL)
@@ -867,21 +940,21 @@ test_that("klik på første observation → ingen skrivning (kan ikke splitte)",
                                        all_meds, sc$slice$dato)
         qr <- compute_signal(sc$slice, parts = parts)$qic_result
       }
-      interactive_run_chart(qr, selected_date = input$chart_selected)
+      interactive_run_chart(qr, selected_date = valid_selected_date())
     })
 
     output$selected_label <- renderUI({
-      sel <- input$chart_selected
-      if (is.null(sel) || !nzchar(sel)) return(span("Klik en observation", class = "text-muted"))
+      sel <- valid_selected_date()   # stale valg fra andet diagram → "klik en obs"
+      if (is.null(sel)) return(span("Klik en observation", class = "text-muted"))
       span(sprintf("Valgt: %s", sel), class = "fw-bold")
     })
 
     # --- Forhåndsvis ------------------------------------------------------
     observeEvent(input$preview, {
-      sel <- input$chart_selected
+      sel <- valid_selected_date()
       sc <- .scan_of_current()
-      if (is.null(sel) || !nzchar(sel) || is.null(sc) || is.null(sc$slice)) {
-        showNotification("Vælg en observation først", type = "warning"); return()
+      if (is.null(sel) || is.null(sc) || is.null(sc$slice)) {
+        showNotification("Vælg en observation på dette diagram", type = "warning"); return()
       }
       parts <- resolve_median_breaks(current_diagram()$diagram_id,
         data.frame(diagram = current_diagram()$diagram_id,
@@ -895,10 +968,10 @@ test_that("klik på første observation → ingen skrivning (kan ikke splitte)",
 
     # --- Gem faseskift ----------------------------------------------------
     observeEvent(input$save_break, {
-      sel <- input$chart_selected
+      sel <- valid_selected_date()
       cd <- current_diagram(); sc <- .scan_of_current()
-      if (is.null(sel) || !nzchar(sel) || is.null(cd) || is.null(sc$slice)) {
-        showNotification("Vælg en observation først", type = "warning"); return()
+      if (is.null(sel) || is.null(cd) || is.null(sc$slice)) {
+        showNotification("Vælg en observation på dette diagram", type = "warning"); return()
       }
       # Valider at det er et lovligt knæk (ikke første obs / uden for data)
       parts <- resolve_median_breaks(cd$diagram_id,
@@ -957,7 +1030,7 @@ Bemærk: tilføj ikke nye felter til den eksponerede `list(...)` medmindre teste
 
 ```bash
 git add R/mod_signal_review.R tests/testthat/test-mod-signal-review.R
-git commit -m "feat(signal): faseskift add/remove/preview + graf-render (klik→knæk, gyldigheds-guard)"
+git commit -m "feat(signal): faseskift add/remove/preview + graf-render (klik→knæk, cursor-stemplet valg-guard)"
 ```
 
 ---
@@ -1042,6 +1115,7 @@ git commit -m "feat(signal): wiring (nav + landing) + bump 0.5.0 (Fase B komplet
 2. **ggiraph-input under ns:** `girafeOutput(ns("chart"))` → læs `input$chart_selected` i modulet (verificeret fra girafe.js: id = containerid + "_selected").
 3. **Cache-nøgle = `(diagram_id, window)`** — ikke filter. Filterændring re-subsetter; post-skriv dropper kun det ene diagrams nøgler.
 4. **Ugyldigt knæk:** klik på første obs → `resolve_median_breaks` returnerer `NULL` → brugerbesked "kan ikke lave faseskift her", ingen skrivning. Tjek FØR `add_median_break`.
+4b. **Stale ggiraph-valg på tværs af navigation (KORREKTHEDSFEJL):** `input$chart_selected` kan ikke nulstilles fra server og bevarer forrige diagrams dato efter Næste/Forrige. Uden guard ville Gem skrive knækket på det FORKERTE diagram (gyldigheds-tjekket mod ny slice fanger det ikke, da datointervaller ofte overlapper). Løst med `selected_cursor`-stempel (Task 6) + `valid_selected_date()` (Task 7): valg er kun gyldigt hvis stemplet == aktuel cursor.
 5. **Blandet/manglende `naevner`:** `compute_signal` vælger proportion-gren på `any(!is.na(naevner))`. Hvis ægte parquet har delvist udfyldt naevner kan `bfh_qic` fejle på NA-rækker → fanges af Task 2-smoke + `safe_operation` (diagram markeres "fejl", væltes ikke scan). Hvis udbredt: filtrér NA-naevner-rækker i `scan_diagram` før compute (notér som opfølgning, ikke i denne plan).
 6. **`dato` som partition-nøgle:** bekræftes i Task 2-smoke (kolonne i `names(slice)`?). `parquet_load_slice` filtrerer `.data$dato`; hvis arrow eksponerer det som partition virker filteret stadig, men n/datointerval skal verificeres på rigtig data.
 7. **`%||%`-dublet:** tjek `grep -rn "%||%" R/` før Task 4 — drop lokal definition hvis pakken allerede har den.
