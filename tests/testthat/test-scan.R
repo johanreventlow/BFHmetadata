@@ -71,3 +71,36 @@ test_that("scan_diagram: window_n begrænser til seneste N observationer", {
   res <- scan_diagram(row, base, medians_df = NULL, variants_df = vdf, window_n = 6L)
   expect_equal(res$n_obs, 6L)
 })
+
+test_that("scan_diagram: median-knæk splitter i faser (parts-stien)", {
+  skip_if_not_installed("arrow")
+  base <- withr::local_tempdir()
+  ind <- "med_ind"; dir.create(file.path(base, ind))
+  df <- data.frame(dato = as.Date("2020-01-01") + 0:23 * 30,
+                   vaerdi = c(rep(10, 12), rep(2, 12)),
+                   taeller = NA_real_, naevner = NA_real_, enhed = "e")
+  arrow::write_parquet(df, file.path(base, ind, "p.parquet"))
+  row <- list(diagram_id = 42L, indikator_navn_teknisk = ind, org_id = 5L)
+  vdf <- data.frame(org_id = 5L, teknisk = "E", kort = NA, langt = NA,
+                    fra_data = NA, stringsAsFactors = FALSE)
+  # Knæk på 13. observation → fase 1 (1:12) + fase 2 (13:24)
+  meds <- data.frame(diagram = 42L, laas_median = df$dato[13])
+  res <- scan_diagram(row, base, medians_df = meds, variants_df = vdf)
+  expect_equal(res$status, "ok")
+  expect_equal(length(unique(res$summary$fase)), 2L)
+  expect_equal(max(res$summary$fase), 2)
+})
+
+test_that("scan_diagram: ingen enhed-varianter → ingen_data (ingen blandet-enhed-load)", {
+  skip_if_not_installed("arrow")
+  base <- withr::local_tempdir()
+  ind <- "noorg_ind"; dir.create(file.path(base, ind))
+  arrow::write_parquet(data.frame(dato = as.Date("2020-01-01") + 0:5 * 30,
+    vaerdi = 1:6, taeller = NA_real_, naevner = NA_real_, enhed = "e"),
+    file.path(base, ind, "p.parquet"))
+  row <- list(diagram_id = 9L, indikator_navn_teknisk = ind, org_id = 5L)
+  vdf <- data.frame(org_id = 99L, teknisk = "X", kort = NA, langt = NA,
+                    fra_data = NA, stringsAsFactors = FALSE)  # ingen match på org_id 5
+  res <- scan_diagram(row, base, medians_df = NULL, variants_df = vdf)
+  expect_equal(res$status, "ingen_data")
+})

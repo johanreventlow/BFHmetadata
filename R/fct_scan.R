@@ -27,19 +27,29 @@ enhed_variants_for <- function(variants_df, org_id) {
 scan_diagram <- function(row, base_path, medians_df, variants_df, window_n = NULL) {
   empty <- function(status) list(diagram_id = row$diagram_id, status = status,
     signal = FALSE, n_obs = 0L, slice = NULL, qic_result = NULL, summary = NULL)
-  out <- safe_operation(sprintf("scan diagram %s", row$diagram_id), {
-    path <- parquet_indicator_path(base_path, row$indikator_navn_teknisk)
+  # Værdi-givende if/else (ingen non-local return ud af safe_operation-blokken):
+  # blokkens sidste udtryk er resultatet → fallback="fejl" rammes kun ved fejl.
+  safe_operation(sprintf("scan diagram %s", row$diagram_id), {
     variants <- enhed_variants_for(variants_df, row$org_id)
-    enhed <- if (length(variants)) variants else NULL
-    slice <- parquet_load_slice(path, enhed = enhed)
-    if (is.null(slice) || nrow(slice) == 0) return(empty("ingen_data"))
-    if (!is.null(window_n)) slice <- parquet_limit_observations(slice, window_n)
-    slice <- slice[order(slice$dato), , drop = FALSE]
-    parts <- resolve_median_breaks(row$diagram_id, medians_df, slice$dato)
-    sig <- compute_signal(slice, parts = parts)
-    list(diagram_id = row$diagram_id, status = "ok", signal = isTRUE(sig$signal),
-         n_obs = length(unique(slice$dato)), slice = slice,
-         qic_result = sig$qic_result, summary = sig$summary_all)
+    if (length(variants) == 0) {
+      # Seriediagrammer er org-scopede: uden enhed-varianter kan slicet ikke
+      # afgrænses til rette enhed → "ingen_data" frem for signal på blandede
+      # enheder. (Rigtige org'er har altid navne → rammer ej normal-flow.)
+      empty("ingen_data")
+    } else {
+      path <- parquet_indicator_path(base_path, row$indikator_navn_teknisk)
+      slice <- parquet_load_slice(path, enhed = variants)
+      if (is.null(slice) || nrow(slice) == 0) {
+        empty("ingen_data")
+      } else {
+        if (!is.null(window_n)) slice <- parquet_limit_observations(slice, window_n)
+        slice <- slice[order(slice$dato), , drop = FALSE]
+        parts <- resolve_median_breaks(row$diagram_id, medians_df, slice$dato)
+        sig <- compute_signal(slice, parts = parts)
+        list(diagram_id = row$diagram_id, status = "ok", signal = isTRUE(sig$signal),
+             n_obs = length(unique(as.Date(slice$dato))), slice = slice,
+             qic_result = sig$qic_result, summary = sig$summary_all)
+      }
+    }
   }, fallback = empty("fejl"))
-  out
 }
