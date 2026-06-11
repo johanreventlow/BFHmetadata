@@ -17,7 +17,9 @@ Imports:
     yaml,
     arrow,
     dplyr,
-    BFHcharts
+    BFHcharts,
+    ggplot2,
+    ggiraph
 Suggests:
     testthat (>= 3.0.0),
     withr
