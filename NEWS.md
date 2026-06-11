@@ -1,3 +1,16 @@
+# BFHmetadata 0.4.0
+
+## Nye features
+* Signal-gennemgang (Fase A — motor): indlæser lokale parquet-slices, bygger
+  diagram-indeks fra Supabase og beregner Anhøj-signal pr. aktivt Seriediagram
+  via BFHcharts (signal vurderet på seneste fase efter median-knæk). DB-accessors
+  til at læse og skrive median-knæk (tblDiagrammerMedian). Diagram-indekset
+  resolver org-niveauer (overafdeling/afdeling/afsnit) via rekursiv ancestry.
+
+## Interne ændringer
+* Vendored parquet-/median-logik fra BFHddl (Supabase-fodret, ingen Access-kobling).
+* Nye Imports: arrow, dplyr, BFHcharts.
+
 # BFHmetadata 0.3.0
 
 ## Nye features
