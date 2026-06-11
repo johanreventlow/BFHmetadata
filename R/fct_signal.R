@@ -17,9 +17,12 @@ resolve_median_breaks <- function(diagram_id, all_medians, x_dates) {
   x <- sort(unique(as.Date(x_dates)))
   pos <- integer(0)
   for (b in bd) {
-    p <- which(x <= b)
+    # part-position = FØRSTE række på/efter knæk-dato (BFHddl/qicharts2-konvention:
+    # ny fase starter ved første observation >= laas_median). Drop knæk på
+    # første række (rp>1) eller uden for data.
+    p <- which(x >= b)
     if (length(p) > 0) {
-      rp <- max(p)
+      rp <- min(p)
       if (rp > 1 && rp <= length(x)) pos <- c(pos, rp)
     }
   }
