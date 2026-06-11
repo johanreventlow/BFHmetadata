@@ -31,6 +31,7 @@ migration/introspection_log.txt
 .RData
 .Rproj.user/
 .Ruserdata
+Rplots.pdf
 
 # OS
 .DS_Store
