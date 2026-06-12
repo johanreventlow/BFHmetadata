@@ -149,6 +149,115 @@ mod_signal_review_server <- function(id, db) {
       div(class = "small text-muted mt-2", sprintf("%d med signal", nrow(sl)))
     })
 
+    # Cursor-stemplet valg: returnér KUN den valgte dato hvis klikket skete på
+    # det diagram der vises NU. ggiraph-input kan ikke nulstilles fra server, så
+    # uden dette stempel ville et valg fra forrige diagram læses som gyldigt på
+    # det aktuelle → faseskift på FORKERT diagram (korrekthedsfejl, ikke nit).
+    valid_selected_date <- reactive({
+      sel <- input$chart_selected
+      if (is.null(sel) || !nzchar(sel) || !identical(selected_cursor(), cursor()))
+        return(NULL)
+      sel
+    })
+
+    # --- Graf -------------------------------------------------------------
+    output$chart <- ggiraph::renderGirafe({
+      sc <- .scan_of_current(); if (is.null(sc) || is.null(sc$qic_result)) return(NULL)
+      qr <- sc$qic_result
+      # Forhåndsvis: re-beregn med ekstra knæk hvis valgt + gyldigt
+      pv <- preview_parts()
+      if (!is.null(pv) && !is.null(sc$slice)) {
+        meds_extra <- data.frame(diagram = current_diagram()$diagram_id,
+                                 laas_median = as.Date(pv))
+        base_meds <- db$diagram_medians(current_diagram()$diagram_id)
+        all_meds <- rbind(
+          base_meds[, c("diagram", "laas_median")],
+          meds_extra)
+        parts <- resolve_median_breaks(current_diagram()$diagram_id,
+                                       all_meds, sc$slice$dato)
+        qr <- compute_signal(sc$slice, parts = parts)$qic_result
+      }
+      interactive_run_chart(qr, selected_date = valid_selected_date())
+    })
+
+    output$selected_label <- renderUI({
+      sel <- valid_selected_date()   # stale valg fra andet diagram → "klik en obs"
+      if (is.null(sel)) return(span("Klik en observation", class = "text-muted"))
+      span(sprintf("Valgt: %s", sel), class = "fw-bold")
+    })
+
+    # --- Forhåndsvis ------------------------------------------------------
+    observeEvent(input$preview, {
+      sel <- valid_selected_date()
+      sc <- .scan_of_current()
+      if (is.null(sel) || is.null(sc) || is.null(sc$slice)) {
+        showNotification("Vælg en observation på dette diagram", type = "warning"); return()
+      }
+      parts <- resolve_median_breaks(current_diagram()$diagram_id,
+        data.frame(diagram = current_diagram()$diagram_id,
+                   laas_median = as.Date(sel)), sc$slice$dato)
+      if (is.null(parts)) {
+        showNotification("Kan ikke lave faseskift her (første/ugyldig observation)",
+                         type = "warning"); return()
+      }
+      preview_parts(sel)
+    })
+
+    # --- Gem faseskift ----------------------------------------------------
+    observeEvent(input$save_break, {
+      sel <- valid_selected_date()
+      cd <- current_diagram(); sc <- .scan_of_current()
+      if (is.null(sel) || is.null(cd) || is.null(sc$slice)) {
+        showNotification("Vælg en observation på dette diagram", type = "warning"); return()
+      }
+      # Valider at det er et lovligt knæk (ikke første obs / uden for data)
+      parts <- resolve_median_breaks(cd$diagram_id,
+        data.frame(diagram = cd$diagram_id, laas_median = as.Date(sel)),
+        sc$slice$dato)
+      if (is.null(parts)) {
+        showNotification("Kan ikke lave faseskift her (første/ugyldig observation)",
+                         type = "warning"); return()
+      }
+      ok <- safe_operation("gem faseskift", {
+        db$add_median_break(cd$diagram_id, as.Date(sel)); TRUE
+      }, fallback = FALSE)
+      if (!isTRUE(ok)) { showNotification("Fejl ved gem (se log)", type = "error"); return() }
+      # Invalidér netop dette diagram (alle vinduer) + re-scan det scannede vindue
+      cc <- cache()
+      cc[grepl(paste0("^", cd$diagram_id, "\\|"), names(cc))] <- NULL
+      meds <- db$diagram_medians(cd$diagram_id)
+      cc[[paste0(cd$diagram_id, "|", .wkey(scanned_n()))]] <-
+        c(scan_diagram(as.list(cd), input$parquet_dir, meds, variants(),
+                       window_n = scanned_n()), list(row = as.list(cd)))
+      cache(cc)
+      preview_parts(NULL)
+      showNotification("Faseskift gemt")
+    })
+
+    # --- Eksisterende median-knæk + fjern ---------------------------------
+    output$breaks_tbl <- DT::renderDT({
+      cd <- current_diagram(); if (is.null(cd)) return(DT::datatable(data.frame()))
+      m <- db$diagram_medians(cd$diagram_id)
+      DT::datatable(m[, intersect(c("id", "laas_median"), names(m)), drop = FALSE],
+        rownames = FALSE, selection = "single",
+        options = list(dom = "t", paging = FALSE))
+    })
+
+    observeEvent(input$delete_break, {
+      cd <- current_diagram(); if (is.null(cd)) return()
+      sel <- input$breaks_tbl_rows_selected
+      if (is.null(sel)) { showNotification("Vælg et knæk først", type = "warning"); return() }
+      m <- db$diagram_medians(cd$diagram_id)
+      mid <- m$id[sel]
+      ok <- safe_operation("fjern faseskift", {
+        db$delete_median_break(mid); TRUE
+      }, fallback = FALSE)
+      if (!isTRUE(ok)) { showNotification("Fejl ved fjern (se log)", type = "error"); return() }
+      cc <- cache(); cc[grepl(paste0("^", cd$diagram_id, "\\|"), names(cc))] <- NULL
+      cache(cc); preview_parts(NULL)
+      showNotification("Knæk fjernet")
+    })
+
     # Eksponér til test
     list(signal_list = signal_list, current_diagram = current_diagram,
          cursor = cursor, cache = cache, preview_parts = preview_parts,
