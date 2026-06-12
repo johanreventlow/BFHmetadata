@@ -1122,9 +1122,40 @@ git commit -m "feat(signal): wiring (nav + landing) + bump 0.5.0 (Fase B komplet
 8. **Write-guard:** `add/delete_median_break` er bag `assert_write_enabled()` (Fase A). UI'et kører read-only uden `BFHMETA_WRITE=1` → Gem fejler pænt via `safe_operation` + notifikation.
 
 ## Verifikation
-- `Rscript -e 'pkgload::load_all("."); testthat::test_dir("tests/testthat")'` — alle grønne (gated DB + real-parquet skippes uden env/sti).
-- Task 2 real-data smoke mod bruger-parquet (≥1 OK-diagram, `dato`-kolonne til stede).
-- Task 8 app-smoke mod Supabase (`BFHMETA_WRITE=1`): fuld klik-til-gem-løkke + genstart-persistens.
+- `Rscript -e 'pkgload::load_all("."); testthat::test_dir("tests/testthat")'` — alle grønne (gated DB + real-parquet skippes uden env/sti). **Status: 202 PASS / 10 SKIP.**
+
+### Udskudt manuel smoke (KRÆVER bruger-parquet + browser) — checkliste
+
+Begge gates blev udskudt (ingen parquet lokalt på implementeringstidspunktet).
+Kør FØR feature stoles på i produktion. Rækkefølge = make-or-break først:
+
+1. **enhed-variant-matching (DEN kritiske antagelse).** Et scan returnerer kun
+   data hvis parquet-`enhed`-værdier matcher (case-insensitivt) én af org'ens
+   `teknisk/kort/langt/fra_data`-varianter. Matcher de ikke → ALLE scans giver
+   stille `status="ingen_data"` (tom review-flade, ingen fejl). Smoke: vælg et
+   kendt diagram, bekræft `scan_diagram` → `status="ok", n_obs>0`; spot-tjek at
+   distinkte parquet-`enhed`-værdier faktisk skærer variant-sættet.
+2. **parquet-sti-dybde.** `parquet_indicator_path` søger direkte + præcis 1 niveau
+   ned. Bekræft at den rigtige mappestruktur resolver (dybere nesting → stille tom).
+3. **NULL `afsnit`-filter degraderer pænt** (afsnit er all-NULL i DB nu) → selectize
+   viser kun `(alle)`, ingen fejl.
+4. **selectize `server=FALSE` med rigtige valg-antal** (hundredvis af indikator/
+   overafdeling-værdier client-side) → acceptabel load, ingen trunkering.
+5. **`breaks_tbl` slet row→id-mapping** mod diagram med ≥2 knæk (stabil
+   `ORDER BY laas_median`; ties → nondeterministisk valg).
+6. **POSIXct `laas_median` round-trip på rigtig data** — bekræft at gemt knæk =
+   klikket observations-dato (ingen ±1 dag). (DB returnerer UTC-tagget POSIXct →
+   `as.Date` er shift-fri i dette miljø; bekræft én gang på rigtig data.)
+7. **ggiraph-wiring** (`dev/signal_chart_probe.R` ELLER i app): klik et punkt →
+   `input$chart_selected` fyrer med ISO-dato. (JS-bevis stærkt; bekræft her.)
+8. **`dato` som kolonne (ej kun partition-nøgle)** i `names(slice)` ved real-load.
+9. **Fuld klik-til-gem-løkke + genstart-persistens** mod Supabase (`BFHMETA_WRITE=1`).
+
+### Kendte ikke-blokerende noter (fra final review)
+- NA `y` i proportion-charts (mid-serie NA-`naevner`) → punkt droppes med ggplot-
+  warning, ingen fejl; hul i linjen hvor naevner mangler. Kosmetisk.
+- Ingen "scanner…"-disabled-state på Scan-knap → dobbeltklik harmløst (idempotent,
+  cache-backed). Valgfri polish.
 
 ## Bevidst UDE af scope
 P-diagrammer (type 10), punkt-eksklusion, mål-redigering/`resolve_target`, kommentarer, baggrunds-scan af alle 553, master-detail, Access-skrivning. (Jf. spec §"Ikke i scope".)
