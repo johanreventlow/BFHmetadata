@@ -1,3 +1,17 @@
+# BFHmetadata 0.5.0
+
+## Nye features
+* Signal-gennemgang (Fase B — review-UI): peg app'en på en parquet-mappe, scan
+  filtrerede aktive Seriediagrammer for Anhøj-signal, og gennemgå dem i en
+  interaktiv ggiraph-graf. Klik en observation for at registrere et faseskift
+  direkte i tblDiagrammerMedian (tilføj/forhåndsvis/fjern), og bladr hurtigt
+  mellem diagrammer. Fem filtre: Overafdeling, Afsnit, Datapakke, Datasæt,
+  Indikator. Datavindue kan veksle mellem alle data og seneste N observationer.
+
+## Interne ændringer
+* Nyt headless scan-lag (fct_scan.R) + interaktivt chart-lag
+  (fct_chart_interactive.R). Nye Imports: ggplot2, ggiraph.
+
 # BFHmetadata 0.4.0
 
 ## Nye features
