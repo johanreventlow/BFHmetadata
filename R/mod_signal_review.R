@@ -160,21 +160,29 @@ mod_signal_review_server <- function(id, db) {
       sel
     })
 
+    # Ryd diagrammets cache-nøgler + re-scan det scannede vindue, så grafen
+    # opdateres i stedet for at gå blank efter en knæk-ændring (gem/fjern).
+    .refresh_diagram <- function(cd) {
+      cc <- cache()
+      cc[grepl(paste0("^", cd$diagram_id, "\\|"), names(cc))] <- NULL
+      meds <- db$diagram_medians(cd$diagram_id)
+      cc[[paste0(cd$diagram_id, "|", .wkey(scanned_n()))]] <-
+        c(scan_diagram(as.list(cd), input$parquet_dir, meds, variants(),
+                       window_n = scanned_n()), list(row = as.list(cd)))
+      cache(cc)
+    }
+
     # --- Graf -------------------------------------------------------------
     output$chart <- ggiraph::renderGirafe({
       sc <- .scan_of_current(); if (is.null(sc) || is.null(sc$qic_result)) return(NULL)
       qr <- sc$qic_result
-      # Forhåndsvis: re-beregn med ekstra knæk hvis valgt + gyldigt
+      # Forhåndsvis: re-beregn med ekstra knæk hvis valgt + gyldigt. Date-
+      # normaliseret via preview_break_parts (ingen rbind af Date på POSIXct).
       pv <- preview_parts()
       if (!is.null(pv) && !is.null(sc$slice)) {
-        meds_extra <- data.frame(diagram = current_diagram()$diagram_id,
-                                 laas_median = as.Date(pv))
         base_meds <- db$diagram_medians(current_diagram()$diagram_id)
-        all_meds <- rbind(
-          base_meds[, c("diagram", "laas_median")],
-          meds_extra)
-        parts <- resolve_median_breaks(current_diagram()$diagram_id,
-                                       all_meds, sc$slice$dato)
+        parts <- preview_break_parts(current_diagram()$diagram_id, base_meds,
+                                     pv, sc$slice$dato)
         qr <- compute_signal(sc$slice, parts = parts)$qic_result
       }
       interactive_run_chart(qr, selected_date = valid_selected_date())
@@ -222,14 +230,7 @@ mod_signal_review_server <- function(id, db) {
         db$add_median_break(cd$diagram_id, as.Date(sel)); TRUE
       }, fallback = FALSE)
       if (!isTRUE(ok)) { showNotification("Fejl ved gem (se log)", type = "error"); return() }
-      # Invalidér netop dette diagram (alle vinduer) + re-scan det scannede vindue
-      cc <- cache()
-      cc[grepl(paste0("^", cd$diagram_id, "\\|"), names(cc))] <- NULL
-      meds <- db$diagram_medians(cd$diagram_id)
-      cc[[paste0(cd$diagram_id, "|", .wkey(scanned_n()))]] <-
-        c(scan_diagram(as.list(cd), input$parquet_dir, meds, variants(),
-                       window_n = scanned_n()), list(row = as.list(cd)))
-      cache(cc)
+      .refresh_diagram(cd)   # invalidér + re-scan → graf viser ny signal-status
       preview_parts(NULL)
       showNotification("Faseskift gemt")
     })
@@ -253,8 +254,8 @@ mod_signal_review_server <- function(id, db) {
         db$delete_median_break(mid); TRUE
       }, fallback = FALSE)
       if (!isTRUE(ok)) { showNotification("Fejl ved fjern (se log)", type = "error"); return() }
-      cc <- cache(); cc[grepl(paste0("^", cd$diagram_id, "\\|"), names(cc))] <- NULL
-      cache(cc); preview_parts(NULL)
+      .refresh_diagram(cd)   # re-scan så grafen opdateres (ej blank) efter fjern
+      preview_parts(NULL)
       showNotification("Knæk fjernet")
     })
 

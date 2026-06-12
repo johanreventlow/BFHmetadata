@@ -80,3 +80,16 @@ apply_index_filters <- function(index, filters) {
   }
   index[keep, , drop = FALSE]
 }
+
+#' Part-positioner for et forhåndsvist faseskift: eksisterende median-knæk +
+#' ét ekstra. Alt normaliseres til Date FØR resolve, så preview og save bruger
+#' samme dato-semantik (undgår rbind-coercion af Date på en POSIXct-kolonne fra
+#' DB → ingen TZ-/type-tvetydighed mellem de to stier).
+#' @param base_meds df med kolonnen laas_median (Date/POSIXct/character fra DB)
+#' @param extra_date ekstra knæk-dato (ISO-streng el. Date)
+#' @noRd
+preview_break_parts <- function(diagram_id, base_meds, extra_date, x_dates) {
+  laas <- c(as.Date(base_meds$laas_median), as.Date(extra_date))
+  all_meds <- data.frame(diagram = diagram_id, laas_median = laas)
+  resolve_median_breaks(diagram_id, all_meds, x_dates)
+}

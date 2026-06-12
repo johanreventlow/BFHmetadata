@@ -228,3 +228,30 @@ test_that("valg fra ét diagram skrives ALDRIG på et andet efter navigation", {
     expect_equal(called$n, 0)
   })
 })
+
+test_that("delete_break kalder delete_median_break med valgt knæk-id", {
+  skip_if_not_installed("arrow")
+  base <- withr::local_tempdir()
+  dir.create(file.path(base, "a"))
+  arrow::write_parquet(data.frame(dato = as.Date("2020-01-01") + 0:23 * 30,
+    vaerdi = c(rep(10, 12), rep(2, 12)), taeller = NA_real_, naevner = NA_real_,
+    enhed = "e"), file.path(base, "a", "p.parquet"))
+  idx <- data.frame(diagram_id = 7L, indikator_id = 1L, indikator_navn = "A",
+    indikator_navn_teknisk = "a", datasaet = "d", datapakke = "p", org_id = 5L,
+    org_teknisk = "E", org_navn = "E", org_niveau = 5L, overafdeling = "OA",
+    afdeling = NA, afsnit = NA, stringsAsFactors = FALSE)
+  deleted <- new.env(); deleted$id <- NULL
+  db <- make_fake_signal_db(base, idx)
+  # POSIXct UTC som produktion; knæk FØR data → droppes i scan (signal bevares),
+  # men vises i breaks_tbl så det kan vælges + slettes.
+  db$diagram_medians <- function(diagram_id) data.frame(
+    id = 42L, diagram = 7L, laas_median = as.POSIXct("2019-01-01", tz = "UTC"))
+  db$delete_median_break <- function(median_id) { deleted$id <- median_id; 1L }
+  shiny::testServer(mod_signal_review_server, args = list(db = db), {
+    session$setInputs(parquet_dir = base, window_mode = "all", window_n = 24,
+      f_overafdeling = "", f_afsnit = "", f_datapakke = "", f_datasaet = "",
+      f_indikator_navn = "", scan = 1)
+    session$setInputs(breaks_tbl_rows_selected = 1L, delete_break = 1)
+    expect_equal(deleted$id, 42L)
+  })
+})

@@ -91,6 +91,24 @@ test_that("scan_diagram: median-knæk splitter i faser (parts-stien)", {
   expect_equal(max(res$summary$fase), 2)
 })
 
+test_that("preview_break_parts: POSIXct-base (prod) == Date-base → samme positioner", {
+  x <- as.Date("2020-01-01") + 0:23 * 30
+  # Eksisterende knæk kommer fra DB som POSIXct (UTC); ekstra fra et klik (streng)
+  p_posix <- preview_break_parts(1L,
+    data.frame(laas_median = as.POSIXct("2020-04-30", tz = "UTC")), "2020-07-29", x)
+  p_date <- preview_break_parts(1L,
+    data.frame(laas_median = as.Date("2020-04-30")), "2020-07-29", x)
+  expect_identical(p_posix, p_date)        # preview konsistent uanset base-type
+  expect_equal(p_posix, c(5L, 8L))         # begge knæk → to positioner
+})
+
+test_that("preview_break_parts: tom base + ekstra → kun ekstra-knækket", {
+  x <- as.Date("2020-01-01") + 0:23 * 30
+  parts <- preview_break_parts(1L,
+    data.frame(laas_median = as.Date(character(0))), "2020-07-29", x)
+  expect_equal(parts, 8L)
+})
+
 test_that("scan_diagram: ingen enhed-varianter → ingen_data (ingen blandet-enhed-load)", {
   skip_if_not_installed("arrow")
   base <- withr::local_tempdir()
