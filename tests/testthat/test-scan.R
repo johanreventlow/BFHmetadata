@@ -91,6 +91,24 @@ test_that("scan_diagram: median-knæk splitter i faser (parts-stien)", {
   expect_equal(max(res$summary$fase), 2)
 })
 
+test_that("scan_diagram: character-dato i parquet → status ok (ej fejl) + signal", {
+  skip_if_not_installed("arrow")
+  base <- withr::local_tempdir()
+  ind <- "txt_ind"; dir.create(file.path(base, ind))
+  # Rigtig parquet: dato som tekst. Uden Date-coerce fejler bfh_qic på ALLE diagrammer.
+  arrow::write_parquet(data.frame(
+    dato = as.character(as.Date("2020-01-01") + 0:23 * 30),
+    vaerdi = c(rep(10, 12), rep(2, 12)),
+    taeller = NA_real_, naevner = NA_real_, enhed = "e", stringsAsFactors = FALSE),
+    file.path(base, ind, "p.parquet"))
+  row <- list(diagram_id = 1L, indikator_navn_teknisk = ind, org_id = 5L)
+  vdf <- data.frame(org_id = 5L, teknisk = "E", kort = NA, langt = NA,
+                    fra_data = NA, stringsAsFactors = FALSE)
+  res <- scan_diagram(row, base, medians_df = NULL, variants_df = vdf)
+  expect_equal(res$status, "ok")
+  expect_true(res$signal)
+})
+
 test_that("preview_break_parts: POSIXct-base (prod) == Date-base → samme positioner", {
   x <- as.Date("2020-01-01") + 0:23 * 30
   # Eksisterende knæk kommer fra DB som POSIXct (UTC); ekstra fra et klik (streng)

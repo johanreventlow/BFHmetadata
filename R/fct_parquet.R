@@ -27,6 +27,11 @@ parquet_load_slice <- function(path, enhed = NULL, from = NULL, to = NULL) {
     ds <- dplyr::filter(ds, tolower(.data$enhed) %in% vars)
   }
   res <- dplyr::collect(ds)
+  # Parquet kan lagre dato som tekst ("YYYY-MM-DD") → coerce til Date. bfh_qic
+  # afviser character-x; uden dette fejler ALLE scans ("x must be ... Date ...").
+  if ("dato" %in% names(res) && is.character(res$dato)) {
+    res$dato <- as.Date(res$dato)
+  }
   if (!is.null(enhed) && nrow(res) == 0) return(NULL)
   res
 }

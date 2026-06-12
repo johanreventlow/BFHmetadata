@@ -34,6 +34,19 @@ test_that("parquet_load_slice filtrerer på enhed + dato", {
   expect_equal(nrow(parquet_load_slice(p, from = "2020-03-01")), 4)
 })
 
+test_that("parquet_load_slice coercer character-dato → Date (rigtig-parquet-regression)", {
+  base <- withr::local_tempdir()
+  ind <- file.path(base, "txt_ind"); dir.create(ind, recursive = TRUE)
+  # Rigtig parquet lagrer dato som tekst (ej Date) → bfh_qic ville fejle uden coerce
+  arrow::write_parquet(data.frame(
+    dato = c("2020-01-01", "2020-02-01", "2020-03-01"),
+    vaerdi = c(1, 2, 3), enhed = "e", stringsAsFactors = FALSE),
+    file.path(ind, "p.parquet"))
+  res <- parquet_load_slice(parquet_indicator_path(base, "txt_ind"))
+  expect_s3_class(res$dato, "Date")
+  expect_equal(res$dato[1], as.Date("2020-01-01"))
+})
+
 test_that("parquet_limit_observations beholder seneste N unikke datoer", {
   d <- data.frame(dato = as.Date("2020-01-01") + 0:9 * 30, vaerdi = 1:10)
   expect_equal(nrow(parquet_limit_observations(d, 3)), 3)
