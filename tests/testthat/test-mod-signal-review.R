@@ -72,3 +72,75 @@ test_that("næste/forrige bladrer i signal-listen", {
     expect_equal(current_diagram()$diagram_id, 10L)
   })
 })
+
+test_that("scan uden signaler → tom liste (0 rækker) + current_diagram NULL", {
+  skip_if_not_installed("arrow")
+  base <- withr::local_tempdir()
+  dir.create(file.path(base, "flat"))
+  arrow::write_parquet(data.frame(dato = as.Date("2020-01-01") + 0:23 * 30,
+    vaerdi = rep(c(4, 6), 12), taeller = NA_real_, naevner = NA_real_, enhed = "e"),
+    file.path(base, "flat", "p.parquet"))
+  idx <- data.frame(diagram_id = 1L, indikator_id = 1L, indikator_navn = "Flad",
+    indikator_navn_teknisk = "flat", datasaet = "d", datapakke = "p", org_id = 5L,
+    org_teknisk = "E", org_navn = "E", org_niveau = 5L, overafdeling = "OA",
+    afdeling = NA, afsnit = NA, stringsAsFactors = FALSE)
+  db <- make_fake_signal_db(base, idx)
+  shiny::testServer(mod_signal_review_server, args = list(db = db), {
+    session$setInputs(parquet_dir = base, window_mode = "all", window_n = 24,
+      f_overafdeling = "", f_afsnit = "", f_datapakke = "", f_datasaet = "",
+      f_indikator_navn = "", scan = 1)
+    expect_equal(nrow(signal_list()), 0L)
+    expect_null(current_diagram())
+  })
+})
+
+test_that("re-scan (samme vindue) genbruger cache — diagram_medians kun kaldt 1x pr. diagram", {
+  skip_if_not_installed("arrow")
+  base <- withr::local_tempdir()
+  dir.create(file.path(base, "a"))
+  arrow::write_parquet(data.frame(dato = as.Date("2020-01-01") + 0:23 * 30,
+    vaerdi = c(rep(10, 12), rep(2, 12)), taeller = NA_real_, naevner = NA_real_,
+    enhed = "e"), file.path(base, "a", "p.parquet"))
+  idx <- data.frame(diagram_id = 1L, indikator_id = 1L, indikator_navn = "A",
+    indikator_navn_teknisk = "a", datasaet = "d", datapakke = "p", org_id = 5L,
+    org_teknisk = "E", org_navn = "E", org_niveau = 5L, overafdeling = "OA",
+    afdeling = NA, afsnit = NA, stringsAsFactors = FALSE)
+  calls <- new.env(); calls$n <- 0L
+  db <- make_fake_signal_db(base, idx)
+  db$diagram_medians <- function(diagram_id) {
+    calls$n <- calls$n + 1L
+    data.frame(id = integer(0), diagram = integer(0), laas_median = as.Date(character(0)))
+  }
+  shiny::testServer(mod_signal_review_server, args = list(db = db), {
+    session$setInputs(parquet_dir = base, window_mode = "all", window_n = 24,
+      f_overafdeling = "", f_afsnit = "", f_datapakke = "", f_datasaet = "",
+      f_indikator_navn = "", scan = 1)
+    expect_equal(calls$n, 1L)
+    session$setInputs(scan = 2)            # re-scan samme vindue → cache-hit
+    expect_equal(calls$n, 1L)              # ingen ny diagram_medians-kald
+  })
+})
+
+test_that("vindue-skifte EFTER scan gør ikke cache-opslag stale (C1-regression)", {
+  skip_if_not_installed("arrow")
+  base <- withr::local_tempdir()
+  dir.create(file.path(base, "a"))
+  arrow::write_parquet(data.frame(dato = as.Date("2020-01-01") + 0:23 * 30,
+    vaerdi = c(rep(10, 12), rep(2, 12)), taeller = NA_real_, naevner = NA_real_,
+    enhed = "e"), file.path(base, "a", "p.parquet"))
+  idx <- data.frame(diagram_id = 1L, indikator_id = 1L, indikator_navn = "A",
+    indikator_navn_teknisk = "a", datasaet = "d", datapakke = "p", org_id = 5L,
+    org_teknisk = "E", org_navn = "E", org_niveau = 5L, overafdeling = "OA",
+    afdeling = NA, afsnit = NA, stringsAsFactors = FALSE)
+  db <- make_fake_signal_db(base, idx)
+  shiny::testServer(mod_signal_review_server, args = list(db = db), {
+    session$setInputs(parquet_dir = base, window_mode = "all", window_n = 24,
+      f_overafdeling = "", f_afsnit = "", f_datapakke = "", f_datasaet = "",
+      f_indikator_navn = "", scan = 1)
+    expect_equal(.scan_of_current()$status, "ok")
+    # Skift vindue UDEN at re-scanne → opslaget skal stadig finde det scannede
+    session$setInputs(window_mode = "latest", window_n = 12)
+    expect_false(is.null(.scan_of_current()))
+    expect_equal(.scan_of_current()$status, "ok")
+  })
+})

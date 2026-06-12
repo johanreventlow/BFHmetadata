@@ -48,6 +48,7 @@ mod_signal_review_server <- function(id, db) {
     cursor <- reactiveVal(1L)
     preview_parts <- reactiveVal(NULL)    # ekstra forhåndsvist knæk (dato)
     selected_cursor <- reactiveVal(NULL)  # cursor-stempel da punkt sidst blev klikket
+    scanned_n <- reactiveVal(NULL)        # vindue-værdi (NULL/int) brugt ved SIDSTE scan
 
     # ggiraph-input kan ikke nulstilles fra server → stempl med cursor ved klik,
     # så et valg fra ET diagram aldrig læses som gyldigt på et ANDET (Task 7-guard).
@@ -70,7 +71,9 @@ mod_signal_review_server <- function(id, db) {
     window_n <- reactive(
       if (identical(input$window_mode, "latest")) as.integer(input$window_n) else NULL)
 
-    .window_key <- reactive(if (is.null(window_n())) "all" else as.character(window_n()))
+    # Cache-nøgle af en vindue-værdi. Bruges med scanned_n() efter scan, så et
+    # senere vindue-skifte (uden re-scan) ikke gør cache-opslaget stale (C1).
+    .wkey <- function(n) if (is.null(n)) "all" else as.character(n)
 
     observeEvent(input$scan, {
       base <- input$parquet_dir
@@ -80,7 +83,7 @@ mod_signal_review_server <- function(id, db) {
       }
       cand <- apply_index_filters(index(), current_filters())
       if (nrow(cand) == 0) { showNotification("Ingen diagrammer matcher filtrene"); return() }
-      wk <- .window_key(); vdf <- variants(); cc <- cache()
+      wn <- window_n(); wk <- .wkey(wn); vdf <- variants(); cc <- cache()
       results <- list()
       withProgress(message = "Scanner diagrammer", value = 0, {
         n <- nrow(cand)
@@ -90,7 +93,7 @@ mod_signal_review_server <- function(id, db) {
           res <- cc[[key]]
           if (is.null(res)) {
             meds <- db$diagram_medians(row$diagram_id)
-            res <- scan_diagram(row, base, meds, vdf, window_n = window_n())
+            res <- scan_diagram(row, base, meds, vdf, window_n = wn)
             res$row <- row
             cc[[key]] <- res
           }
@@ -99,11 +102,12 @@ mod_signal_review_server <- function(id, db) {
         }
       })
       cache(cc)
+      # results er 1:1 positionelt med cand (ingen skip i loopet) → positionelt
+      # subset er korrekt + robust mod dublerede diagram_id (I1).
       sig_ids <- vapply(results, function(r) isTRUE(r$signal), logical(1))
-      sl <- cand[cand$diagram_id %in%
-                   vapply(results[sig_ids], function(r) r$diagram_id, integer(1)), ,
-                 drop = FALSE]
+      sl <- cand[sig_ids, , drop = FALSE]
       signal_list(sl)
+      scanned_n(wn)          # vindue låst til denne scan (bruges af .scan_of_current/Task 7)
       cursor(1L)
       preview_parts(NULL)
       showNotification(sprintf("%d af %d diagrammer har signal", nrow(sl), nrow(cand)))
@@ -117,7 +121,9 @@ mod_signal_review_server <- function(id, db) {
 
     .scan_of_current <- reactive({
       cd <- current_diagram(); if (is.null(cd)) return(NULL)
-      cache()[[paste0(cd$diagram_id, "|", .window_key())]]
+      # Brug vinduet fra SCAN-tidspunktet (scanned_n), ej live window_n — ellers
+      # gør et vindue-skifte efter scan cache-opslaget stale → blank graf (C1).
+      cache()[[paste0(cd$diagram_id, "|", .wkey(scanned_n()))]]
     })
 
     observeEvent(input$next_, {
@@ -125,13 +131,14 @@ mod_signal_review_server <- function(id, db) {
       cursor(min(cursor() + 1L, nrow(sl))); preview_parts(NULL)
     })
     observeEvent(input$prev, {
-      if (is.null(signal_list())) return()
+      sl <- signal_list(); if (is.null(sl) || nrow(sl) == 0) return()
       cursor(max(cursor() - 1L, 1L)); preview_parts(NULL)
     })
 
     output$nav_label <- renderUI({
       sl <- signal_list()
-      if (is.null(sl) || nrow(sl) == 0) return(span("Ingen scan endnu", class = "text-muted"))
+      if (is.null(sl)) return(span("Ingen scan endnu", class = "text-muted"))
+      if (nrow(sl) == 0) return(span("Scannet — 0 diagrammer med signal", class = "text-muted"))
       cd <- current_diagram()
       strong(sprintf("%d/%d — %s · %s", cursor(), nrow(sl),
                      cd$indikator_navn, cd$org_navn))
