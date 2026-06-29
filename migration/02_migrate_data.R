@@ -31,12 +31,14 @@ suppressPackageStartupMessages({
   library(DBI)
 })
 
-source("migration_metadata.R", encoding = "UTF-8")
+# Metadata bor nu i pakkens R/metadata.R (én sandhedskilde)
+source(if (file.exists("../R/metadata.R")) "../R/metadata.R" else "R/metadata.R", encoding = "UTF-8")
 
 log_msg <- function(...) message(sprintf("[%s] %s", format(Sys.time(), "%H:%M:%S"), paste0(...)))
 die     <- function(...) stop(paste0(...), call. = FALSE)
 
-cfg          <- yaml::read_yaml("config.yml")$default
+.cfg_path <- if (file.exists("config.yml")) "config.yml" else "../config.yml"
+cfg          <- yaml::read_yaml(.cfg_path)$default
 schema_path  <- cfg$paths$schema_yaml
 dump_dir     <- cfg$paths$data_dump_dir
 tables_sql   <- "01a_create_tables.sql"

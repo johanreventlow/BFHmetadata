@@ -1,0 +1,4 @@
+default:
+  golem_name: BFHmetadata
+  golem_version: 0.1.0
+  app_prod: no

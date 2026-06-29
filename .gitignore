@@ -10,20 +10,20 @@
 .env
 
 # Data-dumps (Parquet) — kilden transporteres via ZIP, ej git
-access_data_dump/
+migration/access_data_dump/
 *.parquet
 
 # Store binære artefakter fra Access GUI (Trin 0b)
-*.pdf
-*.png
+migration/*.pdf
+migration/*.png
 
 # Genereret skema-output (regenereres af 01_generate_ddl.R)
-01_schema.sql
-01a_create_tables.sql
-01b_foreign_keys.sql
+migration/01_schema.sql
+migration/01a_create_tables.sql
+migration/01b_foreign_keys.sql
 
 # Logs
-introspection_log.txt
+migration/introspection_log.txt
 *.log
 
 # R session-artefakter
@@ -31,6 +31,7 @@ introspection_log.txt
 .RData
 .Rproj.user/
 .Ruserdata
+Rplots.pdf
 
 # OS
 .DS_Store

@@ -148,3 +148,42 @@ Hvis de viser mojibake (`Ã¦`, `Ã¸`), tjek at DSN er sat med `encoding=UTF-8`
 `dbReadTable()` fejlede på den specifikke tabel. Tjek `introspection_log.txt`
 for fejlmeddelelse — sandsynligvis kolonne-typer (fx memo-felter) der
 arrow-pakken ikke kan håndtere uden konvertering.
+
+---
+
+## CRUD-app (Indikator-admin, v0)
+
+Lokal Golem Shiny-app til redigering af `tblIndikatorer` i Supabase.
+
+### Start app
+
+```bash
+Rscript dev/run_dev.R
+```
+
+Åbner browser på http://127.0.0.1:3838 (kun lokal). Kræver `.Renviron` med
+`SUPABASE_DB_PASSWORD`. Alternativt i en interaktiv R-session:
+
+```r
+pkgload::load_all("."); run_app()   # auto-åbner browser interaktivt
+```
+
+(Bemærk: `Rscript R/run_app.R` virker IKKE — den fil *definerer* kun funktionen.)
+
+### Skrive-guard
+
+Skrivninger (create/update/soft-delete) er deaktiveret som standard. Aktivér bevidst:
+
+```r
+options(bfhmeta.write_enabled = TRUE)   # i R-session før run_app()
+# eller (med dev-launcher):
+BFHMETA_WRITE=1 Rscript dev/run_dev.R
+```
+
+### Smoke-test (read + write round-trip)
+
+```bash
+BFHMETA_WRITE=1 Rscript dev/smoke_supabase.R
+```
+
+Migrations-filer ligger i `migration/`.

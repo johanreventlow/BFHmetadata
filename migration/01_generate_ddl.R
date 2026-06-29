@@ -23,13 +23,15 @@ suppressPackageStartupMessages({
 log_msg <- function(...) message(sprintf("[%s] %s", format(Sys.time(), "%H:%M:%S"), paste0(...)))
 
 # --- Stier -------------------------------------------------------------------
-cfg <- yaml::read_yaml("config.yml")$default
+.cfg_path <- if (file.exists("config.yml")) "config.yml" else "../config.yml"
+cfg <- yaml::read_yaml(.cfg_path)$default
 schema_path  <- cfg$paths$schema_yaml      # access_schema.yaml
 out_tables   <- "01a_create_tables.sql"    # kun CREATE TABLE
 out_fks      <- "01b_foreign_keys.sql"     # kun ALTER TABLE ADD FK
 
 # Delt sandhedskilde: map_odbc_type(), PK_MAP, FK_MAP
-source("migration_metadata.R", encoding = "UTF-8")
+# Metadata bor nu i pakkens R/metadata.R (én sandhedskilde)
+source(if (file.exists("../R/metadata.R")) "../R/metadata.R" else "R/metadata.R", encoding = "UTF-8")
 pk_map <- PK_MAP
 fk_map <- FK_MAP
 
