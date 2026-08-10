@@ -169,4 +169,16 @@ LOOKUP_TABLES <- list(
          list(col = "organisatorisk_enhed", type = "fk", label = "Organisatorisk enhed",
               parent = "tblOrganisationStruktur", parent_pk = "Id",
               label_expr = 'COALESCE("organisatorisk_navn_langt","organisatorisk_navn_teknisk")')))
+  ,
+  # Oversættelse: navn-fra-data → organisatorisk enhed. Bruges af signal-scan
+  # (enhed-varianter); sletning ufarlig (intet refererer til rækkerne).
+  list(id = "org_oversaettelse", table = "tblOrganisationOversaettelse",
+       pk = "Id", label = "Organisations-oversættelse",
+       cols = list(
+         list(col = "organisatorisk_navn_fra_data", type = "text",
+              label = "Navn fra data"),
+         list(col = "organisatorisk_navn_teknisk", type = "fk",
+              label = "Organisatorisk enhed",
+              parent = "tblOrganisationStruktur", parent_pk = "Id",
+              label_expr = 'COALESCE("organisatorisk_navn_langt","organisatorisk_navn_teknisk")')))
 )
