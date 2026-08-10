@@ -15,18 +15,3 @@ test_that("org_oversaettelse-entry findes med korrekte kolonner", {
   expect_identical(fk$parent_pk, "Id")
   expect_true(grepl("organisatorisk_navn_langt", fk$label_expr))
 })
-
-test_that("alle LOOKUP_TABLES-entries har paakraevede felter", {
-  for (cfg in LOOKUP_TABLES) {
-    expect_true(all(c("id", "table", "pk", "label", "cols") %in% names(cfg)),
-                info = cfg$id)
-    for (c in cfg$cols) {
-      expect_true(all(c("col", "type", "label") %in% names(c)),
-                  info = paste(cfg$id, c$col))
-      if (identical(c$type, "fk")) {
-        expect_true(all(c("parent", "parent_pk", "label_expr") %in% names(c)),
-                    info = paste(cfg$id, c$col))
-      }
-    }
-  }
-})

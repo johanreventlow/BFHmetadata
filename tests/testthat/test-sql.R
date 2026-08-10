@@ -16,9 +16,18 @@ test_that("lookup-byggere bruger pk-kolonne (Id) korrekt parametriseret", {
 test_that("LOOKUP_TABLES har pk=Id + datakilder-refcheck + personer-fk", {
   expect_gte(length(LOOKUP_TABLES), 7)
   for (cfg in LOOKUP_TABLES) {
-    expect_true(all(c("id", "table", "pk", "label", "cols") %in% names(cfg)))
+    expect_true(all(c("id", "table", "pk", "label", "cols") %in% names(cfg)),
+                info = cfg$id)
     expect_equal(cfg$pk, "Id")
     expect_true(length(cfg$cols) >= 1)
+    for (c in cfg$cols) {
+      expect_true(all(c("col", "type", "label") %in% names(c)),
+                  info = paste(cfg$id, c$col))
+      if (identical(c$type, "fk")) {
+        expect_true(all(c("parent", "parent_pk", "label_expr") %in% names(c)),
+                    info = paste(cfg$id, c$col))
+      }
+    }
   }
   dk <- Find(function(c) c$id == "datakilder", LOOKUP_TABLES)
   expect_equal(dk$ref_check$child, "tblIndikatorer")
