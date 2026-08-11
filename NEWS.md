@@ -1,3 +1,15 @@
+# BFHmetadata 0.7.0
+
+## Nye features
+* Diagram-CRUD: ny "Diagrammer"-fane med filterbar oversigt over ALLE
+  diagrammer (indikator, enhed, status, type) og formular-modal til
+  opret/redigér/slet. Blød duplikat-advarsel ved samme indikator/enhed/type.
+* Diagrammer kan også redigeres direkte fra indikator-modalen: ny
+  "Diagrammer"-sektion viser indikatorens diagrammer, og formular åbnes med
+  indikator forudfyldt og låst (retur til indikator-modalen efter gem).
+* Slet-guard: diagrammer med median-knæk kan ikke slettes — venlig besked
+  foreslår deaktivering eller sletning af knækkene først.
+
 # BFHmetadata 0.6.0
 
 ## Nye features
