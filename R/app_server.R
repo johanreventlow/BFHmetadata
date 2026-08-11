@@ -45,6 +45,8 @@ app_server <- function(input, output, session) {
   observeEvent(input$go_signal, bslib::nav_select("nav", "signal"))
   observeEvent(input$go_diagrammer, bslib::nav_select("nav", "diagrammer"))
   observeEvent(input$go_org_struktur, bslib::nav_select("nav", "org_struktur"))
+
+  output$write_badge <- renderUI(.write_badge_ui(write_enabled()))
   for (cfg in LOOKUP_TABLES) local({
     cc <- cfg
     observeEvent(input[[paste0("go_", cc$id)]], bslib::nav_select("nav", cc$id))

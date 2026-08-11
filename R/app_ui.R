@@ -14,8 +14,25 @@ app_ui <- function(request) {
     do.call(bslib::nav_menu, c(list(title = "Opslagstabeller"),
       lapply(LOOKUP_TABLES, function(cfg)
         bslib::nav_panel(cfg$label, value = cfg$id,
-          mod_lookup_table_ui(cfg$id, cfg)))))
+          mod_lookup_table_ui(cfg$id, cfg))))),
+    bslib::nav_spacer(),
+    bslib::nav_item(uiOutput("write_badge"))
   )
+}
+
+#' Badge der viser om DB-skrivning er aktiv (roed = writes rammer prod).
+#' Ren funktion — unit-testbar uden session.
+#' @noRd
+.write_badge_ui <- function(enabled) {
+  if (enabled) {
+    tags$span(class = "badge text-bg-danger align-self-center",
+              title = "BFHMETA_WRITE=1 — aendringer skrives til Supabase",
+              "Skrivning aktiv")
+  } else {
+    tags$span(class = "badge text-bg-secondary align-self-center",
+              title = "Saet BFHMETA_WRITE=1 for at aktivere skrivning",
+              "Skrivebeskyttet")
+  }
 }
 
 #' Startside med flise-grid (vælg tabel/område). Flise-knapper er ej namespacede
