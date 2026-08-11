@@ -18,6 +18,7 @@ Imports:
     arrow,
     dplyr,
     rlang,
+    lubridate,
     later,
     jsonlite,
     BFHcharts,

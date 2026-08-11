@@ -139,7 +139,7 @@ build_diagram_index_sql <- function() {
     ' max("organisatorisk_navn_langt") FILTER (WHERE "organisatorisk_niveau" = 7) AS afsnit',
     ' FROM anc GROUP BY start_id',
     ') ',
-    'SELECT d."id" AS diagram_id, ',
+    'SELECT d."id" AS diagram_id, d."periode_aggregering", ',
     'i."id" AS indikator_id, i."indikator_navn", i."indikator_navn_teknisk", ',
     'h."hierarki_navn" AS datasaet, dp."hierarki_navn" AS datapakke, ',
     'o."Id" AS org_id, o."organisatorisk_navn_teknisk" AS org_teknisk, ',
@@ -183,9 +183,13 @@ pg_int_array <- function(ids) {
   paste0("{", paste(as.integer(ids), collapse = ","), "}")
 }
 
+#' Gem median-knæk MED den aggregering det blev sat under. Uden aggregeringen
+#' kan et knæk ikke valideres senere: samme dato giver forskellige faseskift
+#' ved forskellig periode (og kan drifte flere uger) — se fct_period.R.
 #' @noRd
 build_median_insert_sql <- function() {
-  'INSERT INTO "tblDiagrammerMedian" ("diagram", "laas_median") VALUES ($1, $2) RETURNING "id"'
+  paste0('INSERT INTO "tblDiagrammerMedian" ("diagram", "laas_median", ',
+         '"aggregering") VALUES ($1, $2, $3) RETURNING "id"')
 }
 
 #' @noRd

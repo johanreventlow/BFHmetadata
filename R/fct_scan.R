@@ -27,10 +27,16 @@ enhed_variants_for <- function(variants_df, org_id) {
 #'   slice (alle enheder). Bruges til per-indikator-genbrug: flere diagrammer
 #'   på samme indikator deler ét arrow-load (evt. via dags-cache) i stedet for
 #'   at genåbne datasættet pr. diagram. NULL = load selv fra base_path.
+#' @param period diagrammets periode_aggregering — dansk værdi ("uge",
+#'   "maaned", ...) el. lubridate-enhed ("week"/"month"); begge accepteres via
+#'   period_to_en. NULL/tom = ingen aggregering. Uden dette beregnes signalet
+#'   på en ANDEN serie end den BFHddl tegner — se fct_period.R.
+#'   Styrer også hvilke median-knæk der er gyldige: knæk sat under en anden
+#'   aggregering ignoreres (filter_medians_by_period).
 #' @return list(diagram_id, status, signal, n_obs, slice, qic_result, summary)
 #' @noRd
 scan_diagram <- function(row, base_path, medians_df, variants_df, window_n = NULL,
-                         slice_loader = NULL) {
+                         slice_loader = NULL, period = NULL) {
   empty <- function(status) list(diagram_id = row$diagram_id, status = status,
     signal = FALSE, n_obs = 0L, slice = NULL, qic_result = NULL, summary = NULL)
   # Værdi-givende if/else (ingen non-local return ud af safe_operation-blokken):
@@ -53,13 +59,41 @@ scan_diagram <- function(row, base_path, medians_df, variants_df, window_n = NUL
       if (is.null(slice) || nrow(slice) == 0) {
         empty("ingen_data")
       } else {
-        if (!is.null(window_n)) slice <- parquet_limit_observations(slice, window_n)
-        slice <- slice[order(slice$dato), , drop = FALSE]
-        parts <- resolve_median_breaks(row$diagram_id, medians_df, slice$dato)
-        sig <- compute_signal(slice, parts = parts)
-        list(diagram_id = row$diagram_id, status = "ok", signal = isTRUE(sig$signal),
-             n_obs = length(unique(as.Date(slice$dato))), slice = slice,
-             qic_result = sig$qic_result, summary = sig$summary_all)
+        # Aggregér FØR vindue-begrænsningen (BFHddl-orden: §5.1 → §5.2a →
+        # §5.2b). Omvendt rækkefølge ville begrænse til N *dage* og derefter
+        # bucke dem — målt på produktionsdata: 24 punkter → 4.
+        # Ingen tryCatch-fallback til uaggregeret data (modsat BFHddl's
+        # pipeline): her ville det tavst genskabe præcis den bug vi fikser.
+        # Fejl bobler til safe_operation → status "fejl".
+        p <- period_to_en(period)
+        if (!identical(p, "day")) {
+          slice <- aggregate_to_period(slice, period = p)
+        }
+        # drop_incomplete kan tømme et slice der HAVDE rækker (serie hvis
+        # eneste data ligger i indeværende periode) → guard igen efter agg.
+        # Værdi-givende if/else, ej return(): en non-local return ville springe
+        # ud af safe_operation-blokken (se kommentar øverst).
+        if (nrow(slice) == 0) {
+          empty("ingen_data")
+        } else {
+          if (!is.null(window_n)) slice <- parquet_limit_observations(slice, window_n)
+          slice <- slice[order(slice$dato), , drop = FALSE]
+          # Knæk sat under en ANDEN aggregering ignoreres: deres dato ville
+          # lande på en fase-grænse der aldrig var tilsigtet. n_ignored
+          # rapporteres, så UI'et kan vise det (ellers ændres faserne usynligt).
+          meds_ok <- filter_medians_by_period(medians_df, period)
+          n_ignored <- if (is.data.frame(medians_df)) {
+            nrow(medians_df) - nrow(meds_ok)
+          } else {
+            0L
+          }
+          parts <- resolve_median_breaks(row$diagram_id, meds_ok, slice$dato)
+          sig <- compute_signal(slice, parts = parts)
+          list(diagram_id = row$diagram_id, status = "ok", signal = isTRUE(sig$signal),
+               n_obs = length(unique(as.Date(slice$dato))), slice = slice,
+               qic_result = sig$qic_result, summary = sig$summary_all,
+               n_ignored_breaks = as.integer(n_ignored))
+        }
       }
     }
   }, fallback = empty("fejl"))

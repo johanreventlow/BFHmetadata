@@ -1,5 +1,33 @@
 # BFHmetadata (development)
 
+## Breaking changes
+* **Signal-gennemgangen beregner nu signaler på den samme serie som
+  diagrammerne faktisk viser.** Tidligere blev Anhøj-signaler beregnet på rå
+  dagsdata, mens BFHddl aggregerer til uge/måned pr. diagram
+  (`periode_aggregering`) før chart-generering. Gennemgangen viste altså
+  signaler for en anden tidsserie end den klinikerne ser.
+
+  Målt på produktionsdata gav det forskelligt signal for 12 af 39 enheder
+  (31 %) på én indikator — i begge retninger, altså både signaler der ikke
+  fandtes i diagrammet og manglende signaler der gjorde. Eksisterende
+  vurderinger baseret på gennemgangen bør derfor gentages.
+
+  Konsekvenser: "Seneste N" tæller nu **perioder** (uger/måneder), ikke dage —
+  default er hævet fra 24 til 36, så gennemgangen viser lige så mange
+  observationer som den genererede PDF. Tallet "n obs" er nu antal
+  perioder, ikke antal dage.
+
+* **Median-knæk gemmes med den aggregering de blev sat under.** Et knæk
+  gemmes som en dato, men betyder reelt en position i serien — samme dato
+  giver forskellige faseskift ved forskellig aggregering (fx flytter
+  2025-03-17 sig til 2025-04-01 under måneds-aggregering, fordi ingen
+  periode starter midt i måneden). Knæk sat under en anden aggregering end
+  diagrammet bruger nu, indgår derfor **ikke** i beregningen; de vises i
+  stedet som ignorerede i knæk-tabellen med en advarsel ved grafen, så
+  faserne ikke ændrer sig usynligt. Eksisterende knæk er stemplet med
+  diagrammets nuværende periode (de lå alle i forvejen på den periodes
+  grænse), så ingen knæk falder ud ved opgraderingen.
+
 ## Nye features
 * Signal-gennemgang er markant hurtigere, og man kan arbejde næsten med det
   samme: diagrammer scannes pr. indikator (ét parquet-load deles af alle

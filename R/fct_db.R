@@ -139,10 +139,21 @@ make_db <- function(pool) {
       DBI::dbGetQuery(pool, build_median_batch_sql(),
                       params = list(pg_int_array(ids)))
     },
-    add_median_break = function(diagram_id, dato) {
+    # aggregering = diagrammets periode_aggregering PÅ SÆTTE-TIDSPUNKTET
+    # (dansk værdi, fx "uge"/"maaned"). Gør knækket selvbeskrivende, så en
+    # senere periode-ændring kan opdages i stedet for at flytte faseskiftet
+    # tavst.
+    add_median_break = function(diagram_id, dato, aggregering = NA_character_) {
       assert_write_enabled()
+      agg <- if (is.null(aggregering) || length(aggregering) == 0L ||
+                 is.na(aggregering) || !nzchar(trimws(aggregering))) {
+        NA_character_
+      } else {
+        trimws(as.character(aggregering))
+      }
       DBI::dbGetQuery(pool, build_median_insert_sql(),
-                      params = list(diagram_id, as.character(as.Date(dato))))[[1]][1]
+                      params = list(diagram_id, as.character(as.Date(dato)),
+                                    agg))[[1]][1]
     },
     delete_median_break = function(median_id) {
       assert_write_enabled()

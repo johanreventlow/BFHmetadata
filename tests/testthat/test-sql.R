@@ -119,6 +119,9 @@ test_that("build_diagram_index_sql joiner indikator/hierarki/datapakke/org + org
   expect_match(sql, "datapakke")       # forælder-hierarki
   expect_match(sql, "datasaet")
   expect_match(sql, "indikator_navn_teknisk")
+  # Perioden STYRER signalberegningen (aggregering før signal) — uden den
+  # beregnes signalet på en anden serie end BFHddl tegner.
+  expect_match(sql, '"periode_aggregering"')
   # Org-niveau-ancestry (rekursiv CTE)
   expect_match(sql, "WITH RECURSIVE")
   expect_match(sql, "overafdeling")
@@ -129,8 +132,11 @@ test_that("build_diagram_index_sql joiner indikator/hierarki/datapakke/org + org
 test_that("median SQL-byggere er parametriserede", {
   expect_match(build_median_list_sql(),
     'FROM "tblDiagrammerMedian" WHERE "diagram" = \\$1')
+  # aggregering gemmes med: uden den kan et knæk ikke valideres senere
+  # (samme dato = forskellig fase-position ved forskellig periode)
   expect_match(build_median_insert_sql(),
-    'INSERT INTO "tblDiagrammerMedian" \\("diagram", "laas_median"\\) VALUES \\(\\$1, \\$2\\) RETURNING "id"')
+    paste0('INSERT INTO "tblDiagrammerMedian" \\("diagram", "laas_median", ',
+           '"aggregering"\\) VALUES \\(\\$1, \\$2, \\$3\\) RETURNING "id"'))
   expect_match(build_median_delete_sql(),
     'DELETE FROM "tblDiagrammerMedian" WHERE "id" = \\$1')
 })
