@@ -1,3 +1,37 @@
+# BFHmetadata (development)
+
+## Nye features
+* Signal-gennemgang er markant hurtigere, og man kan arbejde næsten med det
+  samme: diagrammer scannes pr. indikator (ét parquet-load deles af alle
+  diagrammer på samme indikator), resultater vises løbende mens scannet kører
+  (progressivt scan med Stop-knap), og indlæste indikator-slices gemmes i en
+  dags-cache på disk, så gentagne scans samme dag springer parquet-lageret
+  helt over. Ny afkrydsning "Ignorér dags-cache" tvinger genindlæsning.
+  Baggrund: parquet-lageret består af ~172k bittesmå dags-partitionsfiler,
+  hvor åbne-omkostningen dominerer totalt over datamængden.
+* Appen åbner hurtigere: en fanes data hentes først når fanen åbnes (før
+  hentede opstarten alle modulers referencedata), og referencedata som
+  dropdown-lister og diagram-indeks genbruges i stedet for at blive hentet
+  forfra hver gang — også når en modal åbnes. Egne ændringer slår igennem
+  med det samme, også på tværs af faner.
+* Signal-scan henter alle median-knæk i ét databasekald i stedet for ét pr.
+  diagram (ved ~600 diagrammer sparer det ~600 forespørgsler til Supabase).
+
+## Interne ændringer
+* Nyt dags-cache-lag (fct_cache.R): én RDS pr. indikator pr. dag under
+  R_user_dir (overstyrbar via option bfhmeta.cache_dir), NULL caches aldrig,
+  korrupte filer ignoreres, auto-prune efter 7 dage. scan_diagram() kan
+  modtage et preloadet slice via slice_loader (per-indikator-genbrug).
+  Scan-skedulering er injicérbar (option bfhmeta.scan_scheduler) af
+  testhensyn. Nye Imports: rlang, later.
+* Nyt app-cache-lag (fct_db_cache.R): make_db_cached() memoiserer
+  read-mostly-accessors i et delt session-lager (nøgle = accessor-navn +
+  argumenter), rydder ved enhver skrivning og videresender ukendte
+  accessors uændret. Nyt lazy-init-lag (fct_lazy.R): lazy_module()
+  registrerer et moduls server-funktion ved første besøg på fanen.
+  Nyt batch-opslag af median-knæk (build_median_batch_sql +
+  medians_by_diagram) med fallback til per-diagram ved fejl.
+
 # BFHmetadata 0.7.0
 
 ## Nye features

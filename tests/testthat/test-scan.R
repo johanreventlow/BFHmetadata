@@ -141,6 +141,87 @@ test_that("scan_diagram: ingen enhed-varianter → ingen_data (ingen blandet-enh
   expect_equal(res$status, "ingen_data")
 })
 
+test_that("slice_filter_enhed: case-insensitive match; NULL ved no-match/tom/manglende kolonne", {
+  d <- data.frame(dato = as.Date("2020-01-01") + 0:2, vaerdi = 1:3,
+                  enhed = c("Afd X", "AFD X", "Afd Y"), stringsAsFactors = FALSE)
+  expect_equal(nrow(slice_filter_enhed(d, "afd x")), 2)
+  expect_equal(nrow(slice_filter_enhed(d, c("afd x", "afd y"))), 3)
+  expect_null(slice_filter_enhed(d, "ukendt"))
+  expect_null(slice_filter_enhed(NULL, "afd x"))
+  expect_null(slice_filter_enhed(d[0, ], "afd x"))
+  # Uden enhed-kolonne kan slicet ikke afgrænses → NULL (= ingen_data), aldrig
+  # signal på blandede enheder
+  expect_null(slice_filter_enhed(
+    data.frame(dato = as.Date("2020-01-01"), vaerdi = 1), "afd x"))
+})
+
+test_that("scan_diagram med slice_loader: bruger preloadet slice, rører ikke disken", {
+  # base_path findes ikke → uden loader ville resultatet være ingen_data.
+  # Med loader skal parquet-laget slet ikke i spil (per-indikator-genbrug).
+  df <- data.frame(dato = as.Date("2020-01-01") + 0:23 * 30,
+                   vaerdi = c(rep(10, 12), rep(2, 12)),
+                   taeller = NA_real_, naevner = NA_real_,
+                   enhed = "afd x", stringsAsFactors = FALSE)
+  row <- list(diagram_id = 1L, indikator_navn_teknisk = "ligegyldig", org_id = 5L)
+  vdf <- data.frame(org_id = 5L, teknisk = "Afd X", kort = NA, langt = NA,
+                    fra_data = NA, stringsAsFactors = FALSE)
+  res <- scan_diagram(row, file.path(tempdir(), "findes_ej"), NULL, vdf,
+                      slice_loader = function() df)
+  expect_equal(res$status, "ok")
+  expect_true(res$signal)
+  expect_equal(res$n_obs, 24L)
+})
+
+test_that("scan_diagram med slice_loader der giver NULL → ingen_data", {
+  row <- list(diagram_id = 2L, indikator_navn_teknisk = "x", org_id = 5L)
+  vdf <- data.frame(org_id = 5L, teknisk = "E", kort = NA, langt = NA,
+                    fra_data = NA, stringsAsFactors = FALSE)
+  res <- scan_diagram(row, tempdir(), NULL, vdf, slice_loader = function() NULL)
+  expect_equal(res$status, "ingen_data")
+  expect_false(res$signal)
+})
+
+test_that("scan_diagram: slice_loader-slice for ANDEN enhed → ingen_data (filter virker)", {
+  df <- data.frame(dato = as.Date("2020-01-01") + 0:5 * 30, vaerdi = 1:6,
+                   taeller = NA_real_, naevner = NA_real_,
+                   enhed = "anden afd", stringsAsFactors = FALSE)
+  row <- list(diagram_id = 3L, indikator_navn_teknisk = "x", org_id = 5L)
+  vdf <- data.frame(org_id = 5L, teknisk = "Afd X", kort = NA, langt = NA,
+                    fra_data = NA, stringsAsFactors = FALSE)
+  res <- scan_diagram(row, tempdir(), NULL, vdf, slice_loader = function() df)
+  expect_equal(res$status, "ingen_data")
+})
+
+test_that("medians_by_diagram: split pr. diagram; manglende id → NULL-agtig tom df", {
+  m <- data.frame(id = 1:3, diagram = c(7L, 7L, 9L),
+                  laas_median = as.Date(c("2020-02-01", "2020-05-01", "2020-03-01")))
+  idx <- medians_by_diagram(m, c(7L, 9L, 11L))
+  expect_equal(nrow(idx[["7"]]), 2L)
+  expect_equal(nrow(idx[["9"]]), 1L)
+  # Diagram uden knæk skal give en TOM df (ikke NULL) med diagram-kolonnen
+  # intakt, så resolve_median_breaks() rammer sin nrow==0-guard som normalt.
+  expect_equal(nrow(idx[["11"]]), 0L)
+  expect_true("diagram" %in% names(idx[["11"]]))
+})
+
+test_that("medians_by_diagram: tom/NULL input → tomme df'er for alle id'er", {
+  idx <- medians_by_diagram(NULL, c(1L, 2L))
+  expect_equal(nrow(idx[["1"]]), 0L)
+  expect_true("laas_median" %in% names(idx[["1"]]))
+  idx2 <- medians_by_diagram(
+    data.frame(id = integer(0), diagram = integer(0),
+               laas_median = as.Date(character(0))), 5L)
+  expect_equal(nrow(idx2[["5"]]), 0L)
+})
+
+test_that("medians_by_diagram: resultat virker i resolve_median_breaks (kontrakt)", {
+  x <- as.Date("2020-01-01") + 0:23 * 30
+  m <- data.frame(id = 1L, diagram = 7L, laas_median = x[13])
+  idx <- medians_by_diagram(m, c(7L, 8L))
+  expect_equal(resolve_median_breaks(7L, idx[["7"]], x), 13L)
+  expect_null(resolve_median_breaks(8L, idx[["8"]], x))   # tom df → ingen knæk
+})
+
 test_that("index_filter_choices: sorterede unikke valg pr. dimension (drop NA)", {
   idx <- data.frame(
     overafdeling = c("B", "A", "A", NA),

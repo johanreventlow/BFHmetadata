@@ -15,16 +15,22 @@ enhed_variants_for <- function(variants_df, org_id) {
   unique(v)
 }
 
-#' Scan ét diagram: byg enhed-filter → load parquet-slice → (vindue) → resolve
-#' median-knæk → compute_signal. Fanger fejl pr. diagram (safe_operation).
+#' Scan ét diagram: byg enhed-filter → hent fuldt indikator-slice → filtrér
+#' in-memory → (vindue) → resolve median-knæk → compute_signal. Fanger fejl
+#' pr. diagram (safe_operation).
 #' @param row liste/df-række med indikator_navn_teknisk, org_id, diagram_id
 #' @param base_path bruger-valgt parquet-rodmappe
 #' @param medians_df alle median-rækker for diagrammet (kolonner diagram, laas_median) el. NULL
 #' @param variants_df org_enhed_variants()-output
 #' @param window_n behold seneste N observationer (NULL = alle)
+#' @param slice_loader valgfri 0-args funktion der leverer indikatorens FULDE
+#'   slice (alle enheder). Bruges til per-indikator-genbrug: flere diagrammer
+#'   på samme indikator deler ét arrow-load (evt. via dags-cache) i stedet for
+#'   at genåbne datasættet pr. diagram. NULL = load selv fra base_path.
 #' @return list(diagram_id, status, signal, n_obs, slice, qic_result, summary)
 #' @noRd
-scan_diagram <- function(row, base_path, medians_df, variants_df, window_n = NULL) {
+scan_diagram <- function(row, base_path, medians_df, variants_df, window_n = NULL,
+                         slice_loader = NULL) {
   empty <- function(status) list(diagram_id = row$diagram_id, status = status,
     signal = FALSE, n_obs = 0L, slice = NULL, qic_result = NULL, summary = NULL)
   # Værdi-givende if/else (ingen non-local return ud af safe_operation-blokken):
@@ -37,8 +43,13 @@ scan_diagram <- function(row, base_path, medians_df, variants_df, window_n = NUL
       # enheder. (Rigtige org'er har altid navne → rammer ej normal-flow.)
       empty("ingen_data")
     } else {
-      path <- parquet_indicator_path(base_path, row$indikator_navn_teknisk)
-      slice <- parquet_load_slice(path, enhed = variants)
+      full <- if (!is.null(slice_loader)) {
+        slice_loader()
+      } else {
+        parquet_load_slice(
+          parquet_indicator_path(base_path, row$indikator_navn_teknisk))
+      }
+      slice <- slice_filter_enhed(full, variants)
       if (is.null(slice) || nrow(slice) == 0) {
         empty("ingen_data")
       } else {
@@ -79,6 +90,29 @@ apply_index_filters <- function(index, filters) {
     keep <- keep & !is.na(index[[col]]) & index[[col]] == val
   }
   index[keep, , drop = FALSE]
+}
+
+#' Split et batch-hentet median-datasæt op pr. diagram-id.
+#' Diagrammer uden knæk får en TOM df (ej NULL) med samme kolonner, så
+#' resolve_median_breaks() rammer sin normale nrow==0-guard.
+#' @param medians_df samlet df fra db$diagram_medians_batch() (må være NULL)
+#' @param diagram_ids alle id'er der skal have en indgang
+#' @return named list (nøgle = as.character(diagram_id)) → df
+#' @noRd
+medians_by_diagram <- function(medians_df, diagram_ids) {
+  ids <- as.character(diagram_ids)
+  empty <- if (!is.null(medians_df) && is.data.frame(medians_df)) {
+    medians_df[0, , drop = FALSE]
+  } else {
+    data.frame(id = integer(0), diagram = integer(0),
+               laas_median = as.Date(character(0)))
+  }
+  if (is.null(medians_df) || !is.data.frame(medians_df) ||
+      nrow(medians_df) == 0 || !"diagram" %in% names(medians_df)) {
+    return(stats::setNames(rep(list(empty), length(ids)), ids))
+  }
+  parts <- split(medians_df, as.character(medians_df$diagram))
+  stats::setNames(lapply(ids, function(k) parts[[k]] %||% empty), ids)
 }
 
 #' Part-positioner for et forhåndsvist faseskift: eksisterende median-knæk +

@@ -5,6 +5,8 @@ make_fake_signal_db <- function(base, idx) {
       kort = NA, langt = NA, fra_data = NA, stringsAsFactors = FALSE),
     diagram_medians = function(diagram_id) data.frame(
       id = integer(0), diagram = integer(0), laas_median = as.Date(character(0))),
+    diagram_medians_batch = function(diagram_ids) data.frame(
+      id = integer(0), diagram = integer(0), laas_median = as.Date(character(0))),
     add_median_break = function(diagram_id, dato) 999L,
     delete_median_break = function(median_id) 1L)
 }
@@ -39,6 +41,7 @@ test_that("scan finder kun diagrammer med signal", {
     session$setInputs(parquet_dir = base, window_mode = "all", window_n = 24,
       f_overafdeling = "", f_afsnit = "", f_datapakke = "", f_datasaet = "",
       f_indikator_navn = "", scan = 1)
+    drain_scan()
     expect_equal(signal_list()$diagram_id, 1L)        # kun "Sig"
     expect_equal(current_diagram()$diagram_id, 1L)
   })
@@ -63,6 +66,7 @@ test_that("næste/forrige bladrer i signal-listen", {
     session$setInputs(parquet_dir = base, window_mode = "all", window_n = 24,
       f_overafdeling = "", f_afsnit = "", f_datapakke = "", f_datasaet = "",
       f_indikator_navn = "", scan = 1)
+    drain_scan()
     expect_equal(current_diagram()$diagram_id, 10L)
     session$setInputs(next_ = 1)
     expect_equal(current_diagram()$diagram_id, 20L)
@@ -89,6 +93,7 @@ test_that("scan uden signaler → tom liste (0 rækker) + current_diagram NULL",
     session$setInputs(parquet_dir = base, window_mode = "all", window_n = 24,
       f_overafdeling = "", f_afsnit = "", f_datapakke = "", f_datasaet = "",
       f_indikator_navn = "", scan = 1)
+    drain_scan()
     expect_equal(nrow(signal_list()), 0L)
     expect_null(current_diagram())
   })
@@ -105,23 +110,94 @@ test_that("re-scan (samme vindue) genbruger cache — scan-loopet henter ikke me
     indikator_navn_teknisk = "a", datasaet = "d", datapakke = "p", org_id = 5L,
     org_teknisk = "E", org_navn = "E", org_niveau = 5L, overafdeling = "OA",
     afdeling = NA, afsnit = NA, stringsAsFactors = FALSE)
-  # Tæl scan-loop-hentninger SEPARAT fra display-laget (breaks_tbl læser også
-  # medians for at vise eksisterende knæk). Cache-genbrugs-invarianten gælder
-  # KUN scan-loopet: et cache-hit må aldrig udløse en ny scan-sti-hentning.
-  calls <- new.env(); calls$scan_loop <- 0L
+  # Tæl scan-stiens median-hentninger SEPARAT fra display-laget (breaks_tbl
+  # læser også medians for at vise eksisterende knæk). Scannet henter nu
+  # medians i ÉT batch-kald pr. scan; per-diagram-stien må slet ikke rammes.
+  calls <- new.env(); calls$batch <- 0L; calls$per_diagram <- 0L
   db <- make_fake_signal_db(base, idx)
+  db$diagram_medians_batch <- function(diagram_ids) {
+    calls$batch <- calls$batch + 1L
+    data.frame(id = integer(0), diagram = integer(0), laas_median = as.Date(character(0)))
+  }
   db$diagram_medians <- function(diagram_id) {
     fns <- paste(unlist(lapply(sys.calls(), function(x) deparse(x[[1]]))), collapse = " ")
-    if (grepl("withProgress|incProgress", fns)) calls$scan_loop <- calls$scan_loop + 1L
+    if (grepl("scan_process_group", fns)) calls$per_diagram <- calls$per_diagram + 1L
     data.frame(id = integer(0), diagram = integer(0), laas_median = as.Date(character(0)))
   }
   shiny::testServer(mod_signal_review_server, args = list(db = db), {
     session$setInputs(parquet_dir = base, window_mode = "all", window_n = 24,
       f_overafdeling = "", f_afsnit = "", f_datapakke = "", f_datasaet = "",
       f_indikator_navn = "", scan = 1)
-    expect_equal(calls$scan_loop, 1L)      # første scan henter medians 1x pr. diagram
+    drain_scan()
+    expect_equal(calls$batch, 1L)          # ét batch-kald for hele scannet
+    expect_equal(calls$per_diagram, 0L)    # ingen per-diagram-round-trips
     session$setInputs(scan = 2)            # re-scan samme vindue → cache-hit
-    expect_equal(calls$scan_loop, 1L)      # cache-hit → ingen ny scan-sti-hentning
+    drain_scan()
+    expect_equal(calls$per_diagram, 0L)    # cache-hit → ingen ny scan-sti-hentning
+  })
+})
+
+test_that("batch-medians: ÉT kald uanset antal diagrammer, og knæk havner rigtigt", {
+  skip_if_not_installed("arrow")
+  base <- withr::local_tempdir()
+  for (ind in c("a", "b", "c")) {
+    dir.create(file.path(base, ind))
+    arrow::write_parquet(data.frame(dato = as.Date("2020-01-01") + 0:23 * 30,
+      vaerdi = c(rep(10, 12), rep(2, 12)), taeller = NA_real_,
+      naevner = NA_real_, enhed = "e"), file.path(base, ind, "p.parquet"))
+  }
+  idx <- data.frame(diagram_id = c(10L, 20L, 30L), indikator_id = 1:3,
+    indikator_navn = c("A", "B", "C"), indikator_navn_teknisk = c("a", "b", "c"),
+    datasaet = "d", datapakke = "p", org_id = 5L, org_teknisk = "E",
+    org_navn = "E", org_niveau = 5L, overafdeling = "OA", afdeling = NA,
+    afsnit = NA, stringsAsFactors = FALSE)
+  seen <- new.env(); seen$n <- 0L; seen$ids <- NULL
+  db <- make_fake_signal_db(base, idx)
+  # Kun diagram 20 har et knæk (på 13. observation) → fase-split netop dér.
+  db$diagram_medians_batch <- function(diagram_ids) {
+    seen$n <- seen$n + 1L; seen$ids <- diagram_ids
+    data.frame(id = 1L, diagram = 20L,
+               laas_median = as.Date("2020-01-01") + 12 * 30)
+  }
+  shiny::testServer(mod_signal_review_server, args = list(db = db), {
+    session$setInputs(parquet_dir = base, window_mode = "all", window_n = 24,
+      f_overafdeling = "", f_afsnit = "", f_datapakke = "", f_datasaet = "",
+      f_indikator_navn = "", scan = 1)
+    drain_scan()
+    expect_equal(seen$n, 1L)                       # ét kald for 3 diagrammer
+    expect_setequal(seen$ids, c(10L, 20L, 30L))
+    # Knækket ramte KUN diagram 20 (to faser); de andre har én fase
+    expect_equal(max(cache()[["20|all"]]$summary$fase), 2)
+    expect_equal(max(cache()[["10|all"]]$summary$fase), 1)
+    expect_equal(max(cache()[["30|all"]]$summary$fase), 1)
+  })
+})
+
+test_that("batch-medians fejler → fallback til per-diagram (scan overlever)", {
+  skip_if_not_installed("arrow")
+  base <- withr::local_tempdir()
+  dir.create(file.path(base, "a"))
+  arrow::write_parquet(data.frame(dato = as.Date("2020-01-01") + 0:23 * 30,
+    vaerdi = c(rep(10, 12), rep(2, 12)), taeller = NA_real_, naevner = NA_real_,
+    enhed = "e"), file.path(base, "a", "p.parquet"))
+  idx <- data.frame(diagram_id = 1L, indikator_id = 1L, indikator_navn = "A",
+    indikator_navn_teknisk = "a", datasaet = "d", datapakke = "p", org_id = 5L,
+    org_teknisk = "E", org_navn = "E", org_niveau = 5L, overafdeling = "OA",
+    afdeling = NA, afsnit = NA, stringsAsFactors = FALSE)
+  fallback <- new.env(); fallback$n <- 0L
+  db <- make_fake_signal_db(base, idx)
+  db$diagram_medians_batch <- function(diagram_ids) stop("DB nede")
+  db$diagram_medians <- function(diagram_id) {
+    fallback$n <- fallback$n + 1L
+    data.frame(id = integer(0), diagram = integer(0), laas_median = as.Date(character(0)))
+  }
+  shiny::testServer(mod_signal_review_server, args = list(db = db), {
+    session$setInputs(parquet_dir = base, window_mode = "all", window_n = 24,
+      f_overafdeling = "", f_afsnit = "", f_datapakke = "", f_datasaet = "",
+      f_indikator_navn = "", scan = 1)
+    drain_scan()
+    expect_gte(fallback$n, 1L)                     # degraderede, faldt ej om
+    expect_equal(signal_list()$diagram_id, 1L)     # scannet gav stadig resultat
   })
 })
 
@@ -141,6 +217,7 @@ test_that("vindue-skifte EFTER scan gør ikke cache-opslag stale (C1-regression)
     session$setInputs(parquet_dir = base, window_mode = "all", window_n = 24,
       f_overafdeling = "", f_afsnit = "", f_datapakke = "", f_datasaet = "",
       f_indikator_navn = "", scan = 1)
+    drain_scan()
     expect_equal(.scan_of_current()$status, "ok")
     # Skift vindue UDEN at re-scanne → opslaget skal stadig finde det scannede
     session$setInputs(window_mode = "latest", window_n = 12)
@@ -169,6 +246,7 @@ test_that("Gem faseskift kalder add_median_break med valgt dato + invaliderer ca
     session$setInputs(parquet_dir = base, window_mode = "all", window_n = 24,
       f_overafdeling = "", f_afsnit = "", f_datapakke = "", f_datasaet = "",
       f_indikator_navn = "", scan = 1)
+    drain_scan()
     # Simulér klik på en gyldig (ikke-første) observation
     session$setInputs(chart_selected = "2020-07-28")
     session$setInputs(save_break = 1)
@@ -195,6 +273,7 @@ test_that("klik på første observation → ingen skrivning (kan ikke splitte)",
     session$setInputs(parquet_dir = base, window_mode = "all", window_n = 24,
       f_overafdeling = "", f_afsnit = "", f_datapakke = "", f_datasaet = "",
       f_indikator_navn = "", scan = 1)
+    drain_scan()
     session$setInputs(chart_selected = "2020-01-01")   # første obs
     session$setInputs(save_break = 1)
     expect_equal(called$n, 0)
@@ -222,6 +301,7 @@ test_that("valg fra ét diagram skrives ALDRIG på et andet efter navigation", {
     session$setInputs(parquet_dir = base, window_mode = "all", window_n = 24,
       f_overafdeling = "", f_afsnit = "", f_datapakke = "", f_datasaet = "",
       f_indikator_navn = "", scan = 1)
+    drain_scan()
     session$setInputs(chart_selected = "2020-07-28")  # valgt på diagram 10
     session$setInputs(next_ = 1)                      # naviger til diagram 20
     session$setInputs(save_break = 1)                 # stale valg → ingen skrivning
@@ -251,7 +331,107 @@ test_that("delete_break kalder delete_median_break med valgt knæk-id", {
     session$setInputs(parquet_dir = base, window_mode = "all", window_n = 24,
       f_overafdeling = "", f_afsnit = "", f_datapakke = "", f_datasaet = "",
       f_indikator_navn = "", scan = 1)
+    drain_scan()
     session$setInputs(breaks_tbl_rows_selected = 1L, delete_break = 1)
     expect_equal(deleted$id, 42L)
   })
+})
+
+test_that("progressivt scan: første indikator-gruppe vises FØR resten er scannet", {
+  skip_if_not_installed("arrow")
+  base <- withr::local_tempdir()
+  for (ind in c("a", "b")) {
+    dir.create(file.path(base, ind))
+    arrow::write_parquet(data.frame(dato = as.Date("2020-01-01") + 0:23 * 30,
+      vaerdi = c(rep(10, 12), rep(2, 12)), taeller = NA_real_,
+      naevner = NA_real_, enhed = "e"), file.path(base, ind, "p.parquet"))
+  }
+  idx <- data.frame(diagram_id = c(10L, 20L), indikator_id = c(1L, 2L),
+    indikator_navn = c("A", "B"), indikator_navn_teknisk = c("a", "b"),
+    datasaet = "d", datapakke = "p", org_id = 5L, org_teknisk = "E",
+    org_navn = "E", org_niveau = 5L, overafdeling = "OA", afdeling = NA,
+    afsnit = NA, stringsAsFactors = FALSE)
+  # Manuel kø i stedet for later::later — testServer afvikler selv later-køen
+  # under flush, så mellemtilstande kan kun observeres med styret skedulering.
+  queue <- list()
+  withr::local_options(list(
+    bfhmeta.scan_scheduler = function(fn) queue[[length(queue) + 1]] <<- fn))
+  run_queued <- function() {
+    while (length(queue) > 0) { fn <- queue[[1]]; queue <<- queue[-1]; fn() }
+  }
+  db <- make_fake_signal_db(base, idx)
+  shiny::testServer(mod_signal_review_server, args = list(db = db), {
+    session$setInputs(parquet_dir = base, window_mode = "all", window_n = 24,
+      f_overafdeling = "", f_afsnit = "", f_datapakke = "", f_datasaet = "",
+      f_indikator_navn = "", scan = 1)
+    # Kun første gruppe (indikator "a") er processeret — brugeren kan allerede
+    # arbejde mens resten ligger i køen.
+    expect_equal(signal_list()$diagram_id, 10L)
+    expect_true(scan_running())
+    run_queued()
+    expect_equal(signal_list()$diagram_id, c(10L, 20L))
+    expect_false(scan_running())
+  })
+})
+
+test_that("stop scan: ventende grupper processeres ikke; fundne signaler består", {
+  skip_if_not_installed("arrow")
+  base <- withr::local_tempdir()
+  for (ind in c("a", "b")) {
+    dir.create(file.path(base, ind))
+    arrow::write_parquet(data.frame(dato = as.Date("2020-01-01") + 0:23 * 30,
+      vaerdi = c(rep(10, 12), rep(2, 12)), taeller = NA_real_,
+      naevner = NA_real_, enhed = "e"), file.path(base, ind, "p.parquet"))
+  }
+  idx <- data.frame(diagram_id = c(10L, 20L), indikator_id = c(1L, 2L),
+    indikator_navn = c("A", "B"), indikator_navn_teknisk = c("a", "b"),
+    datasaet = "d", datapakke = "p", org_id = 5L, org_teknisk = "E",
+    org_navn = "E", org_niveau = 5L, overafdeling = "OA", afdeling = NA,
+    afsnit = NA, stringsAsFactors = FALSE)
+  queue <- list()
+  withr::local_options(list(
+    bfhmeta.scan_scheduler = function(fn) queue[[length(queue) + 1]] <<- fn))
+  run_queued <- function() {
+    while (length(queue) > 0) { fn <- queue[[1]]; queue <<- queue[-1]; fn() }
+  }
+  db <- make_fake_signal_db(base, idx)
+  shiny::testServer(mod_signal_review_server, args = list(db = db), {
+    session$setInputs(parquet_dir = base, window_mode = "all", window_n = 24,
+      f_overafdeling = "", f_afsnit = "", f_datapakke = "", f_datasaet = "",
+      f_indikator_navn = "", scan = 1)
+    expect_true(scan_running())            # gruppe "b" venter i køen
+    session$setInputs(stop_scan = 1)
+    expect_false(scan_running())
+    run_queued()                           # stale callback dør på gen-guarden
+    expect_equal(signal_list()$diagram_id, 10L)   # "b" blev ALDRIG scannet
+  })
+})
+
+test_that("scan skriver dags-cache-filer pr. indikator (persistent på tværs af sessioner)", {
+  skip_if_not_installed("arrow")
+  cache_dir <- withr::local_tempdir()
+  withr::local_options(list(bfhmeta.cache_dir = cache_dir))
+  base <- withr::local_tempdir()
+  for (ind in c("a", "b")) {
+    dir.create(file.path(base, ind))
+    arrow::write_parquet(data.frame(dato = as.Date("2020-01-01") + 0:23 * 30,
+      vaerdi = c(rep(10, 12), rep(2, 12)), taeller = NA_real_,
+      naevner = NA_real_, enhed = "e"), file.path(base, ind, "p.parquet"))
+  }
+  idx <- data.frame(diagram_id = c(10L, 20L), indikator_id = c(1L, 2L),
+    indikator_navn = c("A", "B"), indikator_navn_teknisk = c("a", "b"),
+    datasaet = "d", datapakke = "p", org_id = 5L, org_teknisk = "E",
+    org_navn = "E", org_niveau = 5L, overafdeling = "OA", afdeling = NA,
+    afsnit = NA, stringsAsFactors = FALSE)
+  db <- make_fake_signal_db(base, idx)
+  shiny::testServer(mod_signal_review_server, args = list(db = db), {
+    session$setInputs(parquet_dir = base, window_mode = "all", window_n = 24,
+      f_overafdeling = "", f_afsnit = "", f_datapakke = "", f_datasaet = "",
+      f_indikator_navn = "", scan = 1)
+    drain_scan()
+    expect_equal(signal_list()$diagram_id, c(10L, 20L))
+  })
+  # Én RDS pr. indikator — næste session (samme dag) læser disse i stedet
+  # for parquet-lageret.
+  expect_equal(length(list.files(cache_dir, pattern = "\\.rds$")), 2L)
 })
