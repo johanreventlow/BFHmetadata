@@ -3,7 +3,14 @@ fake_db <- function() {
                       indikator_hierarki = 1L, kontaktperson = 1L, datakilde = 1L,
                       label_indikator_hierarki = "Inf.hyg",
                       stringsAsFactors = FALSE)
-  calls <- list(created = NULL, updated = NULL, deleted = NULL, junction = list())
+  calls <- list(created = NULL, updated = NULL, deleted = NULL, junction = list(),
+                diagram_created = NULL, diagram_updated = NULL)
+  diagrams <- data.frame(
+    diagram_id = 7L, indikator = 1L, organisatorisk_navn_teknisk = 20L,
+    diagram_type = 1L, periode_aggregering = "måned",
+    indgaar_i_aggregering = TRUE, diagram_aktivt = TRUE,
+    direktionens_tavle = FALSE, indikator_navn = "A", org_navn = "Kirurgi",
+    type_navn = "Seriediagram", stringsAsFactors = FALSE)
   jstore <- list(faggrupper = c(1L, 2L), dataprodukter = integer(0),
                  organisation = integer(0))
   list(
@@ -27,6 +34,18 @@ fake_db <- function() {
     },
     create_indikator_full = function(values, picks) {
       calls$created <<- list(values, picks); 99L
+    },
+    # Diagram-accessors (bruges af Diagrammer-sektionen i modalen)
+    list_diagrams_admin = function() diagrams,
+    diagram_form_options = function() list(
+      indikator = data.frame(id = 1L, label = "A"),
+      org = data.frame(id = 20L, label = "Kirurgi"),
+      type = data.frame(id = 1L, label = "Seriediagram")),
+    diagram_periode_choices = function() c("måned", "uge"),
+    diagram_duplicate_count = function(indikator, org, type, exclude_id = -1L) 0L,
+    create_diagram = function(values) { calls$diagram_created <<- values; 88L },
+    update_diagram = function(id, values) {
+      calls$diagram_updated <<- list(id = id, values = values); 1L
     },
     .calls = function() calls
   )
@@ -140,5 +159,65 @@ test_that("Ny + Gem kalder create_indikator_full, ikke update", {
     expect_false(is.null(db$.calls()$created))   # create-stien ramt
     expect_null(db$.calls()$updated)             # ikke update
     expect_match(status_msg(), "Oprettet")
+  })
+})
+
+# --- Diagram-sektion i modal (swap-retur, Fase B) ----------------------------
+
+test_that("m_diagram_edit gemmer retur-id og aabner diagram-formular", {
+  db <- fake_db()
+  testServer(mod_indikator_crud_server, args = list(db = db), {
+    session$setInputs(open_id = 1)
+    session$setInputs(m_diagram_edit = 7)
+    expect_equal(return_ind(), 1L)          # husker indikator til genaabning
+  })
+})
+
+test_that("diagram-gem fra modal kalder update_diagram og vender tilbage", {
+  db <- fake_db()
+  testServer(mod_indikator_crud_server, args = list(db = db), {
+    session$setInputs(open_id = 1)
+    session$setInputs(m_diagram_edit = 7)
+    session$setInputs(d_indikator = "1", d_organisatorisk_navn_teknisk = "20",
+                      d_diagram_type = "1", d_periode_aggregering = "uge",
+                      d_indgaar_i_aggregering = TRUE, d_diagram_aktivt = TRUE,
+                      d_direktionens_tavle = FALSE, m_diagram_save = 1)
+    upd <- db$.calls()$diagram_updated
+    expect_false(is.null(upd))
+    expect_identical(upd$id, 7L)
+    expect_identical(upd$values$periode_aggregering, "uge")
+    expect_null(return_ind())               # retur gennemfoert + nulstillet
+    expect_equal(editing_id(), 1L)          # indikator-modal genaabnet
+  })
+})
+
+test_that("m_diagram_new opretter med laast indikator og vender tilbage", {
+  db <- fake_db()
+  testServer(mod_indikator_crud_server, args = list(db = db), {
+    session$setInputs(open_id = 1)
+    session$setInputs(m_diagram_new = 1)
+    expect_equal(return_ind(), 1L)
+    session$setInputs(d_indikator = "1", d_organisatorisk_navn_teknisk = "20",
+                      d_diagram_type = "1", d_periode_aggregering = "",
+                      d_indgaar_i_aggregering = FALSE, d_diagram_aktivt = TRUE,
+                      d_direktionens_tavle = FALSE, m_diagram_save = 1)
+    created <- db$.calls()$diagram_created
+    expect_false(is.null(created))
+    expect_identical(created$indikator, 1L)
+    expect_null(db$.calls()$diagram_updated)
+    expect_null(return_ind())
+  })
+})
+
+test_that("Tilbage-knap genaabner indikator-modal uden db-kald", {
+  db <- fake_db()
+  testServer(mod_indikator_crud_server, args = list(db = db), {
+    session$setInputs(open_id = 1)
+    session$setInputs(m_diagram_edit = 7)
+    session$setInputs(m_diagram_back = 1)
+    expect_null(db$.calls()$diagram_updated)
+    expect_null(db$.calls()$diagram_created)
+    expect_null(return_ind())
+    expect_equal(editing_id(), 1L)
   })
 })

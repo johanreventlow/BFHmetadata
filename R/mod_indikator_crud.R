@@ -112,6 +112,10 @@ mod_indikator_crud_server <- function(id, db) {
     reload <- function() rows(db$list_indikatorer())
 
     editing_id <- reactiveVal(NULL)
+    # Swap-retur: husker hvilken indikator-modal der skal genåbnes efter
+    # diagram-formularen (redigér/nyt diagram inde fra indikator-modalen).
+    return_ind <- reactiveVal(NULL)
+    diagram_editing_id <- reactiveVal(NULL)
 
     # Vis status som flydende notifikation: synlig OVER modal og uafhængigt af
     # aktiv fane (status-tekstboksen sidder kun på Oversigt-fanen). Dækker både
@@ -168,7 +172,17 @@ mod_indikator_crud_server <- function(id, db) {
         mfin("dataprodukter", "Indgår i dataprodukter"),
         mfin("faggrupper", "Relevant for faggrupper"),
         mfin("organisation", "Relevant for afdelinger"),
-        two_up(fin("sp_rapport_id"), fin("direkte_link"), w = c(5, 7)))
+        two_up(fin("sp_rapport_id"), fin("direkte_link"), w = c(5, 7)),
+        sect("Diagrammer"),
+        if (is_new) {
+          p(class = "text-muted small",
+            "Gem indikatoren først for at tilføje diagrammer.")
+        } else {
+          tagList(
+            uiOutput(ns("m_diagram_list")),
+            actionButton(ns("m_diagram_new"), "Nyt diagram",
+                         class = "btn-sm btn-outline-primary"))
+        })
 
       right <- tagList(
         sect("Definitioner & beskrivelser", "rosa felter auto-opdateres"),
@@ -249,6 +263,108 @@ mod_indikator_crud_server <- function(id, db) {
         removeModal(); reload()
       }, fallback = status_msg("Fejl ved modal-gem (se log)"))
     })
+
+    # --- Diagram-sektion i modal (swap-retur til/fra diagram-formular) -------
+
+    # Kompakt liste over indikatorens diagrammer med redigér-link pr. række
+    output$m_diagram_list <- renderUI({
+      rid <- editing_id()
+      if (is.null(rid)) return(NULL)
+      ns <- session$ns
+      d <- db$list_diagrams_admin()
+      d <- d[d$indikator %in% rid, , drop = FALSE]
+      if (nrow(d) == 0) {
+        return(p(class = "text-muted small", "Ingen diagrammer endnu."))
+      }
+      nz <- function(x) ifelse(is.na(x), "", as.character(x))
+      trows <- lapply(seq_len(nrow(d)), function(i) {
+        badge <- if (d$diagram_aktivt[i] %in% TRUE) {
+          tags$span(class = "badge text-bg-success", "aktiv")
+        } else {
+          tags$span(class = "badge text-bg-secondary", "inaktiv")
+        }
+        tags$tr(
+          tags$td(tags$a(href = "#",
+            onclick = sprintf(
+              "Shiny.setInputValue('%s', %d, {priority: 'event'}); return false;",
+              ns("m_diagram_edit"), d$diagram_id[i]),
+            htmltools::htmlEscape(nz(d$org_navn[i])))),
+          tags$td(htmltools::htmlEscape(nz(d$type_navn[i]))),
+          tags$td(htmltools::htmlEscape(nz(d$periode_aggregering[i]))),
+          tags$td(badge))
+      })
+      tags$table(class = "table table-sm small mb-2", tags$tbody(trows))
+    })
+
+    # Vis diagram-formular som erstatning for indikator-modalen (swap).
+    # Footer bruger actionButton "Tilbage" (IKKE modalButton) → skal trigge
+    # genåbning af indikator-modalen.
+    .open_diagram_modal <- function(vals, is_new) {
+      ns <- session$ns
+      opts <- db$diagram_form_options()
+      opts$periode <- db$diagram_periode_choices()
+      return_ind(editing_id())
+      removeModal()
+      showModal(modalDialog(
+        title = if (is_new) "Nyt diagram" else "Redigér diagram",
+        easyClose = FALSE,
+        .diagram_form_ui(ns, vals, opts, lock_indikator = TRUE),
+        footer = div(class = "d-flex gap-2",
+          actionButton(ns("m_diagram_back"), "Tilbage"),
+          actionButton(ns("m_diagram_save"), "Gem", class = "btn-primary"))))
+    }
+
+    # Genåbn indikator-modalen for den huskede indikator
+    .reopen_indikator_modal <- function() {
+      rid <- return_ind()
+      return_ind(NULL)
+      removeModal()
+      if (is.null(rid)) return()
+      editing_id(rid)
+      row <- rows()[rows()[["id"]] == rid, , drop = FALSE]
+      if (nrow(row) > 0) showModal(.build_modal(row[1, , drop = FALSE]))
+    }
+
+    observeEvent(input$m_diagram_edit, {
+      did <- as.integer(input$m_diagram_edit)
+      d <- db$list_diagrams_admin()
+      row <- d[d$diagram_id == did, , drop = FALSE]
+      if (nrow(row) == 0) { status_msg("Diagram ikke fundet"); return() }
+      diagram_editing_id(did)
+      .open_diagram_modal(as.list(row[1, , drop = FALSE]), is_new = FALSE)
+    })
+
+    observeEvent(input$m_diagram_new, {
+      diagram_editing_id(NULL)
+      .open_diagram_modal(list(indikator = editing_id(), diagram_aktivt = TRUE),
+                          is_new = TRUE)
+    })
+
+    observeEvent(input$m_diagram_save, {
+      vals <- .collect_diagram_form(input)
+      errs <- validate_diagram(vals)
+      if (length(errs) > 0) { status_msg(paste(errs, collapse = "; ")); return() }
+      did <- diagram_editing_id()
+      dup <- db$diagram_duplicate_count(vals$indikator,
+        vals$organisatorisk_navn_teknisk, vals$diagram_type,
+        exclude_id = did %||% -1L)
+      if (dup > 0) {
+        showNotification(paste("Findes allerede: samme indikator/enhed/type",
+                               "har et diagram i forvejen."), type = "warning")
+      }
+      safe_operation("diagram-gem (modal)", {
+        if (is.null(did)) {
+          newid <- db$create_diagram(vals)
+          status_msg(paste("Oprettet diagram", newid))
+        } else {
+          db$update_diagram(did, vals)
+          status_msg(paste("Gemt diagram", did))
+        }
+        .reopen_indikator_modal()
+      }, fallback = status_msg("Fejl ved gem af diagram (se log)"))
+    })
+
+    observeEvent(input$m_diagram_back, .reopen_indikator_modal())
 
     output$form <- renderUI({
       ns <- session$ns
@@ -390,7 +506,8 @@ mod_indikator_crud_server <- function(id, db) {
     output$status <- renderText(status_msg())
 
     # eksponér til test
-    list(rows = rows, status_msg = status_msg, editing_id = editing_id)
+    list(rows = rows, status_msg = status_msg, editing_id = editing_id,
+         return_ind = return_ind)
   })
 }
 
