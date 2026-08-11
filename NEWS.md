@@ -16,6 +16,13 @@
   med det samme, også på tværs af faner.
 * Signal-scan henter alle median-knæk i ét databasekald i stedet for ét pr.
   diagram (ved ~600 diagrammer sparer det ~600 forespørgsler til Supabase).
+* Kompaktering af parquet-lageret direkte fra appen: ved opstart tilbyder en
+  dialog at samle hver indikators mange dagsfiler i én fil i et delt
+  _compact/-spejl i lageret — så bliver også dagens FØRSTE scan hurtigt, og
+  alle brugere (og BFHddl-pipelinen) deler gevinsten. Kompakteringen kører i
+  baggrunden med statusvisning, kan afbrydes, og spejlet tages kun i brug
+  når det er kompakteret i dag — ellers læses der råt som hidtil.
+* Parquet-mappen huskes mellem sessioner og er forudfyldt i sidefeltet.
 
 ## Interne ændringer
 * Nyt dags-cache-lag (fct_cache.R): én RDS pr. indikator pr. dag under
