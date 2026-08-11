@@ -17,7 +17,11 @@ mod_signal_review_ui <- function(id) {
       selectizeInput(ns("f_datapakke"), "Datapakke", NULL, multiple = FALSE),
       selectizeInput(ns("f_datasaet"), "Datasæt", NULL, multiple = FALSE),
       selectizeInput(ns("f_indikator_navn"), "Indikator", NULL, multiple = FALSE),
+      checkboxInput(ns("force_refresh"), "Ignorér dags-cache (genindlæs data)",
+                    value = FALSE),
       actionButton(ns("scan"), "Scan", class = "btn-primary w-100"),
+      actionButton(ns("stop_scan"), "Stop scan",
+                   class = "btn-outline-secondary btn-sm w-100 mt-1"),
       uiOutput(ns("scan_summary"))),
     # Hovedområde: navigation + graf + faseskift
     div(class = "d-flex justify-content-between align-items-center mb-2",
@@ -75,6 +79,88 @@ mod_signal_review_server <- function(id, db) {
     # senere vindue-skifte (uden re-scan) ikke gør cache-opslaget stale (C1).
     .wkey <- function(n) if (is.null(n)) "all" else as.character(n)
 
+    # Ryd forældede dags-cache-filer én gang pr. session (aldrig blokerende)
+    safe_operation("cache-prune", slice_cache_prune(), fallback = NULL)
+
+    # --- Progressivt scan ------------------------------------------------
+    # Diagrammer grupperes pr. indikator (ét parquet-load pr. indikator via
+    # dags-disk-cachen) og processeres én gruppe ad gangen i en later-kæde.
+    # Mellem grupperne når Shiny at flushe → signal-listen vokser løbende,
+    # og brugeren kan begynde gennemgangen mens resten scanner.
+    # scan_gen er en generations-guard: et nyt scan (eller Stop) bumper den,
+    # så ventende callbacks fra et gammelt scan opdager de er stale og dør.
+    scan_gen <- reactiveVal(0L)
+    scan_running <- reactiveVal(FALSE)
+    scan_progress <- reactiveVal(NULL)   # list(done, total, found, n_cand)
+    scan_ctx <- NULL                     # env: cand, groups, gi, wn, wk, vdf, base, force, sig
+
+    # Skedulering af næste gruppe. Injicérbar via option, fordi testServer
+    # selv afvikler later-køen under flush — tests kan derfor kun observere
+    # mellemtilstande (progressivitet/stop) med en manuel kø.
+    .scan_schedule <- function(fn) {
+      sched <- getOption("bfhmeta.scan_scheduler", NULL)
+      if (is.null(sched)) later::later(fn, 0) else sched(fn)
+    }
+
+    .scan_finish <- function(gen) {
+      if (!identical(gen, isolate(scan_gen()))) return(invisible())
+      scan_running(FALSE)
+      showNotification(sprintf("%d af %d diagrammer har signal",
+        nrow(isolate(signal_list())), nrow(scan_ctx$cand)), session = session)
+    }
+
+    .scan_process_group <- function(gen) {
+      if (!identical(gen, isolate(scan_gen()))) return(invisible())  # stale
+      ctx <- scan_ctx
+      if (ctx$gi > length(ctx$groups)) return(.scan_finish(gen))
+      idxs <- ctx$groups[[ctx$gi]]
+      ind <- ctx$cand$indikator_navn_teknisk[idxs[1]]
+      cc <- isolate(cache())
+      # Slice-loader deles af gruppens diagrammer: loader højst ÉN gang (kun
+      # hvis mindst ét diagram er session-cache-miss), og går via dags-disk-
+      # cachen så gentagne scans samme dag ikke rører parquet-lageret.
+      slice_env <- new.env(parent = emptyenv())
+      slice_env$loaded <- FALSE
+      get_slice <- function() {
+        if (!slice_env$loaded) {
+          slice_env$val <- load_indicator_slice_cached(
+            ctx$base, ind,
+            loader = function() parquet_load_slice(
+              parquet_indicator_path(ctx$base, ind)),
+            force = ctx$force)
+          slice_env$loaded <- TRUE
+        }
+        slice_env$val
+      }
+      for (i in idxs) {
+        row <- as.list(ctx$cand[i, ])
+        key <- paste0(row$diagram_id, "|", ctx$wk)
+        res <- cc[[key]]
+        if (is.null(res)) {
+          meds <- db$diagram_medians(row$diagram_id)
+          res <- scan_diagram(row, ctx$base, meds, ctx$vdf, window_n = ctx$wn,
+                              slice_loader = get_slice)
+          res$row <- row
+          cc[[key]] <- res
+        }
+        ctx$sig[i] <- isTRUE(res$signal)
+      }
+      cache(cc)
+      ctx$gi <- ctx$gi + 1L
+      # Opdater signal-listen løbende i cand-rækkefølge. Grupper processeres i
+      # cand-rækkefølge, så nye rækker tilføjes altid EFTER de viste → cursor
+      # peger stadig på samme diagram mens listen vokser.
+      signal_list(ctx$cand[which(ctx$sig %in% TRUE), , drop = FALSE])
+      scan_progress(list(done = ctx$gi - 1L, total = length(ctx$groups),
+                         found = sum(ctx$sig, na.rm = TRUE),
+                         n_cand = nrow(ctx$cand)))
+      if (ctx$gi > length(ctx$groups)) {
+        .scan_finish(gen)
+      } else {
+        .scan_schedule(function() .scan_process_group(gen))
+      }
+    }
+
     observeEvent(input$scan, {
       base <- input$parquet_dir
       if (is.null(base) || !nzchar(base) || !dir.exists(base)) {
@@ -83,34 +169,35 @@ mod_signal_review_server <- function(id, db) {
       }
       cand <- apply_index_filters(index(), current_filters())
       if (nrow(cand) == 0) { showNotification("Ingen diagrammer matcher filtrene"); return() }
-      wn <- window_n(); wk <- .wkey(wn); vdf <- variants(); cc <- cache()
-      results <- list()
-      withProgress(message = "Scanner diagrammer", value = 0, {
-        n <- nrow(cand)
-        for (i in seq_len(n)) {
-          row <- as.list(cand[i, ])
-          key <- paste0(row$diagram_id, "|", wk)
-          res <- cc[[key]]
-          if (is.null(res)) {
-            meds <- db$diagram_medians(row$diagram_id)
-            res <- scan_diagram(row, base, meds, vdf, window_n = wn)
-            res$row <- row
-            cc[[key]] <- res
-          }
-          results[[length(results) + 1]] <- res
-          incProgress(1 / n, detail = sprintf("%d/%d", i, n))
-        }
-      })
-      cache(cc)
-      # results er 1:1 positionelt med cand (ingen skip i loopet) → positionelt
-      # subset er korrekt + robust mod dublerede diagram_id (I1).
-      sig_ids <- vapply(results, function(r) isTRUE(r$signal), logical(1))
-      sl <- cand[sig_ids, , drop = FALSE]
-      signal_list(sl)
+      wn <- window_n()
+      # Gruppér pr. indikator i first-appearance-rækkefølge (cand er sorteret
+      # efter indikator_navn → grupper er sammenhængende blokke).
+      tekn <- cand$indikator_navn_teknisk
+      tekn[is.na(tekn)] <- ""
+      groups <- unname(split(seq_len(nrow(cand)), factor(tekn, levels = unique(tekn))))
+      gen <- scan_gen() + 1L
+      scan_gen(gen)
+      scan_ctx <<- list2env(list(
+        cand = cand, groups = groups, gi = 1L,
+        wn = wn, wk = .wkey(wn), vdf = variants(), base = base,
+        force = isTRUE(input$force_refresh),
+        sig = rep(NA, nrow(cand))), envir = new.env(parent = emptyenv()))
+      signal_list(cand[0, , drop = FALSE])
       scanned_n(wn)          # vindue låst til denne scan (bruges af .scan_of_current/Task 7)
       cursor(1L)
       preview_parts(NULL)
-      showNotification(sprintf("%d af %d diagrammer har signal", nrow(sl), nrow(cand)))
+      scan_running(TRUE)
+      scan_progress(list(done = 0L, total = length(groups), found = 0L,
+                         n_cand = nrow(cand)))
+      # Første gruppe synkront (øjeblikkelig feedback); resten via later-kæden
+      .scan_process_group(gen)
+    })
+
+    observeEvent(input$stop_scan, {
+      if (!isTRUE(scan_running())) return()
+      scan_gen(scan_gen() + 1L)   # invalidér ventende callbacks (stale-guard)
+      scan_running(FALSE)
+      showNotification("Scan stoppet — fundne signaler kan gennemgås")
     })
 
     current_diagram <- reactive({
@@ -138,15 +225,26 @@ mod_signal_review_server <- function(id, db) {
     output$nav_label <- renderUI({
       sl <- signal_list()
       if (is.null(sl)) return(span("Ingen scan endnu", class = "text-muted"))
-      if (nrow(sl) == 0) return(span("Scannet — 0 diagrammer med signal", class = "text-muted"))
+      if (nrow(sl) == 0) {
+        txt <- if (isTRUE(scan_running())) "Scanner — endnu ingen signaler" else
+          "Scannet — 0 diagrammer med signal"
+        return(span(txt, class = "text-muted"))
+      }
       cd <- current_diagram()
-      strong(sprintf("%d/%d — %s · %s", cursor(), nrow(sl),
+      suffix <- if (isTRUE(scan_running())) " (scanner…)" else ""
+      strong(sprintf("%d/%d%s — %s · %s", cursor(), nrow(sl), suffix,
                      cd$indikator_navn, cd$org_navn))
     })
 
     output$scan_summary <- renderUI({
-      sl <- signal_list(); if (is.null(sl)) return(NULL)
-      div(class = "small text-muted mt-2", sprintf("%d med signal", nrow(sl)))
+      p <- scan_progress(); if (is.null(p)) return(NULL)
+      txt <- if (isTRUE(scan_running())) {
+        sprintf("Scanner… %d/%d indikatorer — %d med signal",
+                p$done, p$total, p$found)
+      } else {
+        sprintf("%d med signal", p$found)
+      }
+      div(class = "small text-muted mt-2", txt)
     })
 
     # Cursor-stemplet valg: returnér KUN den valgte dato hvis klikket skete på
@@ -166,9 +264,17 @@ mod_signal_review_server <- function(id, db) {
       cc <- cache()
       cc[grepl(paste0("^", cd$diagram_id, "\\|"), names(cc))] <- NULL
       meds <- db$diagram_medians(cd$diagram_id)
+      base <- input$parquet_dir
+      ind <- cd$indikator_navn_teknisk
+      # Knæk-ændringer rører kun medians — indikatorens slice er uændret, så
+      # re-scan må gerne gå via dags-disk-cachen (hurtigt, ingen parquet-læs).
+      loader <- function() load_indicator_slice_cached(
+        base, ind,
+        loader = function() parquet_load_slice(parquet_indicator_path(base, ind)))
       cc[[paste0(cd$diagram_id, "|", .wkey(scanned_n()))]] <-
-        c(scan_diagram(as.list(cd), input$parquet_dir, meds, variants(),
-                       window_n = scanned_n()), list(row = as.list(cd)))
+        c(scan_diagram(as.list(cd), base, meds, variants(),
+                       window_n = scanned_n(), slice_loader = loader),
+          list(row = as.list(cd)))
       cache(cc)
     }
 
@@ -262,6 +368,6 @@ mod_signal_review_server <- function(id, db) {
     # Eksponér til test
     list(signal_list = signal_list, current_diagram = current_diagram,
          cursor = cursor, cache = cache, preview_parts = preview_parts,
-         scan_of_current = .scan_of_current)
+         scan_of_current = .scan_of_current, scan_running = scan_running)
   })
 }
