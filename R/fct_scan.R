@@ -161,3 +161,41 @@ preview_break_parts <- function(diagram_id, base_meds, extra_date, x_dates) {
   all_meds <- data.frame(diagram = diagram_id, laas_median = laas)
   resolve_median_breaks(diagram_id, all_meds, x_dates)
 }
+
+#' Filtrér den scannede liste til visning. show_all = FALSE → kun diagrammer
+#' med signal; TRUE → alle rækker (scanned indeholder kun ok-scannede —
+#' ingen_data/fejl optages aldrig, de har ingen tegnbar graf).
+#' NULL ind → NULL ud (skelner "ej scannet endnu" fra "tom visning").
+#' @noRd
+scan_view_filter <- function(scanned, show_all = FALSE) {
+  if (is.null(scanned)) return(NULL)
+  if (isTRUE(show_all)) return(scanned)
+  scanned[scanned$signal %in% TRUE, , drop = FALSE]
+}
+
+#' Fase-statistik-df til visning under grafen. Spejler PDF-rapporternes
+#' SPC-tabel: observeret serielængde mod forventet maks., observeret antal
+#' kryds mod forventet min. — pr. fase, fra BFHcharts format_qic_summary
+#' (bfh_qic-resultatets $summary).
+#' @param summary df med fase, antal_observationer, anvendelige_observationer,
+#'   laengste_loeb(_max), antal_kryds(_min), anhoej_signal — el. NULL
+#' @return df med danske visningskolonner el. NULL (intet at vise)
+#' @noRd
+phase_stats_df <- function(summary) {
+  if (is.null(summary) || !is.data.frame(summary) || nrow(summary) == 0) {
+    return(NULL)
+  }
+  fmt <- function(x) ifelse(is.na(x), "–", as.character(x))
+  out <- data.frame(
+    Fase = as.integer(summary$fase),
+    check.names = FALSE, stringsAsFactors = FALSE)
+  out[["Obs."]] <- sprintf("%s (%s anv.)", fmt(summary$antal_observationer),
+                           fmt(summary$anvendelige_observationer))
+  out[["Serielængde"]] <- sprintf("%s / maks. %s",
+    fmt(summary$laengste_loeb), fmt(summary$laengste_loeb_max))
+  out[["Antal kryds"]] <- sprintf("%s / min. %s",
+    fmt(summary$antal_kryds), fmt(summary$antal_kryds_min))
+  out[["Signal"]] <- ifelse(summary$anhoej_signal %in% TRUE,
+                            "⚠ signal", "–")
+  out
+}

@@ -368,3 +368,42 @@ test_that("scan_diagram: vaerdi-kolonne + aggregering → fejl (ej tavs no-op)",
                       period = "week")
   expect_equal(res$status, "fejl")   # safe_operation fanger → synlig fejl
 })
+
+test_that("scan_view_filter: NULL forbliver NULL; show_all styrer signal-filter", {
+  expect_null(scan_view_filter(NULL, FALSE))
+  expect_null(scan_view_filter(NULL, TRUE))
+  sl <- data.frame(diagram_id = 1:3, signal = c(TRUE, FALSE, NA))
+  expect_equal(scan_view_filter(sl, FALSE)$diagram_id, 1L)   # NA taeller ikke som signal
+  expect_equal(scan_view_filter(sl, TRUE)$diagram_id, 1:3)
+  # 0-raekke ind -> 0-raekke ud (ej NULL): nav-laget skelner "ej scannet" fra "tom"
+  expect_equal(nrow(scan_view_filter(sl[0, , drop = FALSE], FALSE)), 0L)
+})
+
+test_that("phase_stats_df formaterer observeret/forventet pr. fase som PDF'erne", {
+  s <- data.frame(fase = 1:2, antal_observationer = c(12L, 12L),
+    anvendelige_observationer = c(12L, 11L),
+    laengste_loeb = c(5L, 8L), laengste_loeb_max = c(7L, 7L),
+    antal_kryds = c(6L, 2L), antal_kryds_min = c(4L, 4L),
+    anhoej_signal = c(FALSE, TRUE))
+  out <- phase_stats_df(s)
+  expect_equal(nrow(out), 2L)
+  expect_equal(out$Fase, 1:2)
+  expect_equal(out[["Serielængde"]][1], "5 / maks. 7")
+  expect_equal(out[["Antal kryds"]][2], "2 / min. 4")
+  expect_equal(out[["Obs."]][2], "12 (11 anv.)")
+  expect_equal(out$Signal, c("–", "⚠ signal"))
+})
+
+test_that("phase_stats_df taaler NULL, tom df og NA-vaerdier", {
+  expect_null(phase_stats_df(NULL))
+  expect_null(phase_stats_df(data.frame()))
+  s <- data.frame(fase = 1L, antal_observationer = NA_integer_,
+    anvendelige_observationer = NA_integer_,
+    laengste_loeb = NA_integer_, laengste_loeb_max = NA_integer_,
+    antal_kryds = NA_integer_, antal_kryds_min = NA_integer_,
+    anhoej_signal = NA)
+  out <- phase_stats_df(s)
+  expect_equal(out[["Serielængde"]], "– / maks. –")
+  expect_equal(out[["Antal kryds"]], "– / min. –")
+  expect_equal(out$Signal, "–")
+})
