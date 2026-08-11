@@ -25,7 +25,12 @@ mod_signal_review_ui <- function(id) {
       actionButton(ns("scan"), "Scan", class = "btn-primary w-100"),
       actionButton(ns("stop_scan"), "Stop scan",
                    class = "btn-outline-secondary btn-sm w-100 mt-1"),
-      uiOutput(ns("scan_summary"))),
+      uiOutput(ns("scan_summary")),
+      hr(),
+      checkboxInput(ns("show_no_signal"), "Vis også diagrammer uden signal",
+                    value = FALSE),
+      bslib::accordion(id = ns("diagram_acc"), open = FALSE,
+        bslib::accordion_panel("Diagramliste", uiOutput(ns("diagram_list"))))),
     # Hovedområde: navigation + graf + faseskift
     div(class = "d-flex justify-content-between align-items-center mb-2",
       uiOutput(ns("nav_label")),
@@ -96,6 +101,40 @@ mod_signal_review_server <- function(id, db) {
       selected_cursor(NULL)
       preview_parts(NULL)
     }, ignoreInit = TRUE)
+
+    # Klik i sidebar-listen: spring direkte til diagrammet. Id-baseret (ej
+    # position) så et klik på en stale-renderet liste aldrig rammer forkert
+    # række — ukendte id'er ignoreres blot.
+    observeEvent(input$goto_diagram, {
+      vl <- view_list()
+      if (is.null(vl) || nrow(vl) == 0) return()
+      pos <- match(as.integer(input$goto_diagram), vl$diagram_id)
+      if (is.na(pos)) return()
+      cursor(as.integer(pos))
+      preview_parts(NULL)
+    })
+
+    output$diagram_list <- renderUI({
+      vl <- view_list()
+      if (is.null(vl)) {
+        return(div(class = "small text-muted", "Ingen scan endnu"))
+      }
+      if (nrow(vl) == 0) {
+        return(div(class = "small text-muted", "Ingen diagrammer i visningen"))
+      }
+      cur <- min(cursor(), nrow(vl))
+      tags$div(class = "list-group list-group-flush small",
+        lapply(seq_len(nrow(vl)), function(i) {
+          icon <- if (isTRUE(vl$signal[i])) "⚠" else "✓"
+          tags$a(href = "#",
+            class = paste("list-group-item list-group-item-action py-1 px-2",
+                          if (identical(i, cur)) "active" else ""),
+            onclick = sprintf(
+              "Shiny.setInputValue('%s', %s, {priority: 'event'}); return false;",
+              session$ns("goto_diagram"), vl$diagram_id[i]),
+            sprintf("%s %s · %s", icon, vl$indikator_navn[i], vl$org_navn[i]))
+        }))
+    })
 
     # Populér filter-valg ved start
     observeEvent(index(), {

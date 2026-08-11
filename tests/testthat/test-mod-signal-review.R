@@ -853,3 +853,56 @@ test_that("ingen_data-diagrammer optages ALDRIG i visningen (heller ej med check
     expect_equal(scanned_list()$diagram_id, 10L)
   })
 })
+
+test_that("goto_diagram springer direkte til valgt diagram; ukendt id ignoreres", {
+  skip_if_not_installed("arrow")
+  base <- withr::local_tempdir()
+  for (ind in c("a", "b")) {
+    dir.create(file.path(base, ind))
+    arrow::write_parquet(data.frame(dato = as.Date("2020-01-01") + 0:23 * 30,
+      vaerdi = c(rep(10, 12), rep(2, 12)), taeller = NA_real_,
+      naevner = NA_real_, enhed = "e"), file.path(base, ind, "p.parquet"))
+  }
+  idx <- data.frame(diagram_id = c(10L, 20L), indikator_id = 1:2,
+    indikator_navn = c("A", "B"), indikator_navn_teknisk = c("a", "b"),
+    datasaet = "d", datapakke = "p", org_id = 5L, org_teknisk = "E",
+    org_navn = "E", org_niveau = 5L, overafdeling = "OA", afdeling = NA,
+    afsnit = NA, stringsAsFactors = FALSE)
+  db <- make_fake_signal_db(base, idx)
+  shiny::testServer(mod_signal_review_server, args = list(db = db), {
+    session$setInputs(parquet_dir = base, window_mode = "all", window_n = 24,
+      f_overafdeling = "", f_afsnit = "", f_datapakke = "", f_datasaet = "",
+      f_indikator_navn = "", scan = 1)
+    drain_scan()
+    session$setInputs(goto_diagram = 20)
+    expect_equal(current_diagram()$diagram_id, 20L)
+    expect_equal(cursor(), 2L)
+    session$setInputs(goto_diagram = 999)      # ukendt/stale id -> ingen ændring
+    expect_equal(current_diagram()$diagram_id, 20L)
+    expect_equal(cursor(), 2L)
+  })
+})
+
+test_that("diagram_list renderer rækker for visningen", {
+  skip_if_not_installed("arrow")
+  base <- build_fixture()
+  idx <- data.frame(diagram_id = c(1L, 2L), indikator_id = c(1L, 2L),
+    indikator_navn = c("SigNavn", "FladNavn"),
+    indikator_navn_teknisk = c("ind_sig", "ind_flat"),
+    datasaet = "d", datapakke = "p", org_id = 5L, org_teknisk = "E",
+    org_navn = "E", org_niveau = 5L, overafdeling = "OA", afdeling = NA,
+    afsnit = NA, stringsAsFactors = FALSE)
+  db <- make_fake_signal_db(base, idx)
+  shiny::testServer(mod_signal_review_server, args = list(db = db), {
+    session$setInputs(parquet_dir = base, window_mode = "all", window_n = 24,
+      f_overafdeling = "", f_afsnit = "", f_datapakke = "", f_datasaet = "",
+      f_indikator_navn = "", scan = 1)
+    drain_scan()
+    html <- as.character(output$diagram_list$html)
+    expect_match(html, "SigNavn")
+    expect_no_match(html, "FladNavn")          # checkbox fra -> kun signal
+    session$setInputs(show_no_signal = TRUE)
+    html2 <- as.character(output$diagram_list$html)
+    expect_match(html2, "FladNavn")
+  })
+})
