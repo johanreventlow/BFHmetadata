@@ -1,3 +1,23 @@
+# BFHmetadata (development)
+
+## Nye features
+* Signal-gennemgang er markant hurtigere, og man kan arbejde næsten med det
+  samme: diagrammer scannes pr. indikator (ét parquet-load deles af alle
+  diagrammer på samme indikator), resultater vises løbende mens scannet kører
+  (progressivt scan med Stop-knap), og indlæste indikator-slices gemmes i en
+  dags-cache på disk, så gentagne scans samme dag springer parquet-lageret
+  helt over. Ny afkrydsning "Ignorér dags-cache" tvinger genindlæsning.
+  Baggrund: parquet-lageret består af ~172k bittesmå dags-partitionsfiler,
+  hvor åbne-omkostningen dominerer totalt over datamængden.
+
+## Interne ændringer
+* Nyt dags-cache-lag (fct_cache.R): én RDS pr. indikator pr. dag under
+  R_user_dir (overstyrbar via option bfhmeta.cache_dir), NULL caches aldrig,
+  korrupte filer ignoreres, auto-prune efter 7 dage. scan_diagram() kan
+  modtage et preloadet slice via slice_loader (per-indikator-genbrug).
+  Scan-skedulering er injicérbar (option bfhmeta.scan_scheduler) af
+  testhensyn. Nye Imports: rlang, later.
+
 # BFHmetadata 0.7.0
 
 ## Nye features
