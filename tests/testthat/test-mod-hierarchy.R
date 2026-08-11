@@ -32,6 +32,35 @@ fake_hierarchy_db <- function() {
   )
 }
 
+test_that(".node_label falder tilbage til teknisk navn og id ved manglende display_col", {
+  cfg <- .hierarchy_cfg()
+  expect_identical(.node_label(cfg, "Langt navn", "teknisk", 5L), "Langt navn")
+  expect_identical(.node_label(cfg, NA_character_, "teknisk", 5L), "teknisk")
+  expect_identical(.node_label(cfg, "", "teknisk", 5L), "teknisk")
+  expect_identical(.node_label(cfg, NA_character_, NA_character_, 5L),
+                   "(uden navn #5)")
+  expect_identical(.node_label(cfg, NA_character_, "", 5L), "(uden navn #5)")
+})
+
+test_that("modal aabner uden fejl naar en anden node mangler display_col-vaerdi", {
+  db <- fake_hierarchy_db()
+  # Ekstra node (5) uden organisatorisk_navn_langt -> parent-dropdown-labels
+  # maa ikke indeholde NA (selectInput fejler paa NA-navngivne choices)
+  extra <- data.frame(
+    id = 5L, parent_id_raw = NA_integer_,
+    organisatorisk_navn_teknisk = "uden_navn",
+    organisatorisk_navn_langt = NA_character_,
+    organisatorisk_navn_kort = NA_character_,
+    niveau_id = 10L, niveau_num = 1L, niveau_navn = "Direktion",
+    stringsAsFactors = FALSE)
+  orig_list_nodes <- db$list_nodes
+  db$list_nodes <- function() rbind(orig_list_nodes(), extra)
+  testServer(mod_hierarchy_server,
+    args = list(db = db, cfg = .hierarchy_cfg()), {
+    expect_no_error(session$setInputs(open_id = 4))
+  })
+})
+
 test_that("tree() giver korrekt depth-first-orden", {
   db <- fake_hierarchy_db()
   testServer(mod_hierarchy_server,

@@ -43,6 +43,16 @@
     aktiv_input)
 }
 
+#' Visningsnavn for en node med fallback-kæde: display_col -> teknisk navn ->
+#' "(uden navn #id)". Forhindrer NA-navngivne selectInput-choices (fejler
+#' hårdt i shiny::selectInput ved reelt DB-data med tomme navnefelter).
+#' @noRd
+.node_label <- function(cfg, display_val, teknisk_val, id) {
+  if (!is.na(display_val) && nzchar(display_val)) return(display_val)
+  if (!is.na(teknisk_val) && nzchar(teknisk_val)) return(teknisk_val)
+  sprintf("(uden navn #%s)", id)
+}
+
 #' Saml formular-inputs → named list i hierarchy_edit_cols(cfg)-orden. Tom
 #' forælder → NA (rodnode OK). Tomme tekstfelter → NA.
 #' @noRd
@@ -95,10 +105,17 @@ mod_hierarchy_server <- function(id, db, cfg) {
         showNotification(warn_msg(), type = "warning", duration = 8)
     }, ignoreInit = TRUE)
 
+    .labels <- function(d) {
+      teknisk <- if ("organisatorisk_navn_teknisk" %in% names(d))
+        d$organisatorisk_navn_teknisk else rep(NA_character_, nrow(d))
+      vapply(seq_len(nrow(d)), function(i)
+        .node_label(cfg, d[[cfg$display_col]][i], teknisk[i], d$id[i]), "")
+    }
+
     output$tbl <- DT::renderDT({
       d <- tree()
       ns <- session$ns
-      navn <- htmltools::htmlEscape(d[[cfg$display_col]])
+      navn <- htmltools::htmlEscape(.labels(d))
       indent <- vapply(d$depth, function(n)
         paste(rep("&nbsp;&nbsp;&nbsp;", n), collapse = ""), "")
       navn_html <- paste0(indent, navn)
@@ -131,7 +148,7 @@ mod_hierarchy_server <- function(id, db, cfg) {
                                       exclude_subtree_of)
         d <- d[!(d$id %in% excl), , drop = FALSE]
       }
-      stats::setNames(d$id, d[[cfg$display_col]])
+      stats::setNames(d$id, .labels(d))
     }
 
     .niveau_choices <- function() {
