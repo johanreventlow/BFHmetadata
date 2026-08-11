@@ -906,3 +906,58 @@ test_that("diagram_list renderer rækker for visningen", {
     expect_match(html2, "FladNavn")
   })
 })
+
+test_that("fase-statistik vises fra summary og følger preview-genberegning", {
+  skip_if_not_installed("arrow")
+  base <- withr::local_tempdir()
+  dir.create(file.path(base, "a"))
+  arrow::write_parquet(data.frame(dato = as.Date("2020-01-01") + 0:23 * 30,
+    vaerdi = c(rep(10, 12), rep(2, 12)), taeller = NA_real_,
+    naevner = NA_real_, enhed = "e"), file.path(base, "a", "p.parquet"))
+  idx <- data.frame(diagram_id = 7L, indikator_id = 1L, indikator_navn = "A",
+    indikator_navn_teknisk = "a", datasaet = "d", datapakke = "p", org_id = 5L,
+    org_teknisk = "E", org_navn = "E", org_niveau = 5L, overafdeling = "OA",
+    afdeling = NA, afsnit = NA, stringsAsFactors = FALSE)
+  db <- make_fake_signal_db(base, idx)
+  shiny::testServer(mod_signal_review_server, args = list(db = db), {
+    session$setInputs(parquet_dir = base, window_mode = "all", window_n = 24,
+      f_overafdeling = "", f_afsnit = "", f_datapakke = "", f_datasaet = "",
+      f_indikator_navn = "", scan = 1)
+    drain_scan()
+    # Før preview: 1 fase, og tabellen matcher scan-resultatets summary
+    expect_equal(nrow(display_qic()$summary), 1L)
+    expect_equal(display_qic()$summary$laengste_loeb,
+                 .scan_of_current()$summary$laengste_loeb)
+    tbl <- paste(as.character(output$phase_stats), collapse = "")
+    expect_match(tbl, "maks\\.")
+    expect_match(tbl, "min\\.")
+    # Preview af faseskift -> genberegning med 2 faser, tabellen følger med
+    session$setInputs(chart_selected = "2020-07-28")
+    session$setInputs(preview = 1)
+    expect_equal(nrow(display_qic()$summary), 2L)
+  })
+})
+
+test_that("fase-statistik tåler summary/qic_result = NULL (fejl-scannet diagram)", {
+  skip_if_not_installed("arrow")
+  base <- build_fixture()
+  idx <- data.frame(diagram_id = c(1L, 2L), indikator_id = c(1L, 2L),
+    indikator_navn = c("Sig", "Flad"),
+    indikator_navn_teknisk = c("ind_sig", "ind_flat"),
+    datasaet = "d", datapakke = "p", org_id = 5L, org_teknisk = "E",
+    org_navn = "E", org_niveau = 5L, overafdeling = "OA", afdeling = NA,
+    afsnit = NA, stringsAsFactors = FALSE)
+  db <- make_fake_signal_db(base, idx)
+  shiny::testServer(mod_signal_review_server, args = list(db = db), {
+    session$setInputs(parquet_dir = base, window_mode = "all", window_n = 24,
+      f_overafdeling = "", f_afsnit = "", f_datapakke = "", f_datasaet = "",
+      f_indikator_navn = "", scan = 1)
+    drain_scan()
+    # Forgift cachen: summary + qic_result væk -> tabel-render må ikke fejle
+    cc <- cache()
+    cc[["1|all"]]$qic_result <- NULL
+    cc[["1|all"]]$summary <- NULL
+    cache(cc)
+    expect_no_error(output$phase_stats)
+  })
+})

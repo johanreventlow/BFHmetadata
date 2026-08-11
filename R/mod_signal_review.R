@@ -39,6 +39,7 @@ mod_signal_review_ui <- function(id) {
         actionButton(ns("next_"), "Næste ›", class = "btn-outline-secondary btn-sm"))),
     uiOutput(ns("break_warning")),
     ggiraph::girafeOutput(ns("chart"), height = "420px"),
+    div(class = "small", tableOutput(ns("phase_stats"))),
     hr(),
     div(class = "d-flex gap-2 align-items-center flex-wrap",
       uiOutput(ns("selected_label")),
@@ -429,25 +430,34 @@ mod_signal_review_server <- function(id, db) {
     }
 
     # --- Graf -------------------------------------------------------------
+    # Det qic-resultat der VISES lige nu: scan-resultatet, eller preview-
+    # genberegningen når et faseskift forhåndsvises. Delt mellem graf og
+    # fase-statistik-tabellen, så de aldrig kan vise hver sin beregning.
+    display_qic <- reactive({
+      sc <- .scan_of_current()
+      if (is.null(sc) || is.null(sc$qic_result)) return(NULL)
+      pv <- preview_parts()
+      if (is.null(pv) || is.null(sc$slice)) return(sc$qic_result)
+      # Date-normaliseret via preview_break_parts (ingen rbind af Date på
+      # POSIXct). Fejl -> fald tilbage til det scannede resultat.
+      safe_operation("preview-genberegning", {
+        base_meds <- db$diagram_medians(current_diagram()$diagram_id)
+        parts <- preview_break_parts(current_diagram()$diagram_id, base_meds,
+                                     pv, sc$slice$dato)
+        compute_signal(sc$slice, parts = parts)$qic_result
+      }, fallback = sc$qic_result)
+    })
+
     # Hele render-kroppen er fejl-værnet: en graf der ikke kan bygges
     # (degenereret qic-data, uventede kolonner, ggplot-range-fejl) må ALDRIG
     # vælte sessionen — i dev med options(error/shiny.error = browser) endte
     # en uncaught render-fejl ellers i Browse[1] og "frøs" appen midt i scan.
     output$chart <- ggiraph::renderGirafe({
-      sc <- .scan_of_current(); if (is.null(sc) || is.null(sc$qic_result)) return(NULL)
-      g <- safe_operation("tegn diagram", {
-        qr <- sc$qic_result
-        # Forhåndsvis: re-beregn med ekstra knæk hvis valgt + gyldigt. Date-
-        # normaliseret via preview_break_parts (ingen rbind af Date på POSIXct).
-        pv <- preview_parts()
-        if (!is.null(pv) && !is.null(sc$slice)) {
-          base_meds <- db$diagram_medians(current_diagram()$diagram_id)
-          parts <- preview_break_parts(current_diagram()$diagram_id, base_meds,
-                                       pv, sc$slice$dato)
-          qr <- compute_signal(sc$slice, parts = parts)$qic_result
-        }
-        interactive_run_chart(qr, selected_date = valid_selected_date())
-      }, fallback = "fejl")
+      qr <- display_qic()
+      if (is.null(qr)) return(NULL)
+      g <- safe_operation("tegn diagram",
+        interactive_run_chart(qr, selected_date = valid_selected_date()),
+        fallback = "fejl")
       if (identical(g, "fejl") || is.null(g)) {
         # validate-tekst vises i grafens plads (grå besked, ingen crash)
         validate(need(FALSE,
@@ -455,6 +465,13 @@ mod_signal_review_server <- function(id, db) {
       }
       g
     })
+
+    # Fase-statistik under grafen — samme tal som PDF-rapporternes SPC-tabel.
+    output$phase_stats <- renderTable({
+      qr <- display_qic()
+      if (is.null(qr)) return(NULL)
+      phase_stats_df(qr$summary)
+    }, striped = FALSE, spacing = "xs", width = "auto", na = "")
 
     # Advarsel ved grafen når knæk er udeladt af beregningen — så en ændret
     # periode_aggregering ikke ændrer faserne uden at brugeren opdager det.
@@ -561,6 +578,7 @@ mod_signal_review_server <- function(id, db) {
     list(signal_list = signal_list, scanned_list = scanned_list,
          view_list = view_list, current_diagram = current_diagram,
          cursor = cursor, cache = cache, preview_parts = preview_parts,
-         scan_of_current = .scan_of_current, scan_running = scan_running)
+         scan_of_current = .scan_of_current, scan_running = scan_running,
+         display_qic = display_qic)
   })
 }
