@@ -9,6 +9,13 @@
 #' @noRd
 interactive_run_chart <- function(qic_result, selected_date = NULL, height_svg = 4) {
   qd <- qic_result$qic_data
+  # Kun endelige y-værdier kan tegnes. Uden dette filter giver degenererede
+  # slices (alt-NA y) et plot med tom akse-range (min→Inf) som vælter
+  # girafe-bygningen med "diff.default(continuous_range_coord)" — set i
+  # produktion under scan. Ingen tegnbare punkter → NULL (kalderen viser
+  # venlig besked); en graf-bygning må ALDRIG fejle.
+  qd <- qd[is.finite(qd$y), , drop = FALSE]
+  if (nrow(qd) == 0) return(NULL)
   # POSIXct → Date-streng (TZ-sikkert) som stabilt punkt-id
   qd$.id <- format(qd$x, "%Y-%m-%d")
   qd$.tooltip <- sprintf("%s: %s", qd$.id, round(qd$y, 2))
@@ -16,10 +23,19 @@ interactive_run_chart <- function(qic_result, selected_date = NULL, height_svg =
   qd$.selected <- !is.null(selected_date) & qd$.id == (selected_date %||% "")
 
   p <- ggplot2::ggplot(qd, ggplot2::aes(x = .data$x, y = .data$y)) +
-    ggplot2::geom_line(color = "grey40", linewidth = 0.4) +
-    # Median-trin pr. fase (cl er konstant inden for hver 'part')
-    ggplot2::geom_line(ggplot2::aes(y = .data$cl, group = .data$part),
-                       color = "steelblue", linewidth = 0.6) +
+    ggplot2::geom_line(color = "grey40", linewidth = 0.4)
+
+  # Median-trin pr. fase (cl er konstant inden for hver 'part') — kun når der
+  # faktisk ER en median at tegne. qic kan give cl helt NA (fx enkelt-punkts
+  # serier); et lag uden endelige værdier bidrager med tom range.
+  if (any(is.finite(qd$cl))) {
+    p <- p + ggplot2::geom_line(
+      data = qd[is.finite(qd$cl), , drop = FALSE],
+      ggplot2::aes(y = .data$cl, group = .data$part),
+      color = "steelblue", linewidth = 0.6)
+  }
+
+  p <- p +
     ggiraph::geom_point_interactive(
       ggplot2::aes(tooltip = .data$.tooltip, data_id = .data$.id,
                    color = .data$.signal),
