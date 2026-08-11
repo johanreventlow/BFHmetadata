@@ -36,6 +36,21 @@ parquet_load_slice <- function(path, enhed = NULL, from = NULL, to = NULL) {
   res
 }
 
+#' Filtrér et allerede-loadet indikator-slice på enhed (case-insensitive).
+#' In-memory-pendant til parquet_load_slice(enhed=...), så ét fuldt slice kan
+#' genbruges af alle diagrammer på samme indikator (én arrow-åbning pr.
+#' indikator i stedet for én pr. diagram). Samme kontrakt: NULL ved no-match.
+#' Manglende enhed-kolonne → NULL (slicet kan ikke afgrænses til rette enhed;
+#' aldrig signal på blandede enheder).
+#' @noRd
+slice_filter_enhed <- function(data, enhed) {
+  if (is.null(data) || nrow(data) == 0) return(NULL)
+  if (!"enhed" %in% names(data)) return(NULL)
+  res <- data[tolower(data$enhed) %in% unique(tolower(enhed)), , drop = FALSE]
+  if (nrow(res) == 0) return(NULL)
+  res
+}
+
 #' Behold de seneste max_obs unikke datoer (en observation = unik dato).
 #' @noRd
 parquet_limit_observations <- function(data, max_obs = 36L, date_col = "dato") {
