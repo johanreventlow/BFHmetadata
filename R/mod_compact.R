@@ -79,7 +79,9 @@ mod_compact_server <- function(id) {
           source_fingerprint(ctx$items$src[j]), fallback = NA_character_)
       }
       ctx$si <- to + 1L
-      if (ctx$si > n) .sweep_finish(g) else next_tick(function() .sweep_tick(g))
+      if (ctx$si > n) .sweep_finish(g) else {
+        next_tick_session(session, function() .sweep_tick(g))
+      }
     }
 
     .start_sweep <- function(base, manual = FALSE) {
@@ -110,7 +112,9 @@ mod_compact_server <- function(id) {
     if (!is.null(base0) && dir.exists(base0)) {
       local({
         g0 <- isolate(gen())
-        next_tick(function() {
+        # session-bundet: lukkes sessionen inden ticken fyrer (fx hurtig
+        # reload), må gen() ikke røres — den reaktive er destrueret
+        next_tick_session(session, function() {
           if (identical(g0, isolate(gen()))) .start_sweep(base0)
         })
       })
@@ -183,7 +187,7 @@ mod_compact_server <- function(id) {
         id = prog_id, duration = NULL, session = session,
         action = actionLink(session$ns("cancel"), "Afbryd"))
       if (ctx$i > nrow(ctx$todo)) .finish(g) else {
-        next_tick(function() .tick(g))
+        next_tick_session(session, function() .tick(g))
       }
     }
 

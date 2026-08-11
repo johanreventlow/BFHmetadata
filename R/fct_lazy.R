@@ -13,6 +13,22 @@ next_tick <- function(fn) {
   if (is.null(sched)) later::later(fn, 0) else sched(fn)
 }
 
+#' Skedulér en SESSION-BUNDET baggrunds-tick. later-callbacks overlever
+#' sessionen: lukkes/genindlæses browseren midt i et scan (eller trigges
+#' shiny.autoreload), fyrer de ventende ticks stadig — og deres første
+#' reaktive læsning kaster så "Can't access reactive ...; its module session
+#' has been destroyed" (uopfanget → Browse[1] i dev, set i produktion).
+#' Derfor: (1) rør INTET reaktivt hvis sessionen er lukket — dø stille,
+#' (2) fejl i en tick må aldrig nå top-level (logges via safe_operation).
+#' @noRd
+next_tick_session <- function(session, fn) {
+  next_tick(function() {
+    closed <- tryCatch(isTRUE(session$isClosed()), error = function(e) TRUE)
+    if (closed) return(invisible())
+    safe_operation("baggrunds-tick", fn(), fallback = NULL)
+  })
+}
+
 #' Kør init() første gang `selected()` matcher tab_value.
 #'
 #' Idempotent: init kører præcis én gang, uanset hvor mange gange brugeren

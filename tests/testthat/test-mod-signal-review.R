@@ -371,6 +371,39 @@ test_that("degenereret qic-data i cache → chart-render giver venlig besked, AL
   })
 })
 
+test_that("session lukkes midt i scan → ventende ticks dør stille (ingen destroyed-fejl)", {
+  skip_if_not_installed("arrow")
+  base <- withr::local_tempdir()
+  for (ind in c("a", "b")) {
+    dir.create(file.path(base, ind))
+    arrow::write_parquet(data.frame(dato = as.Date("2020-01-01") + 0:23 * 30,
+      vaerdi = c(rep(10, 12), rep(2, 12)), taeller = NA_real_,
+      naevner = NA_real_, enhed = "e"), file.path(base, ind, "p.parquet"))
+  }
+  idx <- data.frame(diagram_id = c(10L, 20L), indikator_id = c(1L, 2L),
+    indikator_navn = c("A", "B"), indikator_navn_teknisk = c("a", "b"),
+    datasaet = "d", datapakke = "p", org_id = 5L, org_teknisk = "E",
+    org_navn = "E", org_niveau = 5L, overafdeling = "OA", afdeling = NA,
+    afsnit = NA, stringsAsFactors = FALSE)
+  queue <- list()
+  withr::local_options(list(
+    bfhmeta.scan_scheduler = function(fn) queue[[length(queue) + 1]] <<- fn))
+  db <- make_fake_signal_db(base, idx)
+  shiny::testServer(mod_signal_review_server, args = list(db = db), {
+    session$setInputs(parquet_dir = base, window_mode = "all", window_n = 24,
+      f_overafdeling = "", f_afsnit = "", f_datapakke = "", f_datasaet = "",
+      f_indikator_navn = "", scan = 1)
+    expect_true(scan_running())            # gruppe "b" venter i køen
+    session$close()                        # browser lukket/reloadet midt i scan
+  })
+  # Produktions-crashen: ventende later-callbacks fyrer EFTER session-destroy
+  # og læste reaktiver → "Can't access reactive scan_gen; its module session
+  # has been destroyed". Nu skal de dø stille.
+  expect_no_error({
+    while (length(queue) > 0) { fn <- queue[[1]]; queue <- queue[-1]; fn() }
+  })
+})
+
 test_that("progressivt scan: første indikator-gruppe vises FØR resten er scannet", {
   skip_if_not_installed("arrow")
   base <- withr::local_tempdir()

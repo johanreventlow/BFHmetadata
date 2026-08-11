@@ -101,6 +101,29 @@ test_that("cancel: resten kompakteres ikke; gammelt manifest består intakt", {
   expect_equal(compact_manifest_entries(compact_manifest_read(base)), list())
 })
 
+test_that("session lukkes før/under sweep og kompaktering → ventende ticks dør stille", {
+  skip_if_not_installed("arrow")
+  withr::local_options(list(bfhmeta.cache_dir = withr::local_tempdir()))
+  base <- make_store_fixture()
+  last_parquet_dir_write(base)
+  q <- .with_queue()
+  # Luk sessionen FØR startup-sweep-ticken overhovedet er kørt
+  shiny::testServer(mod_compact_server, args = list(), {
+    session$close()
+  })
+  expect_no_error(.run_queued(q))          # startup-tick dør stille
+  # Og midt i selve kompakteringen
+  q2 <- .with_queue()
+  shiny::testServer(mod_compact_server, args = list(), {
+    .run_queued(q2)                        # sweep → modal
+    expect_true(asked())
+    session$setInputs(go = 1)              # første indikator synkront
+    expect_true(running())                 # resten venter i køen
+    session$close()
+  })
+  expect_no_error(.run_queued(q2))         # kompakterings-ticks dør stille
+})
+
 test_that("manuel knap: sweep on demand; uændret lager giver 'intet at gøre'-besked", {
   skip_if_not_installed("arrow")
   withr::local_options(list(bfhmeta.cache_dir = withr::local_tempdir()))
