@@ -138,11 +138,23 @@ test_that("median SQL-byggere er parametriserede", {
 test_that("build_median_batch_sql henter medians for MANGE diagrammer i ét kald", {
   sql <- build_median_batch_sql()
   expect_match(sql, 'FROM "tblDiagrammerMedian"')
-  # ANY($1) med array-parameter → ét round-trip uanset antal diagrammer
-  # (mod ~600 separate queries ved koldt scan)
-  expect_match(sql, 'WHERE "diagram" = ANY\\(\\$1\\)', fixed = FALSE)
+  # ANY($1::int[]) med array-LITERAL som parameter → ét round-trip uanset
+  # antal diagrammer. Casten er påkrævet: RPostgres kan ikke binde en
+  # R-vektor som Postgres-array — en vektor som param betyder "kør statement
+  # N gange", og hvert kald fik så ét nøgent tal til en array-parameter
+  # ("malformed array literal: 1727", set i produktion).
+  expect_match(sql, 'WHERE "diagram" = ANY\\(\\$1::int\\[\\]\\)', fixed = FALSE)
   expect_match(sql, 'ORDER BY')
-  expect_false(grepl("paste|sprintf", sql))   # ingen streng-interpolation
+})
+
+test_that("pg_int_array: R-vektor → Postgres array-literal", {
+  expect_equal(pg_int_array(c(1L, 2L, 3L)), "{1,2,3}")
+  expect_equal(pg_int_array(1727L), "{1727}")        # ét element virker også
+  expect_equal(pg_int_array(integer(0)), "{}")
+  # Ikke-heltal og NA må aldrig ende i literalen (SQL-sikkerhed + gyldighed)
+  expect_equal(pg_int_array(c(1L, NA, 2L)), "{1,2}")
+  expect_equal(pg_int_array(c(10.0, 20.0)), "{10,20}")
+  expect_error(pg_int_array("1; DROP TABLE x"))
 })
 
 test_that("build_org_enhed_variants_sql joiner org + oversaettelse på int-FK", {
