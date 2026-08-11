@@ -136,6 +136,36 @@ make_db <- function(pool) {
     },
     org_enhed_variants = function() {
       DBI::dbGetQuery(pool, build_org_enhed_variants_sql())
+    },
+    # --- Diagram-CRUD (admin) --------------------------------------------
+    list_diagrams_admin = function() {
+      DBI::dbGetQuery(pool, build_diagram_admin_sql())
+    },
+    diagram_periode_choices = function() {
+      DBI::dbGetQuery(pool, build_diagram_periode_sql())[[1]]
+    },
+    diagram_duplicate_count = function(indikator, org, type, exclude_id = -1L) {
+      as.integer(DBI::dbGetQuery(pool, build_diagram_duplicate_sql(),
+        params = list(indikator, org, type, exclude_id))$n[1])
+    },
+    diagram_median_count = function(diagram_id) {
+      as.integer(DBI::dbGetQuery(pool, build_median_count_sql(),
+        params = list(diagram_id))$n[1])
+    },
+    # values: named list med alle DIAGRAM_COLS (rækkefølge håndhæves her)
+    create_diagram = function(values) {
+      assert_write_enabled()
+      DBI::dbGetQuery(pool, build_diagram_insert_sql(),
+        params = unname(values[DIAGRAM_COLS]))$id[1]
+    },
+    update_diagram = function(id, values) {
+      assert_write_enabled()
+      DBI::dbExecute(pool, build_diagram_update_sql(),
+        params = c(unname(values[DIAGRAM_COLS]), list(id)))
+    },
+    delete_diagram = function(id) {
+      assert_write_enabled()
+      DBI::dbExecute(pool, build_diagram_delete_sql(), params = list(id))
     }
   )
 }
