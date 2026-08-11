@@ -162,12 +162,25 @@ build_median_list_sql <- function() {
 
 #' Alle median-knæk for MANGE diagrammer i ét kald. Et koldt scan af ~600
 #' diagrammer ville ellers koste ~600 round-trips til Supabase (Irland,
-#' ~40-80 ms hver). ANY($1) tager en array-parameter → ingen streng-
-#' interpolation og ét fast statement uanset antal diagrammer.
+#' ~40-80 ms hver). Parameteren er en array-LITERAL ("{1,2,3}", byg med
+#' pg_int_array()) castet server-side: RPostgres kan ikke binde en R-vektor
+#' som Postgres-array — en vektor som param betyder "kør statement N gange",
+#' og hvert kald fik så ét nøgent tal til array-parameteren ("malformed
+#' array literal: 1727", set i produktion; fallback reddede scannet).
 #' @noRd
 build_median_batch_sql <- function() {
-  paste0('SELECT * FROM "tblDiagrammerMedian" WHERE "diagram" = ANY($1) ',
+  paste0('SELECT * FROM "tblDiagrammerMedian" WHERE "diagram" = ANY($1::int[]) ',
          'ORDER BY "diagram", "laas_median"')
+}
+
+#' Byg Postgres array-literal af heltal ("{1,2,3}"). Kun hele tal slipper
+#' igennem (stopifnot) — literal-strengen interpoleres i en parameter, så
+#' den må aldrig kunne indeholde andet end cifre og kommaer. NA droppes.
+#' @noRd
+pg_int_array <- function(ids) {
+  ids <- ids[!is.na(ids)]
+  stopifnot(is.numeric(ids), all(ids == as.integer(ids)))
+  paste0("{", paste(as.integer(ids), collapse = ","), "}")
 }
 
 #' @noRd
