@@ -49,21 +49,65 @@ test_that("compact_indicator: tom/manglende kilde → status 'tom', ingen fil", 
   expect_false(file.exists(dest))
 })
 
-test_that("manifest: fresh kun når dato matcher; korrupt/manglende → ikke fresh", {
-  base <- withr::local_tempdir()
-  expect_false(compact_manifest_fresh(base))                  # intet manifest
-  compact_manifest_write(base, n_ok = 5L, n_failed = 0L,
-                         date = as.Date("2026-08-11"))
-  expect_true(compact_manifest_fresh(base, date = as.Date("2026-08-11")))
-  expect_false(compact_manifest_fresh(base, date = as.Date("2026-08-12")))  # i går ≠ i dag
-  m <- compact_manifest_read(base)
-  expect_equal(m$n_ok, 5L)
-  # Korrupt manifest må aldrig vælte en læser — blot "ikke fresh"
-  writeLines("ikke json", compact_manifest_path(base))
-  expect_false(compact_manifest_fresh(base))
+test_that("source_fingerprint: stabilt for uændret kilde; ændres ved nye/ændrede data", {
+  base <- make_store_fixture()
+  src <- file.path(base, "gruppe", "ind_a")
+  fp1 <- source_fingerprint(src)
+  expect_identical(fp1, source_fingerprint(src))          # deterministisk
+  # Ny dags-partition → nyt fingeraftryk
+  p <- file.path(src, "dato=2020-01-04")
+  dir.create(p)
+  arrow::write_parquet(data.frame(vaerdi = 2, enhed = "e"),
+                       file.path(p, "part-0.parquet"))
+  fp2 <- source_fingerprint(src)
+  expect_false(identical(fp1, fp2))
+  # Genskrivning i nyeste partition (samme antal filer) → mtime-delen ændres
+  Sys.setFileTime(file.path(p, "part-0.parquet"), Sys.time() + 30)
+  expect_false(identical(fp2, source_fingerprint(src)))
+  # Manglende mappe → NA; flad indikator (filer direkte i mappen) virker også
+  expect_true(is.na(source_fingerprint(file.path(base, "findes_ej"))))
+  expect_false(is.na(source_fingerprint(file.path(base, "ind_b"))))
 })
 
-test_that("run_compaction: kompakterer alt, skriver manifest, fejl stopper ikke resten", {
+test_that("manifest v2: entries-roundtrip; korrupt/manglende → tom entry-liste", {
+  base <- withr::local_tempdir()
+  expect_equal(compact_manifest_entries(compact_manifest_read(base)), list())
+  compact_manifest_write(base,
+    list("gruppe/ind_a" = list(fingerprint = "3|dato=2020-01-03|1|123",
+                               compacted_at = "t")),
+    n_ok = 1L, n_failed = 0L)
+  m <- compact_manifest_read(base)
+  expect_equal(compact_manifest_entries(m)[["gruppe/ind_a"]]$fingerprint,
+               "3|dato=2020-01-03|1|123")
+  # Korrupt manifest må aldrig vælte en læser — blot "ingen entries"
+  writeLines("ikke json", compact_manifest_path(base))
+  expect_equal(compact_manifest_entries(compact_manifest_read(base)), list())
+})
+
+test_that("compact_changed_items: alt nyt uden manifest; intet efter kørsel; kun ændrede", {
+  base <- make_store_fixture()
+  expect_setequal(compact_changed_items(base)$rel, c("gruppe/ind_a", "ind_b"))
+  run_compaction(base)
+  expect_equal(nrow(compact_changed_items(base)), 0L)      # intet ændret
+  Sys.setFileTime(file.path(base, "ind_b", "p.parquet"), Sys.time() + 30)
+  expect_equal(compact_changed_items(base)$rel, "ind_b")   # kun den rørte
+})
+
+test_that("run_compaction er inkrementel: uændrede springes over, deres spejl røres ikke", {
+  base <- make_store_fixture()
+  r1 <- run_compaction(base)
+  expect_equal(r1$n_ok, 2L)
+  expect_equal(r1$n_skipped, 0L)
+  ma <- file.path(base, "_compact", "gruppe", "ind_a.parquet")
+  mt_a <- file.info(ma)$mtime
+  Sys.setFileTime(file.path(base, "ind_b", "p.parquet"), Sys.time() + 30)
+  r2 <- run_compaction(base)
+  expect_equal(r2$n_ok, 1L)                    # kun ind_b rekompakteret
+  expect_equal(r2$n_skipped, 1L)               # ind_a (SundK-casen) urørt...
+  expect_identical(file.info(ma)$mtime, mt_a)  # ...også på disk
+})
+
+test_that("run_compaction: fejl stopper ikke resten; fejlede får INGEN manifest-entry", {
   base <- make_store_fixture()
   # Saboter ind_b's kilde så netop den fejler (fil i stedet for læsbar parquet)
   unlink(file.path(base, "ind_b", "p.parquet"))
@@ -72,24 +116,29 @@ test_that("run_compaction: kompakterer alt, skriver manifest, fejl stopper ikke 
   expect_equal(res$n_ok, 1L)                    # ind_a lykkedes
   expect_equal(res$n_failed, 1L)                # ind_b fejlede, uden at vælte
   expect_true(file.exists(file.path(base, "_compact", "gruppe", "ind_a.parquet")))
-  expect_true(compact_manifest_fresh(base))     # manifest skrevet til sidst
+  entries <- compact_manifest_entries(compact_manifest_read(base))
+  expect_true("gruppe/ind_a" %in% names(entries))
+  expect_false("ind_b" %in% names(entries))     # fejlet → læses råt fremover
 })
 
-test_that("parquet_load_indicator_best: fresh spejl bruges — raa lager røres ikke", {
+test_that("parquet_load_indicator_best: fp-match → spejlet bruges (bevist via poisonet spejl)", {
   base <- make_store_fixture()
   run_compaction(base)
-  # Slet HELE den rå kilde: kan data stadig læses, kom de fra spejlet
-  unlink(file.path(base, "gruppe", "ind_a"), recursive = TRUE)
-  d <- parquet_load_indicator_best(base, "ind_a")
-  expect_equal(nrow(d), 3L)
+  # Overskriv spejl-filen med kendeligt indhold. KILDENS fingeraftryk er
+  # uændret → læseren skal vælge spejlet og returnere netop dette indhold.
+  arrow::write_parquet(data.frame(dato = as.Date("2099-01-01"), vaerdi = 999,
+                                  enhed = "spejl", stringsAsFactors = FALSE),
+                       file.path(base, "_compact", "ind_b.parquet"))
+  d <- parquet_load_indicator_best(base, "ind_b")
+  expect_equal(d$vaerdi, 999)
   expect_s3_class(d$dato, "Date")
 })
 
-test_that("parquet_load_indicator_best: stale manifest → fald tilbage til rå lager", {
+test_that("parquet_load_indicator_best: ændret kilde → automatisk rå læsning (intradag)", {
   base <- make_store_fixture()
   run_compaction(base)
-  compact_manifest_write(base, 1L, 0L, date = Sys.Date() - 1)   # gårsdagens spejl
-  # Rå kilde ændres — kun den rå sti har den nye række
+  # Regenerér data intradag: ny fil i kilden → nyt fingeraftryk → spejlet
+  # (uden den nye række) må ikke bruges
   arrow::write_parquet(data.frame(
     dato = as.Date("2020-01-09"), vaerdi = 9, enhed = "e"),
     file.path(base, "ind_b", "p2.parquet"))
@@ -97,14 +146,17 @@ test_that("parquet_load_indicator_best: stale manifest → fald tilbage til rå 
   expect_equal(nrow(d), 7L)                     # 6 + den nye = læste råt
 })
 
-test_that("parquet_load_indicator_best: force → rå lager selv med fresh spejl", {
+test_that("parquet_load_indicator_best: uændret kilde → spejl gyldigt OGSÅ næste dag; force → råt", {
   base <- make_store_fixture()
   run_compaction(base)
-  arrow::write_parquet(data.frame(
-    dato = as.Date("2020-01-09"), vaerdi = 9, enhed = "e"),
-    file.path(base, "ind_b", "p2.parquet"))
-  expect_equal(nrow(parquet_load_indicator_best(base, "ind_b")), 6L)  # spejl
-  expect_equal(nrow(parquet_load_indicator_best(base, "ind_b", force = TRUE)), 7L)
+  # Poison spejlet så vi kan se hvilken sti der læses
+  arrow::write_parquet(data.frame(dato = as.Date("2099-01-01"), vaerdi = 999,
+                                  enhed = "spejl", stringsAsFactors = FALSE),
+                       file.path(base, "_compact", "ind_b.parquet"))
+  # Ingen dags-regel længere: fp-match er nok (dato indgår slet ikke)
+  expect_equal(parquet_load_indicator_best(base, "ind_b")$vaerdi, 999)
+  # force = escape hatch (fx ændringer i gammel historik uden fp-ændring)
+  expect_equal(nrow(parquet_load_indicator_best(base, "ind_b", force = TRUE)), 6L)
 })
 
 test_that("parquet_load_indicator_best: indikator mangler i spejl → rå fallback", {

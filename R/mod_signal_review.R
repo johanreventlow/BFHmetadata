@@ -116,18 +116,23 @@ mod_signal_review_server <- function(id, db) {
       ind <- ctx$cand$indikator_navn_teknisk[idxs[1]]
       cc <- isolate(cache())
       # Slice-loader deles af gruppens diagrammer: loader højst ÉN gang (kun
-      # hvis mindst ét diagram er session-cache-miss). Kæden er RDS-dags-cache
-      # → _compact-spejl (hvis fresh) → rå parquet-lager; force springer begge
-      # cache-lag over og læser råt.
+      # hvis mindst ét diagram er session-cache-miss). Kæden er RDS-cache →
+      # _compact-spejl → rå parquet-lager, og friskhed styres hele vejen af
+      # kildens fingeraftryk: uændrede indikatorer rammer cache/spejl (også
+      # på tværs af dage), intradag-regenererede læses automatisk forfra.
+      # force springer begge cache-lag over og læser råt.
       slice_env <- new.env(parent = emptyenv())
       slice_env$loaded <- FALSE
       get_slice <- function() {
         if (!slice_env$loaded) {
+          src <- parquet_indicator_path(ctx$base, ind)
+          fp <- source_fingerprint(src)
           slice_env$val <- load_indicator_slice_cached(
             ctx$base, ind,
             loader = function() parquet_load_indicator_best(
-              ctx$base, ind, force = ctx$force),
-            force = ctx$force)
+              ctx$base, ind, force = ctx$force,
+              manifest = ctx$manifest, src = src, fp = fp),
+            force = ctx$force, key = fp)
           slice_env$loaded <- TRUE
         }
         slice_env$val
@@ -193,6 +198,9 @@ mod_signal_review_server <- function(id, db) {
         cand = cand, groups = groups, gi = 1L,
         wn = wn, wk = .wkey(wn), vdf = variants(), base = base,
         force = isTRUE(input$force_refresh), meds = all_meds %||% list(),
+        # Manifest læses ÉN gang pr. scan (ellers én JSON-læsning pr. indikator)
+        manifest = safe_operation("laes kompakt-manifest",
+                                  compact_manifest_read(base), fallback = NULL),
         sig = rep(NA, nrow(cand))), envir = new.env(parent = emptyenv()))
       signal_list(cand[0, , drop = FALSE])
       scanned_n(wn)          # vindue låst til denne scan (bruges af .scan_of_current/Task 7)
@@ -279,10 +287,17 @@ mod_signal_review_server <- function(id, db) {
       base <- input$parquet_dir
       ind <- cd$indikator_navn_teknisk
       # Knæk-ændringer rører kun medians — indikatorens slice er uændret, så
-      # re-scan må gerne gå via dags-disk-cachen (hurtigt, ingen parquet-læs).
-      loader <- function() load_indicator_slice_cached(
-        base, ind,
-        loader = function() parquet_load_indicator_best(base, ind))
+      # re-scan må gerne gå via disk-cachen (fingeraftryk-nøglet: hurtigt,
+      # ingen parquet-læs så længe kilden er uændret).
+      loader <- function() {
+        src <- parquet_indicator_path(base, ind)
+        fp <- source_fingerprint(src)
+        load_indicator_slice_cached(
+          base, ind,
+          loader = function() parquet_load_indicator_best(
+            base, ind, src = src, fp = fp),
+          key = fp)
+      }
       cc[[paste0(cd$diagram_id, "|", .wkey(scanned_n()))]] <-
         c(scan_diagram(as.list(cd), base, meds, variants(),
                        window_n = scanned_n(), slice_loader = loader),

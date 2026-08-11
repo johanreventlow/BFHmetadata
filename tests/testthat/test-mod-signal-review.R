@@ -464,16 +464,21 @@ test_that("scan husker parquet-mappen til næste session (bruges af startup-komp
   expect_equal(last_parquet_dir_read(), base)
 })
 
-test_that("scan læser fra fresh _compact-spejl (rå lager kan slettes)", {
+test_that("scan læser fra fp-matchende _compact-spejl (bevist via poisonet spejl)", {
   skip_if_not_installed("arrow")
   withr::local_options(list(bfhmeta.cache_dir = withr::local_tempdir()))
   base <- withr::local_tempdir()
   dir.create(file.path(base, "a"))
+  # Rå kilde: STABIL serie (intet signal)
   arrow::write_parquet(data.frame(dato = as.Date("2020-01-01") + 0:23 * 30,
-    vaerdi = c(rep(10, 12), rep(2, 12)), taeller = NA_real_, naevner = NA_real_,
+    vaerdi = rep(c(4, 6), 12), taeller = NA_real_, naevner = NA_real_,
     enhed = "e"), file.path(base, "a", "p.parquet"))
   run_compaction(base)
-  unlink(file.path(base, "a"), recursive = TRUE)   # kun spejlet tilbage
+  # Poison spejlet med SIGNAL-data. Kildens fingeraftryk er uændret →
+  # scannet skal vælge spejlet, og signalet beviser hvilken sti der læstes.
+  arrow::write_parquet(data.frame(dato = as.Date("2020-01-01") + 0:23 * 30,
+    vaerdi = c(rep(10, 12), rep(2, 12)), taeller = NA_real_, naevner = NA_real_,
+    enhed = "e"), file.path(base, "_compact", "a.parquet"))
   idx <- data.frame(diagram_id = 1L, indikator_id = 1L, indikator_navn = "A",
     indikator_navn_teknisk = "a", datasaet = "d", datapakke = "p", org_id = 5L,
     org_teknisk = "E", org_navn = "E", org_niveau = 5L, overafdeling = "OA",
@@ -484,8 +489,40 @@ test_that("scan læser fra fresh _compact-spejl (rå lager kan slettes)", {
       f_overafdeling = "", f_afsnit = "", f_datapakke = "", f_datasaet = "",
       f_indikator_navn = "", scan = 1)
     drain_scan()
-    expect_equal(signal_list()$diagram_id, 1L)     # signal fundet via spejlet
+    expect_equal(signal_list()$diagram_id, 1L)     # signal ⇒ læste spejlet
     expect_equal(.scan_of_current()$status, "ok")
+  })
+})
+
+test_that("scan opdager intradag-regenerering: ændret kilde → spejl forbigås automatisk", {
+  skip_if_not_installed("arrow")
+  withr::local_options(list(bfhmeta.cache_dir = withr::local_tempdir()))
+  base <- withr::local_tempdir()
+  dir.create(file.path(base, "a"))
+  # Første version: stabil serie → kompaktér (spejl = intet signal)
+  arrow::write_parquet(data.frame(dato = as.Date("2020-01-01") + 0:23 * 30,
+    vaerdi = rep(c(4, 6), 12), taeller = NA_real_, naevner = NA_real_,
+    enhed = "e"), file.path(base, "a", "p.parquet"))
+  run_compaction(base)
+  # Intradag-regenerering: SAMME fil overskrives med SIGNAL-data. mtime
+  # skubbes eksplicit frem — fingeraftrykket afrunder til hele sekunder, så
+  # en overskrivning i samme sekund ellers kunne gå ubemærket i testen.
+  arrow::write_parquet(data.frame(dato = as.Date("2020-01-01") + 0:23 * 30,
+    vaerdi = c(rep(10, 12), rep(2, 12)), taeller = NA_real_, naevner = NA_real_,
+    enhed = "e"), file.path(base, "a", "p.parquet"))
+  Sys.setFileTime(file.path(base, "a", "p.parquet"), Sys.time() + 30)
+  idx <- data.frame(diagram_id = 1L, indikator_id = 1L, indikator_navn = "A",
+    indikator_navn_teknisk = "a", datasaet = "d", datapakke = "p", org_id = 5L,
+    org_teknisk = "E", org_navn = "E", org_niveau = 5L, overafdeling = "OA",
+    afdeling = NA, afsnit = NA, stringsAsFactors = FALSE)
+  db <- make_fake_signal_db(base, idx)
+  shiny::testServer(mod_signal_review_server, args = list(db = db), {
+    session$setInputs(parquet_dir = base, window_mode = "all", window_n = 24,
+      f_overafdeling = "", f_afsnit = "", f_datapakke = "", f_datasaet = "",
+      f_indikator_navn = "", scan = 1)
+    drain_scan()
+    # Signal fundet ⇒ de NYE rå data blev læst, ikke det forældede spejl
+    expect_equal(signal_list()$diagram_id, 1L)
   })
 })
 

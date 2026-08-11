@@ -76,15 +76,53 @@ compact_manifest_path <- function(base_path) {
   file.path(base_path, "_compact", "_manifest.json")
 }
 
-#' Skriv manifest (kaldes SIDST — først da må læsere bruge spejlet).
+#' Billigt kilde-fingeraftryk for en indikator-mappe.
+#'
+#' Friskhed afgøres af fingeraftryk-match (ikke kalenderdag): så forbliver
+#' spejlet af UÆNDREDE indikatorer gyldigt på tværs af dage (fx SundK, der
+#' sjældent opdateres), og intradag-regenerering opdages med det samme.
+#'
+#' Skal være billigt (kaldes pr. indikator ved læsning + i fuld sweep ved
+#' opstart — målt: 8 s for 889 indikatorer, 0,1 s for største med 7.097
+#' partitioner): 1 readdir af indikator-mappen + stats på filerne i de
+#' nyeste K dato-partitioner. Fanger nye dage (antal + nyeste navn) og
+#' regenerering (som altid rører de nyeste dage). Kendt blindvinkel:
+#' ændringer der KUN rører gammel historik uden at ændre antal/nyeste —
+#' dækkes af force-refresh/manuel kompaktering.
+#' @return character-streng ("antal|nyeste-partition|antal-statede|mtime"),
+#'   eller NA_character_ hvis mappen ikke findes.
 #' @noRd
-compact_manifest_write <- function(base_path, n_ok, n_failed, date = Sys.Date()) {
+source_fingerprint <- function(src_dir, k = 3L) {
+  if (!dir.exists(src_dir)) return(NA_character_)
+  kids <- list.files(src_dir)
+  parts <- sort(kids[startsWith(kids, "dato=")], decreasing = TRUE)
+  newest <- utils::head(parts, k)
+  stat_paths <- if (length(parts) > 0) {
+    unlist(lapply(file.path(src_dir, newest), list.files, full.names = TRUE))
+  } else {
+    file.path(src_dir, kids[grepl("\\.parquet$", kids)])
+  }
+  mt <- if (length(stat_paths) > 0) {
+    suppressWarnings(max(as.numeric(file.mtime(stat_paths)), na.rm = TRUE))
+  } else {
+    0
+  }
+  paste(length(kids), if (length(parts) > 0) parts[1] else "",
+        length(stat_paths), round(mt), sep = "|")
+}
+
+#' Skriv manifest (kaldes SIDST — først da må læsere bruge de nye entries).
+#' entries: named list (rel → list(fingerprint, compacted_at)) for HELE
+#' spejlet (kalderen merger uændrede entries fra forrige manifest).
+#' @noRd
+compact_manifest_write <- function(base_path, entries, n_ok = NA_integer_,
+                                   n_failed = NA_integer_) {
   p <- compact_manifest_path(base_path)
   dir.create(dirname(p), recursive = TRUE, showWarnings = FALSE)
   jsonlite::write_json(list(
-    date = as.character(date),
     compacted_at = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
-    n_ok = n_ok, n_failed = n_failed
+    n_ok = n_ok, n_failed = n_failed,
+    indicators = entries
   ), p, auto_unbox = TRUE)
   invisible(p)
 }
@@ -98,34 +136,71 @@ compact_manifest_read <- function(base_path) {
            error = function(e) NULL)
 }
 
-#' Er spejlet fra i dag? (dags-TTL — data opdateres natligt, så gårsdagens
-#' spejl mangler seneste dag og må ikke bruges til signal-vurdering).
+#' Manifest-entries (rel → entry-liste). Tom liste ved manglende/gammelt
+#' manifest-format (v1 uden indicators-felt) — alt regnes da som ændret.
 #' @noRd
-compact_manifest_fresh <- function(base_path, date = Sys.Date()) {
-  m <- compact_manifest_read(base_path)
-  !is.null(m) && identical(as.character(m$date), as.character(date))
+compact_manifest_entries <- function(manifest) {
+  e <- manifest$indicators
+  if (is.null(e) || length(e) == 0) return(list())
+  as.list(e)
 }
 
-#' Kør fuld kompaktering af et lager (konsol-/pipeline-venlig driver;
-#' appens modal kører samme trin chunket via mod_compact). Fejl i én
-#' indikator stopper ikke resten; manifest skrives til sidst.
+#' Find ændrede/nye indikatorer: live-fingeraftryk vs manifest.
+#' @param items df fra compact_list_indicators
+#' @return items-subset med ekstra kolonne fp (live-fingeraftryk)
+#' @noRd
+compact_changed_items <- function(base_path, items = compact_list_indicators(base_path),
+                                  manifest = compact_manifest_read(base_path)) {
+  if (nrow(items) == 0) {
+    items$fp <- character(0)
+    return(items)
+  }
+  entries <- compact_manifest_entries(manifest)
+  items$fp <- vapply(items$src, source_fingerprint, "")
+  stored <- vapply(items$rel, function(r) {
+    entries[[r]]$fingerprint %||% ""
+  }, "")
+  changed <- is.na(items$fp) | items$fp != stored
+  items[changed & !is.na(items$fp), , drop = FALSE]
+}
+
+#' Kør (inkrementel) kompaktering: kun ændrede/nye indikatorer omskrives;
+#' uændrede entries bevares i manifestet, så deres spejl-filer forbliver
+#' gyldige uden at blive rørt. Fejl i én indikator stopper ikke resten;
+#' manifest skrives til sidst (fejlede indikatorer får INGEN entry → læses
+#' råt). Konsol-/pipeline-venlig driver; appens modal kører samme trin
+#' chunket via mod_compact.
 #' @param progress valgfri callback function(i, n, rel) til statusvisning
-#' @return list(n_ok, n_failed, n_empty)
+#' @return list(n_ok, n_failed, n_empty, n_skipped)
 #' @noRd
 run_compaction <- function(base_path, progress = NULL) {
   items <- compact_list_indicators(base_path)
+  manifest <- compact_manifest_read(base_path)
+  todo <- compact_changed_items(base_path, items, manifest)
+  entries <- compact_manifest_entries(manifest)
   n_ok <- 0L; n_failed <- 0L; n_empty <- 0L
-  for (i in seq_len(nrow(items))) {
-    if (!is.null(progress)) progress(i, nrow(items), items$rel[i])
-    res <- safe_operation(paste("kompaktér", items$rel[i]),
-      compact_indicator(items$src[i], compact_dest_path(base_path, items$rel[i])),
+  now <- format(Sys.time(), "%Y-%m-%d %H:%M:%S")
+  for (i in seq_len(nrow(todo))) {
+    if (!is.null(progress)) progress(i, nrow(todo), todo$rel[i])
+    res <- safe_operation(paste("kompaktér", todo$rel[i]),
+      compact_indicator(todo$src[i], compact_dest_path(base_path, todo$rel[i])),
       fallback = list(status = "fejl"))
-    if (res$status == "ok") n_ok <- n_ok + 1L
-    else if (res$status == "tom") n_empty <- n_empty + 1L
-    else n_failed <- n_failed + 1L
+    if (res$status == "ok") {
+      n_ok <- n_ok + 1L
+      # Fingeraftrykket er taget FØR læsning — ændres kilden midt i
+      # kompakteringen, matcher entry'et ikke næste sweep → rekompakteres.
+      entries[[todo$rel[i]]] <- list(fingerprint = todo$fp[i], compacted_at = now)
+    } else if (res$status == "tom") {
+      n_empty <- n_empty + 1L
+      entries[[todo$rel[i]]] <- NULL
+    } else {
+      n_failed <- n_failed + 1L
+      entries[[todo$rel[i]]] <- NULL   # fejlet → ingen entry → læses råt
+    }
   }
-  compact_manifest_write(base_path, n_ok = n_ok, n_failed = n_failed)
-  list(n_ok = n_ok, n_failed = n_failed, n_empty = n_empty)
+  compact_manifest_write(base_path, entries, n_ok = n_ok, n_failed = n_failed)
+  list(n_ok = n_ok, n_failed = n_failed, n_empty = n_empty,
+       n_skipped = nrow(items) - nrow(todo))
 }
 
 #' Find en indikators fil i spejlet (direkte + 1 niveau, som rå-søgningen).
@@ -142,27 +217,49 @@ parquet_compact_file <- function(base_path, indikator_navn_teknisk) {
   NULL
 }
 
-#' Indlæs en indikators FULDE slice ad hurtigste vej: fresh _compact-spejl
-#' hvis muligt, ellers rå lager. force springer spejlet over (escape hatch
-#' hvis kilden er opdateret intradag — samme semantik som dags-cachens
-#' force refresh). Læsefejl på spejlfilen → rå fallback, aldrig hårdt stop.
+#' Relativ manifest-nøgle for en fundet spejl-fil ("gruppe/ind" el. "ind").
+#' @noRd
+.compact_rel_from_file <- function(base_path, file) {
+  root <- paste0(file.path(base_path, "_compact"), .Platform$file.sep)
+  rel <- sub("\\.parquet$", "", substring(file, nchar(root) + 1))
+  gsub("\\\\", "/", rel)
+}
+
+#' Indlæs en indikators FULDE slice ad hurtigste vej: spejl-fil hvis dens
+#' manifest-fingeraftryk matcher kilden NU (fanger både nye dage og
+#' intradag-regenerering; uændrede indikatorer må gerne læses fra et ældre
+#' spejl), ellers rå lager. force springer spejlet over (escape hatch, fx
+#' ved ændringer i gammel historik som fingeraftrykket ikke ser).
+#' Læse-/statfejl → rå fallback, aldrig hårdt stop.
+#' @param manifest forudindlæst manifest (undgår genlæsning pr. indikator i
+#'   et scan). NULL → læses her.
+#' @param src forudresolvet rå kildesti (undgår dobbelt-opslag). NULL → resolves.
+#' @param fp forudberegnet live-fingeraftryk. NULL → beregnes her.
 #' @noRd
 parquet_load_indicator_best <- function(base_path, indikator_navn_teknisk,
-                                        force = FALSE) {
-  if (!force && compact_manifest_fresh(base_path)) {
+                                        force = FALSE, manifest = NULL,
+                                        src = NULL, fp = NULL) {
+  src <- src %||% parquet_indicator_path(base_path, indikator_navn_teknisk)
+  if (!force) {
     f <- parquet_compact_file(base_path, indikator_navn_teknisk)
     if (!is.null(f)) {
-      d <- tryCatch(arrow::read_parquet(f), error = function(e) NULL)
-      if (!is.null(d)) {
-        if ("dato" %in% names(d) && is.character(d$dato)) {
-          d$dato <- as.Date(d$dato)
+      manifest <- manifest %||% compact_manifest_read(base_path)
+      entry <- compact_manifest_entries(manifest)[[
+        .compact_rel_from_file(base_path, f)]]
+      fp <- fp %||% tryCatch(source_fingerprint(src), error = function(e) NA_character_)
+      if (!is.null(entry) && !is.na(fp) &&
+          identical(entry$fingerprint, fp)) {
+        d <- tryCatch(arrow::read_parquet(f), error = function(e) NULL)
+        if (!is.null(d)) {
+          if ("dato" %in% names(d) && is.character(d$dato)) {
+            d$dato <- as.Date(d$dato)
+          }
+          return(d)
         }
-        return(d)
       }
     }
   }
-  parquet_load_slice(
-    parquet_indicator_path(base_path, indikator_navn_teknisk))
+  parquet_load_slice(src)
 }
 
 # --- Husk sidste parquet-mappe -----------------------------------------------

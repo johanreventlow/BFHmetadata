@@ -18,25 +18,37 @@ slice_cache_dir <- function() {
 #' (base_path, indikator) forhindrer kollision mellem sanerede navne
 #' ("a;b" vs "a_b") og mellem forskellige parquet-lagre.
 #' @noRd
-slice_cache_key <- function(base_path, indikator, date = Sys.Date()) {
+slice_cache_key <- function(base_path, indikator, date = Sys.Date(),
+                            key = NULL) {
   san <- gsub("[^A-Za-z0-9._-]", "_", indikator)
   h <- substr(rlang::hash(list(as.character(base_path), indikator)), 1, 10)
-  paste0(san, "-", h, "-", format(date, "%Y%m%d"), ".rds")
+  # key (typisk kilde-fingeraftryk) vinder over dato: cache-entry'et er så
+  # gyldigt PRÆCIS så længe kilden er uændret — på tværs af dage, og
+  # intradag-regenerering giver automatisk ny nøgle (= frisk indlæsning).
+  suffix <- if (!is.null(key) && !is.na(key)) {
+    substr(rlang::hash(key), 1, 12)
+  } else {
+    format(date, "%Y%m%d")
+  }
+  paste0(san, "-", h, "-", suffix, ".rds")
 }
 
-#' Hent indikatorens fulde slice via dags-cache; miss/force → loader() + gem.
+#' Hent indikatorens fulde slice via disk-cache; miss/force → loader() + gem.
 #' NULL/tomme resultater caches ALDRIG (en tastefejl i base_path må ikke
 #' blive et dags-langt "ingen data"). Korrupt/ulæselig cache-fil ignoreres
 #' og overskrives. Skrivefejl (fx read-only disk) vælter ikke scannet.
 #' @param loader 0-args funktion der leverer det fulde slice (alle enheder)
+#' @param key valgfri friskheds-nøgle (typisk source_fingerprint) — se
+#'   slice_cache_key. NULL → dags-nøgle (bagudkompatibel adfærd).
 #' @noRd
 load_indicator_slice_cached <- function(base_path, indikator, loader,
                                         cache_dir = slice_cache_dir(),
-                                        force = FALSE, date = Sys.Date()) {
+                                        force = FALSE, date = Sys.Date(),
+                                        key = NULL) {
   if (!dir.exists(cache_dir)) {
     dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
   }
-  f <- file.path(cache_dir, slice_cache_key(base_path, indikator, date))
+  f <- file.path(cache_dir, slice_cache_key(base_path, indikator, date, key))
   if (!force && file.exists(f)) {
     hit <- tryCatch(readRDS(f), error = function(e) NULL)
     if (!is.null(hit)) return(hit)
