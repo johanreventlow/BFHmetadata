@@ -475,6 +475,63 @@ test_that("stop scan: ventende grupper processeres ikke; fundne signaler består
   })
 })
 
+test_that("breaks_tbl overlever død DB-forbindelse (server closed connection)", {
+  skip_if_not_installed("arrow")
+  base <- withr::local_tempdir()
+  dir.create(file.path(base, "a"))
+  arrow::write_parquet(data.frame(dato = as.Date("2020-01-01") + 0:23 * 30,
+    vaerdi = c(rep(10, 12), rep(2, 12)), taeller = NA_real_, naevner = NA_real_,
+    enhed = "e"), file.path(base, "a", "p.parquet"))
+  idx <- data.frame(diagram_id = 7L, indikator_id = 1L, indikator_navn = "A",
+    indikator_navn_teknisk = "a", datasaet = "d", datapakke = "p", org_id = 5L,
+    org_teknisk = "E", org_navn = "E", org_niveau = 5L, overafdeling = "OA",
+    afdeling = NA, afsnit = NA, stringsAsFactors = FALSE)
+  db <- make_fake_signal_db(base, idx)
+  # Simulerer produktionsfejlen: pool-forbindelsen lukket server-side
+  db$diagram_medians <- function(diagram_id) {
+    stop("Failed to prepare query : server closed the connection unexpectedly")
+  }
+  shiny::testServer(mod_signal_review_server, args = list(db = db), {
+    session$setInputs(parquet_dir = base, window_mode = "all", window_n = 24,
+      f_overafdeling = "", f_afsnit = "", f_datapakke = "", f_datasaet = "",
+      f_indikator_navn = "", scan = 1)
+    drain_scan()
+    # DB-fejlen må ALDRIG rive renderDT-outputtet ned (gammel adfærd: hård
+    # fejl boblede op gennem output$breaks_tbl til klienten)
+    err <- tryCatch({ output$breaks_tbl; NULL }, error = function(e) e)
+    expect_null(err)
+  })
+})
+
+test_that("delete_break overlever død DB-forbindelse ved forudgående medians-opslag", {
+  skip_if_not_installed("arrow")
+  base <- withr::local_tempdir()
+  dir.create(file.path(base, "a"))
+  arrow::write_parquet(data.frame(dato = as.Date("2020-01-01") + 0:23 * 30,
+    vaerdi = c(rep(10, 12), rep(2, 12)), taeller = NA_real_, naevner = NA_real_,
+    enhed = "e"), file.path(base, "a", "p.parquet"))
+  idx <- data.frame(diagram_id = 7L, indikator_id = 1L, indikator_navn = "A",
+    indikator_navn_teknisk = "a", datasaet = "d", datapakke = "p", org_id = 5L,
+    org_teknisk = "E", org_navn = "E", org_niveau = 5L, overafdeling = "OA",
+    afdeling = NA, afsnit = NA, stringsAsFactors = FALSE)
+  db <- make_fake_signal_db(base, idx)
+  db$diagram_medians <- function(diagram_id) {
+    stop("Failed to prepare query : server closed the connection unexpectedly")
+  }
+  called <- new.env(); called$n <- 0L
+  db$delete_median_break <- function(median_id) { called$n <- called$n + 1L; 1L }
+  shiny::testServer(mod_signal_review_server, args = list(db = db), {
+    session$setInputs(parquet_dir = base, window_mode = "all", window_n = 24,
+      f_overafdeling = "", f_afsnit = "", f_datapakke = "", f_datasaet = "",
+      f_indikator_navn = "", scan = 1)
+    drain_scan()
+    session$setInputs(breaks_tbl_rows_selected = 1L, delete_break = 1)
+    # Uden medians kan intet id slås op → sletning skal ALDRIG kaldes,
+    # og selve observeEvent må ikke fejle hårdt
+    expect_equal(called$n, 0L)
+  })
+})
+
 test_that("scan husker parquet-mappen til næste session (bruges af startup-kompaktering)", {
   skip_if_not_installed("arrow")
   withr::local_options(list(bfhmeta.cache_dir = withr::local_tempdir()))

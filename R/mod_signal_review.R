@@ -438,7 +438,9 @@ mod_signal_review_server <- function(id, db) {
     # --- Eksisterende median-knæk + fjern ---------------------------------
     output$breaks_tbl <- DT::renderDT({
       cd <- current_diagram(); if (is.null(cd)) return(DT::datatable(data.frame()))
-      m <- db$diagram_medians(cd$diagram_id)
+      m <- safe_operation("hent median-knæk", db$diagram_medians(cd$diagram_id),
+                          fallback = NULL)
+      if (is.null(m)) return(DT::datatable(data.frame()))
       # Markér knæk der IKKE indgår i beregningen, fordi de blev sat under en
       # anden aggregering. Uden denne kolonne ville faserne ændre sig usynligt
       # efter en periode-ændring.
@@ -458,7 +460,9 @@ mod_signal_review_server <- function(id, db) {
       cd <- current_diagram(); if (is.null(cd)) return()
       sel <- input$breaks_tbl_rows_selected
       if (is.null(sel)) { showNotification("Vælg et knæk først", type = "warning"); return() }
-      m <- db$diagram_medians(cd$diagram_id)
+      m <- safe_operation("hent median-knæk", db$diagram_medians(cd$diagram_id),
+                          fallback = NULL)
+      if (is.null(m)) { showNotification("Fejl ved hent (se log)", type = "error"); return() }
       mid <- m$id[sel]
       ok <- safe_operation("fjern faseskift", {
         db$delete_median_break(mid); TRUE

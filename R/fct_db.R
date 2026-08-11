@@ -29,7 +29,12 @@ db_connect <- function() {
   pw <- Sys.getenv("SUPABASE_DB_PASSWORD")
   if (!nzchar(pw)) stop("SUPABASE_DB_PASSWORD mangler i .Renviron", call. = FALSE)
   pool::dbPool(RPostgres::Postgres(), host = cfg$host, port = cfg$port,
-    dbname = cfg$dbname, user = cfg$user, password = pw, sslmode = cfg$sslmode)
+    dbname = cfg$dbname, user = cfg$user, password = pw, sslmode = cfg$sslmode,
+    # Supabase-pooleren lukker inaktive forbindelser server-side. Uden
+    # validationInterval = 0 udleveres en checket-ud forbindelse ofte uden
+    # validering (default 600s), hvilket gav "server closed the connection
+    # unexpectedly" midt i en query efter en pause i app-brug.
+    validationInterval = 0, idleTimeout = 30, minSize = 1)
 }
 
 #' Byg db-accessor-liste bundet til pool (dependency injection til modul/test)
