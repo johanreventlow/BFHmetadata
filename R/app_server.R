@@ -5,6 +5,7 @@ app_server <- function(input, output, session) {
   db <- make_db(pool)
   mod_indikator_crud_server("indik", db)
   mod_signal_review_server("signal", db)
+  mod_diagram_server("diagram", db)
 
   # Opslagstabeller: ét generisk modul pr. LOOKUP_TABLES-element
   for (cfg in LOOKUP_TABLES) {
@@ -14,6 +15,7 @@ app_server <- function(input, output, session) {
   # Landing-fliser → naviger til valgt fane
   observeEvent(input$go_indikatorer, bslib::nav_select("nav", "indikatorer"))
   observeEvent(input$go_signal, bslib::nav_select("nav", "signal"))
+  observeEvent(input$go_diagrammer, bslib::nav_select("nav", "diagrammer"))
   for (cfg in LOOKUP_TABLES) local({
     cc <- cfg
     observeEvent(input[[paste0("go_", cc$id)]], bslib::nav_select("nav", cc$id))

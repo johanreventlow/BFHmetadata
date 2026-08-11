@@ -19,3 +19,32 @@ test_that("validate_indikator tillader NA/NULL antal_observationer", {
   errs <- validate_indikator(list(indikator_navn = "X", antal_observationer = NA))
   expect_length(errs, 0)
 })
+
+# --- Diagram-validering (Fase B) ---------------------------------------------
+
+test_that("validate_diagram accepterer gyldigt input (NA-periode OK)", {
+  errs <- validate_diagram(list(indikator = 1L, organisatorisk_navn_teknisk = 2L,
+                                diagram_type = 1L,
+                                periode_aggregering = NA_character_))
+  expect_length(errs, 0)
+})
+
+test_that("validate_diagram kraever indikator, org og type", {
+  errs <- validate_diagram(list(indikator = NA_integer_,
+                                organisatorisk_navn_teknisk = NA_integer_,
+                                diagram_type = NA_integer_,
+                                periode_aggregering = NA_character_))
+  expect_length(errs, 3)
+  expect_true(any(grepl("Indikator", errs)))
+  expect_true(any(grepl("enhed", errs)))
+  expect_true(any(grepl("Diagramtype", errs)))
+})
+
+test_that("validate_diagram fanger enkelt manglende felt", {
+  errs <- validate_diagram(list(indikator = 5L,
+                                organisatorisk_navn_teknisk = NA_integer_,
+                                diagram_type = 1L,
+                                periode_aggregering = "måned"))
+  expect_length(errs, 1)
+  expect_match(errs, "enhed")
+})

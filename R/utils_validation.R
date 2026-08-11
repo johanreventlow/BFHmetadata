@@ -16,6 +16,19 @@ validate_indikator <- function(values) {
   errs
 }
 
+#' Valider diagram-form-værdier. Returnerer character() hvis OK.
+#' Kun FK-felterne er obligatoriske — periode/flag må være tomme (skema tillader
+#' NULL, og eksisterende data har huller).
+#' @noRd
+validate_diagram <- function(vals) {
+  errs <- character(0)
+  if (is.na(vals$indikator)) errs <- c(errs, "Indikator er obligatorisk")
+  if (is.na(vals$organisatorisk_navn_teknisk))
+    errs <- c(errs, "Organisatorisk enhed er obligatorisk")
+  if (is.na(vals$diagram_type)) errs <- c(errs, "Diagramtype er obligatorisk")
+  errs
+}
+
 #' NULL-coalesce
 #' @noRd
 `%||%` <- function(a, b) if (is.null(a)) b else a

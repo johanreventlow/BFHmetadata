@@ -7,6 +7,8 @@ app_ui <- function(request) {
       mod_indikator_crud_ui("indik")),
     bslib::nav_panel("Signal-gennemgang", value = "signal",
       mod_signal_review_ui("signal")),
+    bslib::nav_panel("Diagrammer", value = "diagrammer",
+      mod_diagram_ui("diagram")),
     do.call(bslib::nav_menu, c(list(title = "Opslagstabeller"),
       lapply(LOOKUP_TABLES, function(cfg)
         bslib::nav_panel(cfg$label, value = cfg$id,
@@ -36,6 +38,10 @@ app_ui <- function(request) {
     bslib::layout_column_wrap(width = 1/3, fill = FALSE,
       tile("signal", "Signal-gennemgang",
         "Scan parquet for Anhøj-signaler og registrér faseskift.")),
+    sect("Diagrammer"),
+    bslib::layout_column_wrap(width = 1/3, fill = FALSE,
+      tile("diagrammer", "Diagrammer",
+        "Filterbar oversigt og redigering af alle diagrammer.")),
     sect("Opslagstabeller"),
     do.call(bslib::layout_column_wrap, c(list(width = 1/3, fill = FALSE),
       lapply(LOOKUP_TABLES, function(cfg)

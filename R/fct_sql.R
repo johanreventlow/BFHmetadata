@@ -170,6 +170,74 @@ build_median_delete_sql <- function() {
   'DELETE FROM "tblDiagrammerMedian" WHERE "id" = $1'
 }
 
+# --- Diagram-CRUD (admin) ----------------------------------------------------
+# Kolonner der redigeres i diagram-formularen (rækkefølge = parameter-orden).
+DIAGRAM_COLS <- c("indikator", "organisatorisk_navn_teknisk", "diagram_type",
+                  "periode_aggregering", "indgaar_i_aggregering",
+                  "diagram_aktivt", "direktionens_tavle")
+
+#' Alle diagrammer med resolvede labels — INGEN aktiv/type-filtre (admin).
+#' @noRd
+build_diagram_admin_sql <- function() {
+  paste0(
+    'SELECT d."id" AS diagram_id, d."indikator", ',
+    'd."organisatorisk_navn_teknisk", d."diagram_type", ',
+    'd."periode_aggregering", d."indgaar_i_aggregering", ',
+    'd."diagram_aktivt", d."direktionens_tavle", ',
+    'i."indikator_navn", ',
+    'COALESCE(o."organisatorisk_navn_langt", o."organisatorisk_navn_teknisk") ',
+    'AS org_navn, ',
+    't."diagram_type" AS type_navn ',
+    'FROM "tblDiagrammer" d ',
+    'LEFT JOIN "tblIndikatorer" i ON i."id" = d."indikator" ',
+    'LEFT JOIN "tblOrganisationStruktur" o ',
+    'ON o."Id" = d."organisatorisk_navn_teknisk" ',
+    'LEFT JOIN "tblDiagramTyper" t ON t."Id" = d."diagram_type" ',
+    'ORDER BY i."indikator_navn", org_navn')
+}
+
+#' @noRd
+build_diagram_insert_sql <- function() {
+  ph <- paste(sprintf("$%d", seq_along(DIAGRAM_COLS)), collapse = ", ")
+  qcols <- paste(sprintf('"%s"', DIAGRAM_COLS), collapse = ", ")
+  sprintf('INSERT INTO "tblDiagrammer" (%s) VALUES (%s) RETURNING "id"',
+          qcols, ph)
+}
+
+#' @noRd
+build_diagram_update_sql <- function() {
+  sets <- vapply(seq_along(DIAGRAM_COLS),
+                 function(i) sprintf('"%s" = $%d', DIAGRAM_COLS[i], i), "")
+  sprintf('UPDATE "tblDiagrammer" SET %s WHERE "id" = $%d',
+          paste(sets, collapse = ", "), length(DIAGRAM_COLS) + 1)
+}
+
+#' @noRd
+build_diagram_delete_sql <- function() {
+  'DELETE FROM "tblDiagrammer" WHERE "id" = $1'
+}
+
+#' Blød duplikat-guard: findes (indikator, org, type) allerede (undtagen id)?
+#' @noRd
+build_diagram_duplicate_sql <- function() {
+  paste0('SELECT count(*) AS n FROM "tblDiagrammer" WHERE "indikator" = $1 ',
+         'AND "organisatorisk_navn_teknisk" = $2 AND "diagram_type" = $3 ',
+         'AND "id" <> $4')
+}
+
+#' Distinkte periode-værdier (choices til select — robust ved nye værdier)
+#' @noRd
+build_diagram_periode_sql <- function() {
+  paste0('SELECT DISTINCT "periode_aggregering" FROM "tblDiagrammer" ',
+         'WHERE "periode_aggregering" IS NOT NULL ORDER BY 1')
+}
+
+#' Antal median-knæk for ét diagram (pre-check før slet → venlig besked)
+#' @noRd
+build_median_count_sql <- function() {
+  'SELECT count(*) AS n FROM "tblDiagrammerMedian" WHERE "diagram" = $1'
+}
+
 #' Én række pr. (org, enhed-fra-data-variant). LEFT JOIN bevarer organisationer
 #' uden oversættelse. Bruges til at bygge parquet-enhed-filter pr. diagram.
 #' @noRd
