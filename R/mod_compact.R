@@ -38,8 +38,11 @@ mod_compact_server <- function(id) {
     # --- Fase 1: sweep (fingeraftryk pr. indikator, chunket) --------------
     # Kører i bidder af sweep_chunk indikatorer pr. tick (~9 ms/stk målt),
     # så app-start aldrig blokeres. Resultat: ændrede/nye indikatorer.
+    sweep_id <- "compact_sweep"
+
     .sweep_finish <- function(g) {
       if (!identical(g, isolate(gen()))) return(invisible())
+      removeNotification(sweep_id, session = session)
       sweeping(FALSE)
       changed <- ctx$items[!is.na(ctx$fps) & ctx$fps != ctx$stored, , drop = FALSE]
       changed$fp <- ctx$fps[!is.na(ctx$fps) & ctx$fps != ctx$stored]
@@ -106,6 +109,10 @@ mod_compact_server <- function(id) {
         todo = NULL, i = 1L, n_ok = 0L, n_failed = 0L, n_empty = 0L,
         entries = entries), envir = new.env(parent = emptyenv()))
       sweeping(TRUE)
+      # Synlighed: sweepen tager 10-20 s på fuldt lager, og R er optaget i
+      # bidder imens — uden denne besked føles klik "døde" uden forklaring
+      showNotification("Tjekker parquet-lager for ændringer…",
+                       id = sweep_id, duration = NULL, session = session)
       .sweep_tick(g)
     }
 

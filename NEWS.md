@@ -35,6 +35,11 @@
   (uden nye/ændrede seneste dage) opdages ikke — brug force-refresh eller
   knappen efter manuel historik-omskrivning.
 
+* Ventetid er nu synlig: fane-skift sker med det samme (modulets data hentes
+  lige efter, med "Henter …"-notifikation imens), og fingeraftryk-sweepen ved
+  opstart viser "Tjekker parquet-lager for ændringer…" mens den kører. Før
+  kunne flise-klik føles "døde", mens appen arbejdede i baggrunden.
+
 ## Interne ændringer
 * Fingeraftryk (source_fingerprint): 1 readdir + stats på nyeste K
   partitioner (målt: 0,1 s for største indikator med 7.097 partitioner;

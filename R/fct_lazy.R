@@ -39,16 +39,34 @@ next_tick_session <- function(session, fn) {
 #' skifter til og fra fanen (modul-server må ikke registreres to gange —
 #' det ville give dublerede observers).
 #'
+#' Med `session` + `loading` udskydes init til næste tick: fane-skiftet
+#' renderes STRAKS (før modulets opstart-queries — ellers føles flise-klikket
+#' "dødt" mens Supabase svarer), en notifikation viser at der arbejdes, og
+#' init køres med korrekt reactive domain (moduleServer kræver et domain,
+#' og later-ticks har intet).
+#'
 #' @param tab_value fanens value i navbar'en
 #' @param selected reactive der giver den aktuelt valgte fane
 #' @param init 0-args funktion der starter modulet
+#' @param session app-session (kræves for loading-notifikation/udskydelse)
+#' @param loading notifikations-tekst mens init kører; NULL = synkron init
 #' @noRd
-lazy_module <- function(tab_value, selected, init) {
+lazy_module <- function(tab_value, selected, init, session = NULL,
+                        loading = NULL) {
   started <- FALSE
   shiny::observe({
     if (started) return()
     if (!identical(selected(), tab_value)) return()
     started <<- TRUE
-    init()
+    if (is.null(session) || is.null(loading)) {
+      init()
+      return()
+    }
+    nid <- paste0("lazy_init_", tab_value)
+    showNotification(loading, id = nid, duration = NULL, session = session)
+    next_tick_session(session, function() {
+      on.exit(removeNotification(nid, session = session), add = TRUE)
+      shiny::withReactiveDomain(session, init())
+    })
   })
 }

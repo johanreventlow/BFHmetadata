@@ -93,6 +93,46 @@ test_that("make_db_cached + lazy_module: app-start koster ingen læse-queries", 
   })
 })
 
+test_that("lazy_module med loading: init udskydes til næste tick (fanen skifter straks)", {
+  # Uden udskydelse blokerer modulets opstart-queries selve fane-skiftet —
+  # klik på en flise føltes "dødt" i sekunder. Med loading-tekst vises en
+  # notifikation, fanen renderes med det samme, og init kører i næste tick
+  # MED korrekt reactive domain (ellers fejler moduleServer i init).
+  queue <- list()
+  withr::local_options(list(
+    bfhmeta.scan_scheduler = function(fn) queue[[length(queue) + 1]] <<- fn))
+  inits <- 0L; dom <- NULL
+  shiny::testServer(function(input, output, session) {
+    sel <- reactive(input$nav)
+    lazy_module("signal", sel, function() {
+      inits <<- inits + 1L
+      dom <<- shiny::getDefaultReactiveDomain()
+    }, session = session, loading = "Henter diagram-oversigt…")
+  }, {
+    session$setInputs(nav = "signal")
+    expect_equal(inits, 0L)                  # fane-skiftet betalte IKKE for init
+    while (length(queue) > 0) { fn <- queue[[1]]; queue <- queue[-1]; fn() }
+    expect_equal(inits, 1L)                  # init kørte i næste tick...
+    expect_identical(dom, session)           # ...med korrekt domain (moduleServer)
+    # Retur til fanen → ingen re-init
+    session$setInputs(nav = "start")
+    session$setInputs(nav = "signal")
+    while (length(queue) > 0) { fn <- queue[[1]]; queue <- queue[-1]; fn() }
+    expect_equal(inits, 1L)
+  })
+})
+
+test_that("lazy_module uden loading: uændret synkron adfærd (bagudkompatibel)", {
+  inits <- 0L
+  shiny::testServer(function(input, output, session) {
+    sel <- reactive(input$nav)
+    lazy_module("x", sel, function() inits <<- inits + 1L)
+  }, {
+    session$setInputs(nav = "x")
+    expect_equal(inits, 1L)                  # straks, ingen kø involveret
+  })
+})
+
 test_that("lazy_module: kun den valgte fanes modul initialiseres", {
   hits <- character(0)
   shiny::testServer(function(input, output, session) {

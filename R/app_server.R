@@ -17,11 +17,14 @@ app_server <- function(input, output, session) {
   # forbindelsen selv.
   selected_tab <- reactive(input$nav)
   lazy_module("indikatorer", selected_tab,
-              function() mod_indikator_crud_server("indik", db))
+              function() mod_indikator_crud_server("indik", db),
+              session = session, loading = "Henter indikator-oversigt…")
   lazy_module("signal", selected_tab,
-              function() mod_signal_review_server("signal", db))
+              function() mod_signal_review_server("signal", db),
+              session = session, loading = "Henter diagram-oversigt…")
   lazy_module("diagrammer", selected_tab,
-              function() mod_diagram_server("diagram", db))
+              function() mod_diagram_server("diagram", db),
+              session = session, loading = "Henter diagram-liste…")
 
   # Opslagstabeller: ét generisk modul pr. LOOKUP_TABLES-element
   for (cfg in LOOKUP_TABLES) local({
@@ -29,7 +32,7 @@ app_server <- function(input, output, session) {
     lazy_module(cc$id, selected_tab, function() {
       mod_lookup_table_server(cc$id, make_db_cached(make_lookup_db(pool, cc),
                                                     store = store), cc)
-    })
+    }, session = session, loading = paste0("Henter ", cc$label, "…"))
   })
 
   # Landing-fliser → naviger til valgt fane
