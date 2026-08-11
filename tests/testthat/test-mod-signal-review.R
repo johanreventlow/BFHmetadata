@@ -7,7 +7,7 @@ make_fake_signal_db <- function(base, idx) {
       id = integer(0), diagram = integer(0), laas_median = as.Date(character(0))),
     diagram_medians_batch = function(diagram_ids) data.frame(
       id = integer(0), diagram = integer(0), laas_median = as.Date(character(0))),
-    add_median_break = function(diagram_id, dato) 999L,
+    add_median_break = function(diagram_id, dato, aggregering = NA_character_) 999L,
     delete_median_break = function(median_id) 1L)
 }
 
@@ -239,8 +239,9 @@ test_that("Gem faseskift kalder add_median_break med valgt dato + invaliderer ca
     afdeling = NA, afsnit = NA, stringsAsFactors = FALSE)
   saved <- new.env(); saved$args <- NULL
   db <- make_fake_signal_db(base, idx)
-  db$add_median_break <- function(diagram_id, dato) {
-    saved$args <- list(diagram_id = diagram_id, dato = dato); 555L }
+  db$add_median_break <- function(diagram_id, dato, aggregering = NA_character_) {
+    saved$args <- list(diagram_id = diagram_id, dato = dato,
+                       aggregering = aggregering); 555L }
 
   shiny::testServer(mod_signal_review_server, args = list(db = db), {
     session$setInputs(parquet_dir = base, window_mode = "all", window_n = 24,
@@ -586,4 +587,43 @@ test_that("scan skriver dags-cache-filer pr. indikator (persistent på tværs af
   # Én RDS pr. indikator — næste session (samme dag) læser disse i stedet
   # for parquet-lageret.
   expect_equal(length(list.files(cache_dir, pattern = "\\.rds$")), 2L)
+})
+
+test_that("gem faseskift stempler diagrammets aggregering", {
+  skip_if_not_installed("arrow")
+  base <- withr::local_tempdir()
+  dir.create(file.path(base, "ind_uge"))
+  # Daglig serie med taeller/naevner (kan aggregeres — modsat vaerdi-fixtures)
+  dates <- seq(as.Date("2024-01-01"), as.Date("2025-06-30"), by = "day")
+  arrow::write_parquet(data.frame(
+    dato = dates, indikator = "ind_uge", enhed = "e",
+    taeller = rep(c(2, 8), length.out = length(dates)), naevner = 10),
+    file.path(base, "ind_uge", "p.parquet"))
+  idx <- data.frame(diagram_id = 11L, indikator_id = 1L,
+    indikator_navn = "Uge", indikator_navn_teknisk = "ind_uge",
+    periode_aggregering = "uge",
+    datasaet = "d", datapakke = "p", org_id = 5L, org_teknisk = "E",
+    org_navn = "E", org_niveau = 5L, overafdeling = "OA", afdeling = NA,
+    afsnit = NA, stringsAsFactors = FALSE)
+  saved <- new.env(); saved$args <- NULL
+  db <- make_fake_signal_db(base, idx)
+  db$add_median_break <- function(diagram_id, dato, aggregering = NA_character_) {
+    saved$args <- list(diagram_id = diagram_id, dato = dato,
+                       aggregering = aggregering); 555L }
+
+  shiny::testServer(mod_signal_review_server, args = list(db = db), {
+    session$setInputs(parquet_dir = base, window_mode = "all", window_n = 36,
+      f_overafdeling = "", f_afsnit = "", f_datapakke = "", f_datasaet = "",
+      f_indikator_navn = "", scan = 1)
+    drain_scan()
+    sc <- session$returned$scan_of_current()
+    skip_if(is.null(sc) || is.null(sc$slice), "ingen signal i fixture")
+    # Serien SKAL være uge-aggregeret: mandags-datoer, ej alle dage
+    expect_true(all(as.integer(format(sc$slice$dato, "%u")) == 1))
+    # Vælg en gyldig (ikke-første) observation og gem
+    d2 <- as.character(sort(unique(sc$slice$dato))[2])
+    session$setInputs(chart_selected = d2)
+    session$setInputs(save_break = 1)
+    expect_equal(saved$args$aggregering, "uge")
+  })
 })

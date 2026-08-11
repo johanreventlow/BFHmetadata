@@ -251,3 +251,120 @@ test_that("apply_index_filters: AND på tværs af dimensioner; tom filter = alt"
   # tom streng/NULL pr. dimension ignoreres
   expect_equal(nrow(apply_index_filters(idx, list(overafdeling = ""))), 4)
 })
+
+# --- Periode-aggregering i scan_diagram -------------------------------------
+# Signalet SKAL beregnes på samme serie som BFHddl tegner. Se fct_period.R.
+
+# Daglig serie (2 år) med taeller/naevner — den form uge-indikatorerne har.
+make_daily_fixture <- function(base, ind, env = parent.frame()) {
+  dir.create(file.path(base, ind), recursive = TRUE, showWarnings = FALSE)
+  dates <- seq(as.Date("2024-01-01"), as.Date("2025-12-28"), by = "day")
+  df <- data.frame(dato = dates, indikator = ind, enhed = "e",
+                   taeller = rep(c(2, 3), length.out = length(dates)),
+                   naevner = 10, stringsAsFactors = FALSE)
+  arrow::write_parquet(df, file.path(base, ind, "p.parquet"))
+  df
+}
+
+.scan_row <- function(ind, id = 90L) list(diagram_id = id,
+  indikator_navn_teknisk = ind, org_id = 5L)
+.scan_vdf <- function() data.frame(org_id = 5L, teknisk = "E", kort = NA,
+  langt = NA, fra_data = NA, stringsAsFactors = FALSE)
+
+test_that("scan_diagram: uge-aggregering FØR vindue — spænd, ikke kun antal", {
+  skip_if_not_installed("arrow")
+  base <- withr::local_tempdir()
+  make_daily_fixture(base, "uge_ind")
+  res <- scan_diagram(.scan_row("uge_ind"), base, medians_df = NULL,
+                      variants_df = .scan_vdf(), window_n = 24L, period = "week")
+  expect_equal(res$status, "ok")
+  expect_equal(res$n_obs, 24L)
+  # Kernen i regressionen: 24 UGER spænder ~161 dage. Ved forkert rækkefølge
+  # (limit før aggregering) ville man få 24 dage → ~4 buckets. At asserte
+  # n_obs alene ville bestå i begge tilfælde — derfor testes spændet.
+  span <- as.numeric(max(res$slice$dato) - min(res$slice$dato))
+  expect_gt(span, 150)
+  expect_lt(span, 175)
+})
+
+test_that("scan_diagram: uden period er adfærden uændret (rå daglig)", {
+  skip_if_not_installed("arrow")
+  base <- withr::local_tempdir()
+  make_daily_fixture(base, "raa_ind")
+  res <- scan_diagram(.scan_row("raa_ind"), base, medians_df = NULL,
+                      variants_df = .scan_vdf(), window_n = 24L)
+  expect_equal(res$n_obs, 24L)
+  # 24 dage, ikke 24 uger
+  expect_equal(as.numeric(max(res$slice$dato) - min(res$slice$dato)), 23)
+})
+
+test_that("scan_diagram: period='day' svarer til ingen aggregering", {
+  skip_if_not_installed("arrow")
+  base <- withr::local_tempdir()
+  make_daily_fixture(base, "dag_ind")
+  a <- scan_diagram(.scan_row("dag_ind"), base, NULL, .scan_vdf(),
+                    window_n = 24L, period = "day")
+  b <- scan_diagram(.scan_row("dag_ind"), base, NULL, .scan_vdf(),
+                    window_n = 24L, period = NULL)
+  expect_equal(a$n_obs, b$n_obs)
+  expect_equal(a$slice$dato, b$slice$dato)
+})
+
+test_that("scan_diagram: maaned-aggregering på månedsdata er nær-no-op", {
+  skip_if_not_installed("arrow")
+  base <- withr::local_tempdir()
+  ind <- "mdr_ind"; dir.create(file.path(base, ind))
+  # Allerede månedslagret + dublerede (enhed, dato) som i virkelige data
+  d <- data.frame(
+    dato = rep(seq(as.Date("2023-01-01"), by = "month", length.out = 24), each = 2),
+    indikator = ind, enhed = "e", taeller = 1, naevner = 5)
+  arrow::write_parquet(d, file.path(base, ind, "p.parquet"))
+  res <- scan_diagram(.scan_row("mdr_ind"), base, NULL, .scan_vdf(),
+                      period = "month")
+  expect_equal(res$status, "ok")
+  expect_equal(res$n_obs, 24L)      # dubletter kollapser til én pr. måned
+  expect_true(all(res$slice$taeller == 2))
+})
+
+test_that("scan_diagram: aggregering blander ALDRIG enheder sammen", {
+  skip_if_not_installed("arrow")
+  base <- withr::local_tempdir()
+  ind <- "multi_ind"; dir.create(file.path(base, ind))
+  dates <- seq(as.Date("2024-01-01"), as.Date("2024-12-30"), by = "day")
+  d <- rbind(
+    data.frame(dato = dates, indikator = ind, enhed = "e", taeller = 1, naevner = 10),
+    data.frame(dato = dates, indikator = ind, enhed = "anden", taeller = 99, naevner = 10))
+  arrow::write_parquet(d, file.path(base, ind, "p.parquet"))
+  res <- scan_diagram(.scan_row("multi_ind"), base, NULL, .scan_vdf(),
+                      period = "week")
+  expect_equal(res$status, "ok")
+  # Kun "e" må være med (variant-filteret), og taeller må ikke rumme 99'erne
+  expect_true(all(res$slice$enhed == "e"))
+  expect_true(all(res$slice$taeller <= 7))
+})
+
+test_that("scan_diagram: tomt efter drop_incomplete → ingen_data (ej crash)", {
+  skip_if_not_installed("arrow")
+  base <- withr::local_tempdir()
+  ind <- "kun_nu"; dir.create(file.path(base, ind))
+  # Eneste data ligger i indeværende måned → aggregeringen tømmer slicet
+  d <- data.frame(dato = Sys.Date(), indikator = ind, enhed = "e",
+                  taeller = 1, naevner = 5)
+  arrow::write_parquet(d, file.path(base, ind, "p.parquet"))
+  res <- scan_diagram(.scan_row("kun_nu"), base, NULL, .scan_vdf(),
+                      period = "month")
+  expect_equal(res$status, "ingen_data")
+  expect_false(res$signal)
+})
+
+test_that("scan_diagram: vaerdi-kolonne + aggregering → fejl (ej tavs no-op)", {
+  skip_if_not_installed("arrow")
+  base <- withr::local_tempdir()
+  ind <- "vaerdi_ind"; dir.create(file.path(base, ind))
+  d <- data.frame(dato = seq(as.Date("2024-01-01"), by = "day", length.out = 60),
+                  indikator = ind, enhed = "e", vaerdi = 1:60, taeller = 1)
+  arrow::write_parquet(d, file.path(base, ind, "p.parquet"))
+  res <- scan_diagram(.scan_row("vaerdi_ind"), base, NULL, .scan_vdf(),
+                      period = "week")
+  expect_equal(res$status, "fejl")   # safe_operation fanger → synlig fejl
+})

@@ -10,7 +10,10 @@ mod_signal_review_ui <- function(id) {
       div(class = "d-flex gap-2 align-items-end",
         radioButtons(ns("window_mode"), "Datavindue",
           c("Alle data" = "all", "Seneste N" = "latest"), inline = TRUE),
-        numericInput(ns("window_n"), "N", value = 24, min = 6, max = 200, width = "90px")),
+        # N tæller PERIODER (uger/måneder), ej dage — 36 matcher BFHddl's
+        # effektive default (antal_observationer er NULL for ~alle indikatorer).
+        numericInput(ns("window_n"), "N", value = 36, min = 6, max = 200, width = "90px")),
+      uiOutput(ns("window_hint")),
       hr(),
       selectizeInput(ns("f_overafdeling"), "Overafdeling", NULL, multiple = FALSE),
       selectizeInput(ns("f_afsnit"), "Afsnit", NULL, multiple = FALSE),
@@ -29,6 +32,7 @@ mod_signal_review_ui <- function(id) {
       div(class = "btn-group",
         actionButton(ns("prev"), "‹ Forrige", class = "btn-outline-secondary btn-sm"),
         actionButton(ns("next_"), "Næste ›", class = "btn-outline-secondary btn-sm"))),
+    uiOutput(ns("break_warning")),
     ggiraph::girafeOutput(ns("chart"), height = "420px"),
     hr(),
     div(class = "d-flex gap-2 align-items-center flex-wrap",
@@ -148,11 +152,13 @@ mod_signal_review_server <- function(id, db) {
           meds <- ctx$meds[[as.character(row$diagram_id)]]
           if (is.null(meds)) meds <- db$diagram_medians(row$diagram_id)
           res <- scan_diagram(row, ctx$base, meds, ctx$vdf, window_n = ctx$wn,
-                              slice_loader = get_slice)
+                              slice_loader = get_slice,
+                              period = row$periode_aggregering)
           res$row <- row
           cc[[key]] <- res
         }
         ctx$sig[i] <- isTRUE(res$signal)
+        ctx$status[i] <- res$status %||% NA_character_
       }
       cache(cc)
       ctx$gi <- ctx$gi + 1L
@@ -162,7 +168,9 @@ mod_signal_review_server <- function(id, db) {
       signal_list(ctx$cand[which(ctx$sig %in% TRUE), , drop = FALSE])
       scan_progress(list(done = ctx$gi - 1L, total = length(ctx$groups),
                          found = sum(ctx$sig, na.rm = TRUE),
-                         n_cand = nrow(ctx$cand)))
+                         n_cand = nrow(ctx$cand),
+                         ingen_data = sum(ctx$status == "ingen_data", na.rm = TRUE),
+                         fejl = sum(ctx$status == "fejl", na.rm = TRUE)))
       if (ctx$gi > length(ctx$groups)) {
         .scan_finish(gen)
       } else {
@@ -201,14 +209,16 @@ mod_signal_review_server <- function(id, db) {
         # Manifest læses ÉN gang pr. scan (ellers én JSON-læsning pr. indikator)
         manifest = safe_operation("laes kompakt-manifest",
                                   compact_manifest_read(base), fallback = NULL),
-        sig = rep(NA, nrow(cand))), envir = new.env(parent = emptyenv()))
+        sig = rep(NA, nrow(cand)),
+        status = rep(NA_character_, nrow(cand))),
+        envir = new.env(parent = emptyenv()))
       signal_list(cand[0, , drop = FALSE])
       scanned_n(wn)          # vindue låst til denne scan (bruges af .scan_of_current/Task 7)
       cursor(1L)
       preview_parts(NULL)
       scan_running(TRUE)
       scan_progress(list(done = 0L, total = length(groups), found = 0L,
-                         n_cand = nrow(cand)))
+                         n_cand = nrow(cand), ingen_data = 0L, fejl = 0L))
       # Første gruppe synkront (øjeblikkelig feedback); resten via later-kæden
       .scan_process_group(gen)
     })
@@ -256,6 +266,22 @@ mod_signal_review_server <- function(id, db) {
                      cd$indikator_navn, cd$org_navn))
     })
 
+    # "Seneste N" tæller perioder, ej dage. Vis hvilken enhed N har for det
+    # aktuelle udsnit, så "N" ikke er tvetydigt.
+    output$window_hint <- renderUI({
+      if (!identical(input$window_mode, "latest")) return(NULL)
+      cand <- apply_index_filters(index(), current_filters())
+      periods <- unique(vapply(cand$periode_aggregering %||% character(0),
+                               period_to_en, ""))
+      unit <- if (length(periods) == 1L) {
+        switch(periods, week = "uger", month = "måneder", quarter = "kvartaler",
+               year = "år", day = "dage", periods)
+      } else {
+        "perioder"
+      }
+      div(class = "small text-muted", sprintf("N = antal %s", unit))
+    })
+
     output$scan_summary <- renderUI({
       p <- scan_progress(); if (is.null(p)) return(NULL)
       txt <- if (isTRUE(scan_running())) {
@@ -264,7 +290,16 @@ mod_signal_review_server <- function(id, db) {
       } else {
         sprintf("%d med signal", p$found)
       }
-      div(class = "small text-muted mt-2", txt)
+      # Oversprungne diagrammer skal være SYNLIGE. Aggregat-enheder (diagrammer
+      # der i BFHddl får data via hierarki-oprulning) rammer "ingen_data" her,
+      # fordi oprulning ikke er implementeret i appen — uden denne tæller
+      # forsvinder de tavst, og scanningen ser mere komplet ud end den er.
+      skipped <- (p$ingen_data %||% 0L) + (p$fejl %||% 0L)
+      div(class = "small text-muted mt-2", txt,
+        if (skipped > 0) {
+          tagList(br(), sprintf("%d uden data, %d fejlede (ej vurderet)",
+                                p$ingen_data %||% 0L, p$fejl %||% 0L))
+        })
     })
 
     # Cursor-stemplet valg: returnér KUN den valgte dato hvis klikket skete på
@@ -298,9 +333,13 @@ mod_signal_review_server <- function(id, db) {
             base, ind, src = src, fp = fp),
           key = fp)
       }
+      # Perioden SKAL med her også — ellers falder netop dette diagram tavst
+      # tilbage til uaggregeret efter et gemt/fjernet knæk (grafen ser fin ud,
+      # men er en anden serie end scannet).
       cc[[paste0(cd$diagram_id, "|", .wkey(scanned_n()))]] <-
         c(scan_diagram(as.list(cd), base, meds, variants(),
-                       window_n = scanned_n(), slice_loader = loader),
+                       window_n = scanned_n(), slice_loader = loader,
+                       period = cd$periode_aggregering),
           list(row = as.list(cd)))
       cache(cc)
     }
@@ -331,6 +370,19 @@ mod_signal_review_server <- function(id, db) {
           "Diagrammet kan ikke tegnes (ingen tegnbare datapunkter) — se log for detaljer."))
       }
       g
+    })
+
+    # Advarsel ved grafen når knæk er udeladt af beregningen — så en ændret
+    # periode_aggregering ikke ændrer faserne uden at brugeren opdager det.
+    output$break_warning <- renderUI({
+      sc <- .scan_of_current()
+      n <- sc$n_ignored_breaks %||% 0L
+      if (is.null(sc) || n == 0L) return(NULL)
+      div(class = "alert alert-warning py-1 px-2 small mb-2",
+        sprintf(paste("%d median-knæk indgår ikke: de blev sat under en anden",
+                      "aggregering end diagrammet bruger nu. Se tabellen",
+                      "nedenfor — fjern og gensæt dem for at bruge dem igen."),
+                n))
     })
 
     output$selected_label <- renderUI({
@@ -371,8 +423,11 @@ mod_signal_review_server <- function(id, db) {
         showNotification("Kan ikke lave faseskift her (første/ugyldig observation)",
                          type = "warning"); return()
       }
+      # Stempl knækket med den aggregering serien blev beregnet på — ej en
+      # frisk DB-læsning, som kunne være ændret siden scannet.
       ok <- safe_operation("gem faseskift", {
-        db$add_median_break(cd$diagram_id, as.Date(sel)); TRUE
+        db$add_median_break(cd$diagram_id, as.Date(sel),
+                            aggregering = cd$periode_aggregering); TRUE
       }, fallback = FALSE)
       if (!isTRUE(ok)) { showNotification("Fejl ved gem (se log)", type = "error"); return() }
       .refresh_diagram(cd)   # invalidér + re-scan → graf viser ny signal-status
@@ -384,7 +439,17 @@ mod_signal_review_server <- function(id, db) {
     output$breaks_tbl <- DT::renderDT({
       cd <- current_diagram(); if (is.null(cd)) return(DT::datatable(data.frame()))
       m <- db$diagram_medians(cd$diagram_id)
-      DT::datatable(m[, intersect(c("id", "laas_median"), names(m)), drop = FALSE],
+      # Markér knæk der IKKE indgår i beregningen, fordi de blev sat under en
+      # anden aggregering. Uden denne kolonne ville faserne ændre sig usynligt
+      # efter en periode-ændring.
+      if (is.data.frame(m) && nrow(m) > 0 && "aggregering" %in% names(m)) {
+        keep_ids <- filter_medians_by_period(m, cd$periode_aggregering)$id
+        m$status <- ifelse(m$id %in% keep_ids, "anvendes",
+          sprintf("⚠ sat under %s — ignoreres nu", m$aggregering))
+      }
+      DT::datatable(
+        m[, intersect(c("id", "laas_median", "aggregering", "status"), names(m)),
+          drop = FALSE],
         rownames = FALSE, selection = "single",
         options = list(dom = "t", paging = FALSE))
     })
