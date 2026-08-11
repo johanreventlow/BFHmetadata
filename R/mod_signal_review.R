@@ -291,19 +291,31 @@ mod_signal_review_server <- function(id, db) {
     }
 
     # --- Graf -------------------------------------------------------------
+    # Hele render-kroppen er fejl-værnet: en graf der ikke kan bygges
+    # (degenereret qic-data, uventede kolonner, ggplot-range-fejl) må ALDRIG
+    # vælte sessionen — i dev med options(error/shiny.error = browser) endte
+    # en uncaught render-fejl ellers i Browse[1] og "frøs" appen midt i scan.
     output$chart <- ggiraph::renderGirafe({
       sc <- .scan_of_current(); if (is.null(sc) || is.null(sc$qic_result)) return(NULL)
-      qr <- sc$qic_result
-      # Forhåndsvis: re-beregn med ekstra knæk hvis valgt + gyldigt. Date-
-      # normaliseret via preview_break_parts (ingen rbind af Date på POSIXct).
-      pv <- preview_parts()
-      if (!is.null(pv) && !is.null(sc$slice)) {
-        base_meds <- db$diagram_medians(current_diagram()$diagram_id)
-        parts <- preview_break_parts(current_diagram()$diagram_id, base_meds,
-                                     pv, sc$slice$dato)
-        qr <- compute_signal(sc$slice, parts = parts)$qic_result
+      g <- safe_operation("tegn diagram", {
+        qr <- sc$qic_result
+        # Forhåndsvis: re-beregn med ekstra knæk hvis valgt + gyldigt. Date-
+        # normaliseret via preview_break_parts (ingen rbind af Date på POSIXct).
+        pv <- preview_parts()
+        if (!is.null(pv) && !is.null(sc$slice)) {
+          base_meds <- db$diagram_medians(current_diagram()$diagram_id)
+          parts <- preview_break_parts(current_diagram()$diagram_id, base_meds,
+                                       pv, sc$slice$dato)
+          qr <- compute_signal(sc$slice, parts = parts)$qic_result
+        }
+        interactive_run_chart(qr, selected_date = valid_selected_date())
+      }, fallback = "fejl")
+      if (identical(g, "fejl") || is.null(g)) {
+        # validate-tekst vises i grafens plads (grå besked, ingen crash)
+        validate(need(FALSE,
+          "Diagrammet kan ikke tegnes (ingen tegnbare datapunkter) — se log for detaljer."))
       }
-      interactive_run_chart(qr, selected_date = valid_selected_date())
+      g
     })
 
     output$selected_label <- renderUI({

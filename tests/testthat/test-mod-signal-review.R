@@ -337,6 +337,40 @@ test_that("delete_break kalder delete_median_break med valgt knæk-id", {
   })
 })
 
+test_that("degenereret qic-data i cache → chart-render giver venlig besked, ALDRIG hård fejl", {
+  skip_if_not_installed("arrow")
+  base <- withr::local_tempdir()
+  dir.create(file.path(base, "a"))
+  arrow::write_parquet(data.frame(dato = as.Date("2020-01-01") + 0:23 * 30,
+    vaerdi = c(rep(10, 12), rep(2, 12)), taeller = NA_real_, naevner = NA_real_,
+    enhed = "e"), file.path(base, "a", "p.parquet"))
+  idx <- data.frame(diagram_id = 1L, indikator_id = 1L, indikator_navn = "A",
+    indikator_navn_teknisk = "a", datasaet = "d", datapakke = "p", org_id = 5L,
+    org_teknisk = "E", org_navn = "E", org_niveau = 5L, overafdeling = "OA",
+    afdeling = NA, afsnit = NA, stringsAsFactors = FALSE)
+  db <- make_fake_signal_db(base, idx)
+  shiny::testServer(mod_signal_review_server, args = list(db = db), {
+    session$setInputs(parquet_dir = base, window_mode = "all", window_n = 24,
+      f_overafdeling = "", f_afsnit = "", f_datapakke = "", f_datasaet = "",
+      f_indikator_navn = "", scan = 1)
+    drain_scan()
+    expect_s3_class(output$chart, "json")        # normal render virker (girafe→json)
+    # Forgift cachen som produktion: qic_data uden ét eneste endeligt y
+    cc <- cache()
+    cc[["1|all"]]$qic_result$qic_data$y <- NA_real_
+    cache(cc)
+    # Gammel adfærd: hård ggplot-fejl ("diff.default(continuous_range_coord)")
+    # ville rethrowes her og fejle testen. Ny adfærd: enten stille NULL eller
+    # vores venlige validate-besked — begge OK, alt andet er en regression.
+    err <- tryCatch({ output$chart; NULL }, error = function(e) e)
+    if (!is.null(err)) {
+      expect_match(conditionMessage(err), "kan ikke tegnes")
+    } else {
+      succeed("render overlevede degenereret data uden hård fejl")
+    }
+  })
+})
+
 test_that("progressivt scan: første indikator-gruppe vises FØR resten er scannet", {
   skip_if_not_installed("arrow")
   base <- withr::local_tempdir()
