@@ -407,6 +407,54 @@ test_that("stop scan: ventende grupper processeres ikke; fundne signaler består
   })
 })
 
+test_that("scan husker parquet-mappen til næste session (bruges af startup-kompaktering)", {
+  skip_if_not_installed("arrow")
+  withr::local_options(list(bfhmeta.cache_dir = withr::local_tempdir()))
+  base <- withr::local_tempdir()
+  dir.create(file.path(base, "a"))
+  arrow::write_parquet(data.frame(dato = as.Date("2020-01-01") + 0:23 * 30,
+    vaerdi = c(rep(10, 12), rep(2, 12)), taeller = NA_real_, naevner = NA_real_,
+    enhed = "e"), file.path(base, "a", "p.parquet"))
+  idx <- data.frame(diagram_id = 1L, indikator_id = 1L, indikator_navn = "A",
+    indikator_navn_teknisk = "a", datasaet = "d", datapakke = "p", org_id = 5L,
+    org_teknisk = "E", org_navn = "E", org_niveau = 5L, overafdeling = "OA",
+    afdeling = NA, afsnit = NA, stringsAsFactors = FALSE)
+  db <- make_fake_signal_db(base, idx)
+  expect_null(last_parquet_dir_read())
+  shiny::testServer(mod_signal_review_server, args = list(db = db), {
+    session$setInputs(parquet_dir = base, window_mode = "all", window_n = 24,
+      f_overafdeling = "", f_afsnit = "", f_datapakke = "", f_datasaet = "",
+      f_indikator_navn = "", scan = 1)
+    drain_scan()
+  })
+  expect_equal(last_parquet_dir_read(), base)
+})
+
+test_that("scan læser fra fresh _compact-spejl (rå lager kan slettes)", {
+  skip_if_not_installed("arrow")
+  withr::local_options(list(bfhmeta.cache_dir = withr::local_tempdir()))
+  base <- withr::local_tempdir()
+  dir.create(file.path(base, "a"))
+  arrow::write_parquet(data.frame(dato = as.Date("2020-01-01") + 0:23 * 30,
+    vaerdi = c(rep(10, 12), rep(2, 12)), taeller = NA_real_, naevner = NA_real_,
+    enhed = "e"), file.path(base, "a", "p.parquet"))
+  run_compaction(base)
+  unlink(file.path(base, "a"), recursive = TRUE)   # kun spejlet tilbage
+  idx <- data.frame(diagram_id = 1L, indikator_id = 1L, indikator_navn = "A",
+    indikator_navn_teknisk = "a", datasaet = "d", datapakke = "p", org_id = 5L,
+    org_teknisk = "E", org_navn = "E", org_niveau = 5L, overafdeling = "OA",
+    afdeling = NA, afsnit = NA, stringsAsFactors = FALSE)
+  db <- make_fake_signal_db(base, idx)
+  shiny::testServer(mod_signal_review_server, args = list(db = db), {
+    session$setInputs(parquet_dir = base, window_mode = "all", window_n = 24,
+      f_overafdeling = "", f_afsnit = "", f_datapakke = "", f_datasaet = "",
+      f_indikator_navn = "", scan = 1)
+    drain_scan()
+    expect_equal(signal_list()$diagram_id, 1L)     # signal fundet via spejlet
+    expect_equal(.scan_of_current()$status, "ok")
+  })
+})
+
 test_that("scan skriver dags-cache-filer pr. indikator (persistent på tværs af sessioner)", {
   skip_if_not_installed("arrow")
   cache_dir <- withr::local_tempdir()
