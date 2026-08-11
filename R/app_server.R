@@ -25,6 +25,11 @@ app_server <- function(input, output, session) {
   lazy_module("diagrammer", selected_tab,
               function() mod_diagram_server("diagram", db),
               session = session, loading = "Henter diagram-liste…")
+  lazy_module("org_struktur", selected_tab, function() {
+    mod_hierarchy_server("org_struktur",
+      make_hierarchy_db(pool, HIERARCHY_TABLES$org_struktur),
+      HIERARCHY_TABLES$org_struktur)
+  }, session = session, loading = "Henter organisations-træ…")
 
   # Opslagstabeller: ét generisk modul pr. LOOKUP_TABLES-element
   for (cfg in LOOKUP_TABLES) local({
@@ -39,6 +44,7 @@ app_server <- function(input, output, session) {
   observeEvent(input$go_indikatorer, bslib::nav_select("nav", "indikatorer"))
   observeEvent(input$go_signal, bslib::nav_select("nav", "signal"))
   observeEvent(input$go_diagrammer, bslib::nav_select("nav", "diagrammer"))
+  observeEvent(input$go_org_struktur, bslib::nav_select("nav", "org_struktur"))
   for (cfg in LOOKUP_TABLES) local({
     cc <- cfg
     observeEvent(input[[paste0("go_", cc$id)]], bslib::nav_select("nav", cc$id))

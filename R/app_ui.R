@@ -9,6 +9,8 @@ app_ui <- function(request) {
       mod_signal_review_ui("signal")),
     bslib::nav_panel("Diagrammer", value = "diagrammer",
       mod_diagram_ui("diagram")),
+    bslib::nav_panel("Organisation", value = "org_struktur",
+      mod_hierarchy_ui("org_struktur", HIERARCHY_TABLES$org_struktur)),
     do.call(bslib::nav_menu, c(list(title = "Opslagstabeller"),
       lapply(LOOKUP_TABLES, function(cfg)
         bslib::nav_panel(cfg$label, value = cfg$id,
@@ -42,9 +44,17 @@ app_ui <- function(request) {
     bslib::layout_column_wrap(width = 1/3, fill = FALSE,
       tile("diagrammer", "Diagrammer",
         "Filterbar oversigt og redigering af alle diagrammer.")),
+    sect("Organisation"),
+    bslib::layout_column_wrap(width = 1/3, fill = FALSE,
+      tile("org_struktur", "Organisations-struktur",
+        "Træ-redigering: felter, flyt og opret/slet."),
+      tile("org_oversaettelse",
+        Find(function(cfg) cfg$id == "org_oversaettelse", LOOKUP_TABLES)$label,
+        "Inline-redigering direkte i tabellen.")),
     sect("Opslagstabeller"),
     do.call(bslib::layout_column_wrap, c(list(width = 1/3, fill = FALSE),
-      lapply(LOOKUP_TABLES, function(cfg)
+      lapply(Filter(function(cfg) cfg$id != "org_oversaettelse", LOOKUP_TABLES),
+        function(cfg)
         tile(cfg$id, cfg$label, "Inline-redigering direkte i tabellen.")))),
     sect("Vedligeholdelse"),
     div(class = "mb-4",
