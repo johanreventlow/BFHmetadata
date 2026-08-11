@@ -181,3 +181,27 @@ LOOKUP_TABLES <- list(
               parent = "tblOrganisationStruktur", parent_pk = "Id",
               label_expr = 'COALESCE("organisatorisk_navn_langt","organisatorisk_navn_teknisk")')))
 )
+
+# --- Hierarki-tabeller (traeer med parent-FK) til generisk mod_hierarchy ------
+# level: FK-kolonne paa noden + parent-tabel med numerisk niveau (num_col, til
+# bloed niveau-konsistens-advarsel) og visningsnavn (name_col/label_expr).
+# aktiv_col: NULL hvis tabellen ingen aktiv-kolonne har.
+# Fase D tilfoejer indikator_hierarki-entry.
+HIERARCHY_TABLES <- list(
+  org_struktur = list(
+    id = "org_struktur", table = "tblOrganisationStruktur", pk = "Id",
+    parent_col = "parent_Id", display_col = "organisatorisk_navn_langt",
+    label = "Organisations-struktur", aktiv_col = NULL,
+    fields = list(
+      list(col = "organisatorisk_navn_teknisk", type = "text",
+           label = "Teknisk navn"),
+      list(col = "organisatorisk_navn_langt", type = "text",
+           label = "Langt navn"),
+      list(col = "organisatorisk_navn_kort", type = "text",
+           label = "Kort navn")),
+    level = list(col = "organisatorisk_niveau",
+                 parent = "tblOrganisationNiveauer", parent_pk = "Id",
+                 num_col = "organisatorisk_niveau",
+                 name_col = "organisatorisk_niveau_navn",
+                 label_expr = '"organisatorisk_niveau_navn"'))
+)
