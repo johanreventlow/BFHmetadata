@@ -2,6 +2,10 @@
 # .Renviron commit'es ALDRIG og kommer ALDRIG i ZIP-overførsel til Mac.
 # Mac sætter sin egen .Renviron med samme nøgler men muligvis andre værdier.
 
+# Windows-only: undgår kendt mimalloc-heap-korruption i arrow.dll (crash under
+# parquet-scan). Harmløs at have med på Mac (bruges kun hvis arrow læser den).
+ARROW_DEFAULT_MEMORY_POOL=system
+
 # Supabase database-password (fra Project Settings > Database > Connection string)
 SUPABASE_DB_PASSWORD=your-supabase-db-password-here
 
