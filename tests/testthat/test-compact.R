@@ -1,0 +1,128 @@
+# Kompaktering af parquet-lageret (fct_compact.R): omskriv hver indikators
+# mange dags-partitionsfiler til ÉN fil i et delt _compact/-spejl. Manifest
+# (dags-TTL) afgør om læsere må bruge spejlet — skrives SIDST, så et afbrudt
+# eller fejlet forløb aldrig efterlader et spejl der tages i brug.
+
+# Fixture: make_store_fixture() — se helper-compact.R (deles med modul-tests).
+
+test_that("compact_list_indicators: finder nested + top-level, skipper _compact/støj", {
+  base <- make_store_fixture()
+  items <- compact_list_indicators(base)
+  expect_setequal(items$rel, c("gruppe/ind_a", "ind_b"))
+  expect_true(all(dir.exists(items$src)))
+  expect_false(any(grepl("_compact", items$rel)))
+})
+
+test_that("compact_indicator: mange dagsfiler → én fil med typet dato-kolonne", {
+  base <- make_store_fixture()
+  dest <- file.path(base, "_compact", "gruppe", "ind_a.parquet")
+  res <- compact_indicator(file.path(base, "gruppe", "ind_a"), dest)
+  expect_equal(res$status, "ok")
+  expect_equal(res$rows, 3L)
+  expect_true(file.exists(dest))
+  d <- arrow::read_parquet(dest)
+  expect_s3_class(d$dato, "Date")               # partitionsnøgle → rigtig Date
+  expect_setequal(as.character(d$dato),
+                  c("2020-01-01", "2020-01-02", "2020-01-03"))
+  # Ingen efterladte temp-filer
+  expect_equal(length(list.files(dirname(dest), pattern = "tmp")), 0L)
+})
+
+test_that("compact_indicator: gen-kompaktering overskriver eksisterende fil (Windows-rename)", {
+  base <- make_store_fixture()
+  dest <- file.path(base, "_compact", "ind_b.parquet")
+  expect_equal(compact_indicator(file.path(base, "ind_b"), dest)$status, "ok")
+  first_rows <- nrow(arrow::read_parquet(dest))
+  # Kilden vokser en dag → gen-kompaktering skal lande de nye rækker
+  arrow::write_parquet(data.frame(
+    dato = as.Date("2020-01-08"), vaerdi = 7, enhed = "e"),
+    file.path(base, "ind_b", "p2.parquet"))
+  expect_equal(compact_indicator(file.path(base, "ind_b"), dest)$status, "ok")
+  expect_equal(nrow(arrow::read_parquet(dest)), first_rows + 1L)
+})
+
+test_that("compact_indicator: tom/manglende kilde → status 'tom', ingen fil", {
+  base <- withr::local_tempdir()
+  dest <- file.path(base, "_compact", "findes_ej.parquet")
+  res <- compact_indicator(file.path(base, "findes_ej"), dest)
+  expect_equal(res$status, "tom")
+  expect_false(file.exists(dest))
+})
+
+test_that("manifest: fresh kun når dato matcher; korrupt/manglende → ikke fresh", {
+  base <- withr::local_tempdir()
+  expect_false(compact_manifest_fresh(base))                  # intet manifest
+  compact_manifest_write(base, n_ok = 5L, n_failed = 0L,
+                         date = as.Date("2026-08-11"))
+  expect_true(compact_manifest_fresh(base, date = as.Date("2026-08-11")))
+  expect_false(compact_manifest_fresh(base, date = as.Date("2026-08-12")))  # i går ≠ i dag
+  m <- compact_manifest_read(base)
+  expect_equal(m$n_ok, 5L)
+  # Korrupt manifest må aldrig vælte en læser — blot "ikke fresh"
+  writeLines("ikke json", compact_manifest_path(base))
+  expect_false(compact_manifest_fresh(base))
+})
+
+test_that("run_compaction: kompakterer alt, skriver manifest, fejl stopper ikke resten", {
+  base <- make_store_fixture()
+  # Saboter ind_b's kilde så netop den fejler (fil i stedet for læsbar parquet)
+  unlink(file.path(base, "ind_b", "p.parquet"))
+  writeLines("ødelagt", file.path(base, "ind_b", "kaputt.parquet"))
+  res <- run_compaction(base)
+  expect_equal(res$n_ok, 1L)                    # ind_a lykkedes
+  expect_equal(res$n_failed, 1L)                # ind_b fejlede, uden at vælte
+  expect_true(file.exists(file.path(base, "_compact", "gruppe", "ind_a.parquet")))
+  expect_true(compact_manifest_fresh(base))     # manifest skrevet til sidst
+})
+
+test_that("parquet_load_indicator_best: fresh spejl bruges — raa lager røres ikke", {
+  base <- make_store_fixture()
+  run_compaction(base)
+  # Slet HELE den rå kilde: kan data stadig læses, kom de fra spejlet
+  unlink(file.path(base, "gruppe", "ind_a"), recursive = TRUE)
+  d <- parquet_load_indicator_best(base, "ind_a")
+  expect_equal(nrow(d), 3L)
+  expect_s3_class(d$dato, "Date")
+})
+
+test_that("parquet_load_indicator_best: stale manifest → fald tilbage til rå lager", {
+  base <- make_store_fixture()
+  run_compaction(base)
+  compact_manifest_write(base, 1L, 0L, date = Sys.Date() - 1)   # gårsdagens spejl
+  # Rå kilde ændres — kun den rå sti har den nye række
+  arrow::write_parquet(data.frame(
+    dato = as.Date("2020-01-09"), vaerdi = 9, enhed = "e"),
+    file.path(base, "ind_b", "p2.parquet"))
+  d <- parquet_load_indicator_best(base, "ind_b")
+  expect_equal(nrow(d), 7L)                     # 6 + den nye = læste råt
+})
+
+test_that("parquet_load_indicator_best: force → rå lager selv med fresh spejl", {
+  base <- make_store_fixture()
+  run_compaction(base)
+  arrow::write_parquet(data.frame(
+    dato = as.Date("2020-01-09"), vaerdi = 9, enhed = "e"),
+    file.path(base, "ind_b", "p2.parquet"))
+  expect_equal(nrow(parquet_load_indicator_best(base, "ind_b")), 6L)  # spejl
+  expect_equal(nrow(parquet_load_indicator_best(base, "ind_b", force = TRUE)), 7L)
+})
+
+test_that("parquet_load_indicator_best: indikator mangler i spejl → rå fallback", {
+  base <- make_store_fixture()
+  run_compaction(base)
+  # Ny indikator dukker op EFTER kompaktering (fx nyt datasæt samme dag)
+  dir.create(file.path(base, "ind_ny"))
+  arrow::write_parquet(data.frame(
+    dato = as.Date("2020-02-01"), vaerdi = 1, enhed = "e"),
+    file.path(base, "ind_ny", "p.parquet"))
+  expect_equal(nrow(parquet_load_indicator_best(base, "ind_ny")), 1L)
+})
+
+test_that("last_parquet_dir: roundtrip + NULL når intet gemt", {
+  withr::local_options(list(bfhmeta.cache_dir = withr::local_tempdir()))
+  expect_null(last_parquet_dir_read())
+  last_parquet_dir_write("C:/et/lager")
+  expect_equal(last_parquet_dir_read(), "C:/et/lager")
+  last_parquet_dir_write("C:/andet")             # overskriv
+  expect_equal(last_parquet_dir_read(), "C:/andet")
+})

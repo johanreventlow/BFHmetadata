@@ -7,6 +7,11 @@ app_server <- function(input, output, session) {
   store <- new_cache_store()
   db <- make_db_cached(make_db(pool), store = store)
 
+  # Startup-kompaktering: spørg (modal) om det delte _compact-spejl skal
+  # opfriskes, når det er forældet. Eager — skal kunne spørge på landings-
+  # siden; koster ingen DB-kald, kun et lokalt manifest-tjek.
+  mod_compact_server("compact")
+
   # Lazy-init: modulernes opstart-queries køres først når fanen åbnes.
   # Appen lander på "Start", så en app-start koster nu ingen DB-kald ud over
   # forbindelsen selv.

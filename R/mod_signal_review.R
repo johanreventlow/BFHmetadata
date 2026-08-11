@@ -82,6 +82,13 @@ mod_signal_review_server <- function(id, db) {
     # Ryd forældede dags-cache-filer én gang pr. session (aldrig blokerende)
     safe_operation("cache-prune", slice_cache_prune(), fallback = NULL)
 
+    # Prefill parquet-mappen fra sidste session, så brugeren ikke skal taste
+    # stien hver gang (gemmes ved scan; læses også af startup-kompaktering).
+    prev_dir <- last_parquet_dir_read()
+    if (!is.null(prev_dir)) {
+      updateTextInput(session, "parquet_dir", value = prev_dir)
+    }
+
     # --- Progressivt scan ------------------------------------------------
     # Diagrammer grupperes pr. indikator (ét parquet-load pr. indikator via
     # dags-disk-cachen) og processeres én gruppe ad gangen i en later-kæde.
@@ -93,14 +100,6 @@ mod_signal_review_server <- function(id, db) {
     scan_running <- reactiveVal(FALSE)
     scan_progress <- reactiveVal(NULL)   # list(done, total, found, n_cand)
     scan_ctx <- NULL                     # env: cand, groups, gi, wn, wk, vdf, base, force, sig
-
-    # Skedulering af næste gruppe. Injicérbar via option, fordi testServer
-    # selv afvikler later-køen under flush — tests kan derfor kun observere
-    # mellemtilstande (progressivitet/stop) med en manuel kø.
-    .scan_schedule <- function(fn) {
-      sched <- getOption("bfhmeta.scan_scheduler", NULL)
-      if (is.null(sched)) later::later(fn, 0) else sched(fn)
-    }
 
     .scan_finish <- function(gen) {
       if (!identical(gen, isolate(scan_gen()))) return(invisible())
@@ -117,16 +116,17 @@ mod_signal_review_server <- function(id, db) {
       ind <- ctx$cand$indikator_navn_teknisk[idxs[1]]
       cc <- isolate(cache())
       # Slice-loader deles af gruppens diagrammer: loader højst ÉN gang (kun
-      # hvis mindst ét diagram er session-cache-miss), og går via dags-disk-
-      # cachen så gentagne scans samme dag ikke rører parquet-lageret.
+      # hvis mindst ét diagram er session-cache-miss). Kæden er RDS-dags-cache
+      # → _compact-spejl (hvis fresh) → rå parquet-lager; force springer begge
+      # cache-lag over og læser råt.
       slice_env <- new.env(parent = emptyenv())
       slice_env$loaded <- FALSE
       get_slice <- function() {
         if (!slice_env$loaded) {
           slice_env$val <- load_indicator_slice_cached(
             ctx$base, ind,
-            loader = function() parquet_load_slice(
-              parquet_indicator_path(ctx$base, ind)),
+            loader = function() parquet_load_indicator_best(
+              ctx$base, ind, force = ctx$force),
             force = ctx$force)
           slice_env$loaded <- TRUE
         }
@@ -161,7 +161,7 @@ mod_signal_review_server <- function(id, db) {
       if (ctx$gi > length(ctx$groups)) {
         .scan_finish(gen)
       } else {
-        .scan_schedule(function() .scan_process_group(gen))
+        next_tick(function() .scan_process_group(gen))
       }
     }
 
@@ -173,6 +173,7 @@ mod_signal_review_server <- function(id, db) {
       }
       cand <- apply_index_filters(index(), current_filters())
       if (nrow(cand) == 0) { showNotification("Ingen diagrammer matcher filtrene"); return() }
+      last_parquet_dir_write(base)   # husk stien til næste session/startup-modal
       wn <- window_n()
       # Gruppér pr. indikator i first-appearance-rækkefølge (cand er sorteret
       # efter indikator_navn → grupper er sammenhængende blokke).
@@ -281,7 +282,7 @@ mod_signal_review_server <- function(id, db) {
       # re-scan må gerne gå via dags-disk-cachen (hurtigt, ingen parquet-læs).
       loader <- function() load_indicator_slice_cached(
         base, ind,
-        loader = function() parquet_load_slice(parquet_indicator_path(base, ind)))
+        loader = function() parquet_load_indicator_best(base, ind))
       cc[[paste0(cd$diagram_id, "|", .wkey(scanned_n()))]] <-
         c(scan_diagram(as.list(cd), base, meds, variants(),
                        window_n = scanned_n(), slice_loader = loader),

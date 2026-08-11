@@ -19,6 +19,7 @@ Imports:
     dplyr,
     rlang,
     later,
+    jsonlite,
     BFHcharts,
     ggplot2,
     ggiraph

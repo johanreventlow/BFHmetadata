@@ -3,6 +3,16 @@
 # opstart-queries, selvom brugeren lander på "Start"-fanen og måske kun skal
 # bruge én fane. Her udskydes init til fanen faktisk åbnes første gang.
 
+#' Skedulér fn til afvikling efter næste reactive flush (chunket baggrunds-
+#' arbejde: progressivt scan, kompaktering). Injicérbar via option, fordi
+#' testServer selv afvikler later-køen under flush — tests kan kun observere
+#' mellemtilstande (progressivitet/stop/cancel) med en manuel kø.
+#' @noRd
+next_tick <- function(fn) {
+  sched <- getOption("bfhmeta.scan_scheduler", NULL)
+  if (is.null(sched)) later::later(fn, 0) else sched(fn)
+}
+
 #' Kør init() første gang `selected()` matcher tab_value.
 #'
 #' Idempotent: init kører præcis én gang, uanset hvor mange gange brugeren
