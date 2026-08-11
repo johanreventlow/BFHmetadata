@@ -166,7 +166,7 @@ mod_signal_review_server <- function(id, db) {
       if (ctx$gi > length(ctx$groups)) {
         .scan_finish(gen)
       } else {
-        next_tick(function() .scan_process_group(gen))
+        next_tick_session(session, function() .scan_process_group(gen))
       }
     }
 

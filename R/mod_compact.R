@@ -66,7 +66,8 @@ mod_compact_server <- function(id) {
           actionButton(session$ns("go"),
                        sprintf("Kompaktér %d ændrede", nrow(changed)),
                        class = "btn-primary")),
-        easyClose = TRUE))
+        easyClose = TRUE),
+        session = session)   # eksplicit: kaldes fra tick uden default-domain
       asked(TRUE)
     }
 
@@ -94,7 +95,9 @@ mod_compact_server <- function(id) {
       }
       manifest <- compact_manifest_read(base)
       entries <- compact_manifest_entries(manifest)
-      g <- gen() + 1L
+      # isolate: .start_sweep kaldes også fra startup-ticken (uden reaktiv
+      # kontekst) — en bar gen()-læsning kastede dér i produktion
+      g <- isolate(gen()) + 1L
       gen(g)
       ctx <<- list2env(list(
         base = base, items = items, manifest = manifest, manual = manual,

@@ -19,13 +19,17 @@ next_tick <- function(fn) {
 #' reaktive læsning kaster så "Can't access reactive ...; its module session
 #' has been destroyed" (uopfanget → Browse[1] i dev, set i produktion).
 #' Derfor: (1) rør INTET reaktivt hvis sessionen er lukket — dø stille,
-#' (2) fejl i en tick må aldrig nå top-level (logges via safe_operation).
+#' (2) fejl i en tick må aldrig nå top-level (logges via safe_operation),
+#' (3) fn() køres i isolate(): later-callbacks har INGEN reaktiv kontekst,
+#' så en bar reaktiv læsning i tick-koden ville kaste "Operation not
+#' allowed without an active reactive context" (set i produktion —
+#' testServer maskerer det ved selv at wrappe test-udtryk i isolate).
 #' @noRd
 next_tick_session <- function(session, fn) {
   next_tick(function() {
     closed <- tryCatch(isTRUE(session$isClosed()), error = function(e) TRUE)
     if (closed) return(invisible())
-    safe_operation("baggrunds-tick", fn(), fallback = NULL)
+    safe_operation("baggrunds-tick", shiny::isolate(fn()), fallback = NULL)
   })
 }
 

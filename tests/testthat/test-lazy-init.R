@@ -2,6 +2,41 @@
 # må først køre når brugeren faktisk åbner fanen. Appen lander på "Start", så
 # uden dette betaler ALLE brugere for alle modulers DB-kald ved hver opstart.
 
+test_that("next_tick_session: tick-kode med reaktive læsninger kører UDEN reaktiv kontekst", {
+  # Produktionsfejl: later-callbacks har ingen reaktiv kontekst, så en bar
+  # reaktiv læsning i tick-koden kastede "Operation not allowed without an
+  # active reactive context". testServer maskerer det (wrapper alt i
+  # isolate), så denne test kører ticket RÅT udenfor — som i produktion.
+  queue <- list()
+  withr::local_options(list(
+    bfhmeta.scan_scheduler = function(fn) queue[[length(queue) + 1]] <<- fn))
+  rv <- shiny::reactiveVal(41L)
+  fake_session <- list(isClosed = function() FALSE)
+  hit <- NULL
+  next_tick_session(fake_session, function() hit <<- rv() + 1L)  # bar læsning
+  queue[[1]]()                       # kør ticket uden kontekst (som later gør)
+  expect_equal(hit, 42L)             # isolate-wrap i helperen redder læsningen
+})
+
+test_that("next_tick_session: lukket session → fn røres aldrig; fejl når aldrig top-level", {
+  queue <- list()
+  withr::local_options(list(
+    bfhmeta.scan_scheduler = function(fn) queue[[length(queue) + 1]] <<- fn))
+  ran <- FALSE
+  next_tick_session(list(isClosed = function() TRUE), function() ran <<- TRUE)
+  queue[[1]]()
+  expect_false(ran)                  # lukket session → stille død
+  # Session-objekt der selv fejler på isClosed → regnes som lukket
+  next_tick_session(list(isClosed = function() stop("boom")),
+                    function() ran <<- TRUE)
+  queue[[2]]()
+  expect_false(ran)
+  # Fejl i selve ticket logges men kastes ALDRIG videre
+  next_tick_session(list(isClosed = function() FALSE),
+                    function() stop("tick-fejl"))
+  expect_no_error(queue[[3]]())
+})
+
 test_that("lazy_module: init kaldes ikke før fanen vælges", {
   inits <- 0L
   sel <- shiny::reactiveVal("start")
