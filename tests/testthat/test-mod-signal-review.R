@@ -779,6 +779,52 @@ test_that("diagram der forsvinder fra visningen ved toggle -> cursor = 1", {
   })
 })
 
+test_that("toggle-fallback (cursor 1) invaliderer stale chart-klik paa forkert diagram", {
+  skip_if_not_installed("arrow")
+  base <- withr::local_tempdir()
+  # "a" (10) er FLAD (ingen signal), "b" (20) har SIGNAL. Med checkbox ON er
+  # visningen 10,20 -> position 1 er diagram 10. Naar checkbox slaas FRA
+  # forsvinder 10 fra visningen, og fallback-grenen saetter cursor(1L), som
+  # nu peger paa diagram 20 (der ligger alene tilbage). Uden nulstilling af
+  # selected_cursor ville et klik stemplet paa 10/position 1 fejlagtigt
+  # validere paa 20/position 1 efter toggletet.
+  dir.create(file.path(base, "a"))
+  arrow::write_parquet(data.frame(dato = as.Date("2020-01-01") + 0:23 * 30,
+    vaerdi = rep(c(4, 6), 12), taeller = NA_real_, naevner = NA_real_,
+    enhed = "e"), file.path(base, "a", "p.parquet"))
+  dir.create(file.path(base, "b"))
+  arrow::write_parquet(data.frame(dato = as.Date("2020-01-01") + 0:23 * 30,
+    vaerdi = c(rep(10, 12), rep(2, 12)), taeller = NA_real_,
+    naevner = NA_real_, enhed = "e"), file.path(base, "b", "p.parquet"))
+  idx <- data.frame(diagram_id = c(10L, 20L), indikator_id = 1:2,
+    indikator_navn = c("A", "B"), indikator_navn_teknisk = c("a", "b"),
+    datasaet = "d", datapakke = "p", org_id = 5L, org_teknisk = "E",
+    org_navn = "E", org_niveau = 5L, overafdeling = "OA", afdeling = NA,
+    afsnit = NA, stringsAsFactors = FALSE)
+  called <- new.env(); called$n <- 0
+  db <- make_fake_signal_db(base, idx)
+  db$add_median_break <- function(diagram_id, dato, aggregering = NA_character_) {
+    called$n <- called$n + 1; 1L
+  }
+  shiny::testServer(mod_signal_review_server, args = list(db = db), {
+    session$setInputs(parquet_dir = base, window_mode = "all", window_n = 24,
+      f_overafdeling = "", f_afsnit = "", f_datapakke = "", f_datasaet = "",
+      f_indikator_navn = "", scan = 1)
+    drain_scan()
+    # Default (checkbox off): kun signal-diagram 20 er i visningen.
+    expect_equal(current_diagram()$diagram_id, 20L)
+    session$setInputs(show_no_signal = TRUE)   # view: 10,20 -> 20 remappes til pos 2
+    expect_equal(current_diagram()$diagram_id, 20L)
+    session$setInputs(prev = 1)                # naviger til pos 1 -> diagram 10
+    expect_equal(current_diagram()$diagram_id, 10L)
+    session$setInputs(chart_selected = "2020-07-28")  # klik stemples paa 10/pos 1
+    session$setInputs(show_no_signal = FALSE)  # 10 forsvinder -> fallback cursor(1L) -> 20
+    expect_equal(current_diagram()$diagram_id, 20L)
+    session$setInputs(save_break = 1)          # stale klik maa IKKE validere paa 20
+    expect_equal(called$n, 0)
+  })
+})
+
 test_that("ingen_data-diagrammer optages ALDRIG i visningen (heller ej med checkbox)", {
   skip_if_not_installed("arrow")
   base <- withr::local_tempdir()

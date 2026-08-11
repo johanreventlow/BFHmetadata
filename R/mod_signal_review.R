@@ -54,10 +54,10 @@ mod_signal_review_server <- function(id, db) {
     cache <- reactiveVal(list())          # nøgle "<diagram_id>|<window>" → scan-res
     scanned_list <- reactiveVal(NULL)     # df: ALLE ok-scannede (+ signal/status)
     show_all <- reactiveVal(FALSE)        # checkbox-tilstand (styret via observer,
-                                          # saa cursor kan remappes deterministisk)
+                                          # så cursor kan remappes deterministisk)
     # Visningen der bladres i: checkbox fra -> kun signal; til -> alle ok-scannede
     view_list <- reactive(scan_view_filter(scanned_list(), show_all()))
-    # Bagudkompat (tests + evt. eksterne laesere): kun signal-diagrammer
+    # Bagudkompat (tests + evt. eksterne læsere): kun signal-diagrammer
     signal_list <- reactive(scan_view_filter(scanned_list(), FALSE))
     cursor <- reactiveVal(1L)
     preview_parts <- reactiveVal(NULL)    # ekstra forhåndsvist knæk (dato)
@@ -69,9 +69,9 @@ mod_signal_review_server <- function(id, db) {
     observeEvent(input$chart_selected, selected_cursor(cursor()))
 
     # Checkbox-toggle: bevar det aktuelle diagram i visningen hvis muligt.
-    # show_all opdateres HER (ikke direkte fra input) saa gammel/ny visning kan
+    # show_all opdateres HER (ikke direkte fra input) så gammel/ny visning kan
     # beregnes side om side - en reaktiv afledning ville miste den gamle
-    # position foer remap.
+    # position før remap.
     observeEvent(input$show_no_signal, {
       sl <- scanned_list()
       old_view <- scan_view_filter(sl, show_all())
@@ -88,6 +88,12 @@ mod_signal_review_server <- function(id, db) {
         NA_integer_
       }
       cursor(if (is.na(pos)) 1L else as.integer(pos))
+      # Fallback (diagrammet forsvandt) kan flytte cursoren til et ANDET
+      # diagram på SAMME numeriske position (Task 7-guard: valid_selected_date
+      # sammenligner kun cursor-tal, ikke diagram-id). Et klik-stempel fra FØR
+      # togglet må derfor aldrig overleve - ellers kan "Gem faseskift" skrive
+      # på det forkerte diagram.
+      selected_cursor(NULL)
       preview_parts(NULL)
     }, ignoreInit = TRUE)
 
