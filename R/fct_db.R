@@ -232,3 +232,37 @@ make_lookup_db <- function(pool, cfg) {
     }
   )
 }
+
+#' Byg db-accessors for én hierarki-tabel. cfg = element fra HIERARCHY_TABLES.
+#' values = named list i hierarchy_edit_cols(cfg)-orden.
+#' @noRd
+make_hierarchy_db <- function(pool, cfg) {
+  cols <- hierarchy_edit_cols(cfg)
+  list(
+    list_nodes = function() {
+      DBI::dbGetQuery(pool, build_hierarchy_list_sql(cfg))
+    },
+    niveau_options = function() {
+      DBI::dbGetQuery(pool, build_fk_options_sql(cfg$level$parent,
+                                                 cfg$level$label_expr))
+    },
+    create_node = function(values) {
+      assert_write_enabled()
+      DBI::dbGetQuery(pool, build_hierarchy_insert_sql(cfg),
+                      params = unname(values[cols]))[[1]][1]
+    },
+    update_node = function(id, values) {
+      assert_write_enabled()
+      DBI::dbExecute(pool, build_hierarchy_update_sql(cfg),
+                     params = c(unname(values[cols]), list(id)))
+    },
+    delete_node = function(id) {
+      assert_write_enabled()
+      DBI::dbExecute(pool, build_hierarchy_delete_sql(cfg), params = list(id))
+    },
+    child_count = function(id) {
+      as.integer(DBI::dbGetQuery(pool, build_hierarchy_child_count_sql(cfg),
+                                 params = list(id))$n[1])
+    }
+  )
+}

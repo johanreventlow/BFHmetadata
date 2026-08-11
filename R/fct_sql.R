@@ -275,3 +275,60 @@ build_org_enhed_variants_sql <- function() {
     'LEFT JOIN "tblOrganisationOversaettelse" ov ',
     'ON ov."organisatorisk_navn_teknisk" = o."Id"')
 }
+
+# --- Hierarki-CRUD (config-drevet, HIERARCHY_TABLES) --------------------------
+
+#' Kolonner formularen redigerer (raekkefoelge = parameter-orden).
+#' @noRd
+hierarchy_edit_cols <- function(cfg) {
+  c(vapply(cfg$fields, function(f) f$col, ""), cfg$parent_col, cfg$level$col,
+    cfg$aktiv_col)   # aktiv_col er NULL for org → falder bort i c()
+}
+
+#' Alle noder med normaliserede aliaser (id/parent_id_raw) + niveau-join.
+#' Aliaser goer mod_hierarchy uafhaengig af casing-forskelle (Id/parent_Id).
+#' @noRd
+build_hierarchy_list_sql <- function(cfg) {
+  fcols <- vapply(cfg$fields, function(f) sprintf('h."%s"', f$col), "")
+  aktiv <- if (is.null(cfg$aktiv_col)) "" else
+    sprintf('h."%s" AS aktiv, ', cfg$aktiv_col)
+  paste0(
+    'SELECT h."', cfg$pk, '" AS id, h."', cfg$parent_col,
+    '" AS parent_id_raw, ', paste(fcols, collapse = ", "), ", ", aktiv,
+    'h."', cfg$level$col, '" AS niveau_id, ',
+    'n."', cfg$level$num_col, '" AS niveau_num, ',
+    'n."', cfg$level$name_col, '" AS niveau_navn ',
+    'FROM "', cfg$table, '" h ',
+    'LEFT JOIN "', cfg$level$parent, '" n ON n."', cfg$level$parent_pk,
+    '" = h."', cfg$level$col, '"')
+}
+
+#' @noRd
+build_hierarchy_insert_sql <- function(cfg) {
+  cols <- hierarchy_edit_cols(cfg)
+  ph <- paste(sprintf("$%d", seq_along(cols)), collapse = ", ")
+  qcols <- paste(sprintf('"%s"', cols), collapse = ", ")
+  sprintf('INSERT INTO "%s" (%s) VALUES (%s) RETURNING "%s"',
+          cfg$table, qcols, ph, cfg$pk)
+}
+
+#' @noRd
+build_hierarchy_update_sql <- function(cfg) {
+  cols <- hierarchy_edit_cols(cfg)
+  sets <- vapply(seq_along(cols),
+                 function(i) sprintf('"%s" = $%d', cols[i], i), "")
+  sprintf('UPDATE "%s" SET %s WHERE "%s" = $%d',
+          cfg$table, paste(sets, collapse = ", "), cfg$pk, length(cols) + 1)
+}
+
+#' @noRd
+build_hierarchy_delete_sql <- function(cfg) {
+  sprintf('DELETE FROM "%s" WHERE "%s" = $1', cfg$table, cfg$pk)
+}
+
+#' Antal boern (slet-guard: noder med boern kan ikke slettes)
+#' @noRd
+build_hierarchy_child_count_sql <- function(cfg) {
+  sprintf('SELECT count(*) AS n FROM "%s" WHERE "%s" = $1',
+          cfg$table, cfg$parent_col)
+}

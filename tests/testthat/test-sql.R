@@ -209,3 +209,31 @@ test_that("build_diagram_delete_sql og duplicate/periode-byggere", {
   cnt <- build_median_count_sql()
   expect_match(cnt, 'FROM "tblDiagrammerMedian" WHERE "diagram" = \\$1')
 })
+
+# --- Hierarki-CRUD (Fase C) --------------------------------------------------
+
+test_that("build_hierarchy_list_sql normaliserer aliaser og joiner niveau", {
+  cfg <- HIERARCHY_TABLES$org_struktur
+  sql <- build_hierarchy_list_sql(cfg)
+  expect_match(sql, 'h."Id" AS id', fixed = TRUE)
+  expect_match(sql, 'h."parent_Id" AS parent_id_raw', fixed = TRUE)
+  expect_match(sql, '"tblOrganisationNiveauer"', fixed = TRUE)
+  expect_match(sql, "AS niveau_num")
+  expect_match(sql, "AS niveau_navn")
+  expect_match(sql, "LEFT JOIN")     # noder uden niveau bevares
+})
+
+test_that("hierarchy insert/update/delete parametriserer alle edit-kolonner", {
+  cfg <- HIERARCHY_TABLES$org_struktur
+  cols <- hierarchy_edit_cols(cfg)   # 3 felter + parent + niveau = 5
+  expect_length(cols, 5)
+  ins <- build_hierarchy_insert_sql(cfg)
+  for (col in cols) expect_match(ins, sprintf('"%s"', col), fixed = TRUE)
+  expect_match(ins, 'RETURNING "Id"', fixed = TRUE)
+  upd <- build_hierarchy_update_sql(cfg)
+  expect_match(upd, '"Id" = \\$6')   # 5 kolonner + id
+  expect_identical(build_hierarchy_delete_sql(cfg),
+    'DELETE FROM "tblOrganisationStruktur" WHERE "Id" = $1')
+  expect_identical(build_hierarchy_child_count_sql(cfg),
+    'SELECT count(*) AS n FROM "tblOrganisationStruktur" WHERE "parent_Id" = $1')
+})
