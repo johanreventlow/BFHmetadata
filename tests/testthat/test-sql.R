@@ -146,3 +146,44 @@ test_that("build_org_enhed_variants_sql joiner org + oversaettelse på int-FK", 
   expect_match(sql, 'organisatorisk_navn_kort')
   expect_match(sql, 'LEFT JOIN')   # org uden oversaettelse bevares
 })
+
+# --- Diagram-CRUD (Fase B) ---------------------------------------------------
+
+test_that("build_diagram_admin_sql joiner labels og har intet aktiv-filter", {
+  sql <- build_diagram_admin_sql()
+  expect_match(sql, 'FROM "tblDiagrammer" d', fixed = TRUE)
+  expect_match(sql, '"tblIndikatorer"', fixed = TRUE)
+  expect_match(sql, '"tblOrganisationStruktur"', fixed = TRUE)
+  expect_match(sql, '"tblDiagramTyper"', fixed = TRUE)
+  expect_match(sql, '"periode_aggregering"', fixed = TRUE)
+  expect_no_match(sql, "diagram_aktivt\\s*(=|AND)")  # admin ser ALT
+  expect_no_match(sql, 'WHERE d\\."diagram_type"')
+})
+
+test_that("build_diagram_insert_sql parametriserer alle kolonner + RETURNING", {
+  sql <- build_diagram_insert_sql()
+  for (col in DIAGRAM_COLS) expect_match(sql, sprintf('"%s"', col), fixed = TRUE)
+  expect_match(sql, "\\$7")           # 7 kolonner -> $1..$7
+  expect_match(sql, 'RETURNING "id"', fixed = TRUE)
+})
+
+test_that("build_diagram_update_sql saetter alle kolonner, id sidst", {
+  sql <- build_diagram_update_sql()
+  expect_match(sql, 'UPDATE "tblDiagrammer" SET', fixed = TRUE)
+  expect_match(sql, '"id" = \\$8')    # 7 kolonner + id
+})
+
+test_that("build_diagram_delete_sql og duplicate/periode-byggere", {
+  expect_identical(build_diagram_delete_sql(),
+                   'DELETE FROM "tblDiagrammer" WHERE "id" = $1')
+  dup <- build_diagram_duplicate_sql()
+  expect_match(dup, '"indikator" = \\$1')
+  expect_match(dup, '"organisatorisk_navn_teknisk" = \\$2')
+  expect_match(dup, '"diagram_type" = \\$3')
+  expect_match(dup, '"id" <> \\$4')   # ekskludér egen række ved update
+  per <- build_diagram_periode_sql()
+  expect_match(per, "DISTINCT", fixed = TRUE)
+  expect_match(per, "IS NOT NULL", fixed = TRUE)
+  cnt <- build_median_count_sql()
+  expect_match(cnt, 'FROM "tblDiagrammerMedian" WHERE "diagram" = \\$1')
+})
