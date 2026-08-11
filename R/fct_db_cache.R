@@ -52,7 +52,10 @@ cached_accessor <- function(fn, store = new_cache_store(), name = NULL) {
   "save_indikator", "soft_delete", "set_junction",
   "create_diagram", "update_diagram", "delete_diagram",
   "add_median_break", "delete_median_break",
-  "add_row", "update_cell", "delete_row"
+  "add_row", "update_cell", "delete_row",
+  # Hierarki (make_hierarchy_db): org-struktur-ændringer skal straks slå
+  # igennem i cachede org-læsninger (org_enhed_variants, diagram-indeks)
+  "create_node", "update_node", "delete_node"
 )
 
 #' Pak en db-accessor-liste ind i app-cache-laget.

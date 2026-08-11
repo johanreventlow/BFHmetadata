@@ -83,6 +83,31 @@ test_that("make_db_cached: en skrivning invaliderer læse-cachen (ingen stale UI
   expect_equal(calls$list, 2L)                 # frisk læsning efter skrivning
 })
 
+test_that("hierarki-skrivninger invaliderer den delte læse-cache (ingen stale org-data)", {
+  # Org-struktur-ændringer skal slå igennem i signal-/diagram-fanerne med det
+  # samme: create/update/delete_node deler cache-lager med org_enhed_variants
+  # m.fl., så en node-ændring skal rydde lageret.
+  calls <- new.env(); calls$variants <- 0L
+  store <- new_cache_store()
+  db <- make_db_cached(list(
+    org_enhed_variants = function() {
+      calls$variants <- calls$variants + 1L
+      data.frame(org_id = 1L)
+    }), store = store)
+  hdb <- make_db_cached(list(
+    create_node = function(values) 7L,
+    update_node = function(id, values) 1L,
+    delete_node = function(id) 1L), store = store)
+  db$org_enhed_variants(); db$org_enhed_variants()
+  expect_equal(calls$variants, 1L)             # cachet
+  hdb$update_node(7L, list(navn = "Nyt navn")) # org-ændring i hierarki-modulet
+  db$org_enhed_variants()
+  expect_equal(calls$variants, 2L)             # frisk læsning efter node-skriv
+  hdb$create_node(list()); db$org_enhed_variants()
+  hdb$delete_node(7L); db$org_enhed_variants()
+  expect_equal(calls$variants, 4L)             # alle tre skrive-typer rydder
+})
+
 test_that("make_db_cached: ukendte accessors videreføres uændret", {
   raw <- list(noget_nyt = function(x) x * 2)
   db <- make_db_cached(raw)

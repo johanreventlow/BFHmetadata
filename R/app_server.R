@@ -26,8 +26,13 @@ app_server <- function(input, output, session) {
               function() mod_diagram_server("diagram", db),
               session = session, loading = "Henter diagram-liste…")
   lazy_module("org_struktur", selected_tab, function() {
+    # make_db_cached: node-skrivninger rydder det DELTE cache-lager, så
+    # org-ændringer straks slår igennem i cachede org-læsninger (fx
+    # org_enhed_variants i signal-fanen). Hierarkiets egne læsninger
+    # (list_nodes m.fl.) er ikke registreret som cachede → passthrough.
     mod_hierarchy_server("org_struktur",
-      make_hierarchy_db(pool, HIERARCHY_TABLES$org_struktur),
+      make_db_cached(make_hierarchy_db(pool, HIERARCHY_TABLES$org_struktur),
+                     store = store),
       HIERARCHY_TABLES$org_struktur)
   }, session = session, loading = "Henter organisations-træ…")
 
