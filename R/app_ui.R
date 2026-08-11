@@ -45,6 +45,11 @@ app_ui <- function(request) {
     sect("Opslagstabeller"),
     do.call(bslib::layout_column_wrap, c(list(width = 1/3, fill = FALSE),
       lapply(LOOKUP_TABLES, function(cfg)
-        tile(cfg$id, cfg$label, "Inline-redigering direkte i tabellen."))))
+        tile(cfg$id, cfg$label, "Inline-redigering direkte i tabellen.")))),
+    sect("Vedligeholdelse"),
+    div(class = "mb-4",
+      # Manuel kompaktering (intradag-workflows: "jeg har lige regenereret
+      # data"). Sweep afgør selv om der er noget at gøre.
+      mod_compact_btn_ui("compact"))
   )
 }

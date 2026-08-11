@@ -78,6 +78,32 @@ test_that("load_indicator_slice_cached: ny dato → nyt load (dags-TTL)", {
   expect_equal(calls, 2L)                        # i går tæller ikke som i dag
 })
 
+test_that("fingeraftryk-nøgle (key) vinder over dato: genbrug på tværs af dage, frisk ved ændring", {
+  dir <- withr::local_tempdir()
+  calls <- 0L
+  loader <- function() {
+    calls <<- calls + 1L
+    data.frame(dato = as.Date("2020-01-01"), vaerdi = 1, enhed = "e")
+  }
+  fp <- "1271|dato=2026-06-26|3|1785500470"
+  # Samme fingeraftryk, FORSKELLIGE dage → cache-hit (uændret kilde er gyldig
+  # på tværs af dage — SundK-casen)
+  load_indicator_slice_cached("/b", "ind", loader, cache_dir = dir,
+                              date = as.Date("2026-08-11"), key = fp)
+  load_indicator_slice_cached("/b", "ind", loader, cache_dir = dir,
+                              date = as.Date("2026-08-12"), key = fp)
+  expect_equal(calls, 1L)
+  # Nyt fingeraftryk (intradag-regenerering) → frisk indlæsning samme dag
+  load_indicator_slice_cached("/b", "ind", loader, cache_dir = dir,
+                              date = as.Date("2026-08-12"),
+                              key = "1272|dato=2026-08-12|3|1785600000")
+  expect_equal(calls, 2L)
+  # NA-nøgle (kilde kunne ikke fingeraftrykkes) → dags-adfærd, ingen fejl
+  load_indicator_slice_cached("/b", "ind", loader, cache_dir = dir,
+                              key = NA_character_)
+  expect_equal(calls, 3L)
+})
+
 test_that("load_indicator_slice_cached: korrupt cache-fil → fald tilbage til loader", {
   dir <- withr::local_tempdir()
   key <- slice_cache_key("/b", "ind")

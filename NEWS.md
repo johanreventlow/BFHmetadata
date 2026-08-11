@@ -23,8 +23,26 @@
   baggrunden med statusvisning, kan afbrydes, og spejlet tages kun i brug
   når det er kompakteret i dag — ellers læses der råt som hidtil.
 * Parquet-mappen huskes mellem sessioner og er forudfyldt i sidefeltet.
+* Kompaktering og cache styres nu af kildens FINGERAFTRYK i stedet for
+  kalenderdag: appen opdager selv, hvilke indikatorer der har fået nye eller
+  ændrede data, og tilbyder kun at kompaktere netop dem (sjældent opdaterede
+  datasæt som SundK røres aldrig). Spejl og cache for uændrede indikatorer
+  forbliver gyldige på tværs af dage, og regenererer man data flere gange
+  samme dag, læses de nye data automatisk — uden at røre "Ignorér cache".
+  Dialogen ved opstart vises kun, når der faktisk ER noget at kompakte, og
+  en ny knap på startsiden ("Tjek og kompaktér parquet-lager") kører samme
+  tjek on demand. Kendt blindvinkel: ændringer der KUN rører gammel historik
+  (uden nye/ændrede seneste dage) opdages ikke — brug force-refresh eller
+  knappen efter manuel historik-omskrivning.
 
 ## Interne ændringer
+* Fingeraftryk (source_fingerprint): 1 readdir + stats på nyeste K
+  partitioner (målt: 0,1 s for største indikator med 7.097 partitioner;
+  fuld sweep ~10-20 s, kørt chunket i baggrunden). Manifest v2 med
+  per-indikator entries (fingerprint + compacted_at); v1-manifester
+  migreres ved at alt regnes som ændret én gang. run_compaction() er
+  inkrementel og merger uændrede entries; RDS-cachens nøgle bruger
+  fingeraftryk i stedet for dato.
 * Nyt dags-cache-lag (fct_cache.R): én RDS pr. indikator pr. dag under
   R_user_dir (overstyrbar via option bfhmeta.cache_dir), NULL caches aldrig,
   korrupte filer ignoreres, auto-prune efter 7 dage. scan_diagram() kan
