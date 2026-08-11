@@ -1,11 +1,11 @@
 source_database: dataportal_2024.accdb
 source_dsn: dataportal_2024
-generated_at: 2026-06-07 21:13:28
+generated_at: 2026-08-10 22:15:16
 generated_on: PC315081 (x86_64-w64-mingw32)
 tabeller:
   tblIndikatorer:
     navn: tblIndikatorer
-    row_count: 836
+    row_count: 1282
     kolonne_antal: 21
     kolonner:
     - navn: id
@@ -202,8 +202,8 @@ tabeller:
       output_enhed: .na.character
   tblIndikatorHierarki:
     navn: tblIndikatorHierarki
-    row_count: 156
-    kolonne_antal: 7
+    row_count: 165
+    kolonne_antal: 9
     kolonner:
     - navn: Id
       type: '4'
@@ -226,6 +226,12 @@ tabeller:
     - navn: beskrivelse_lang
       type: '-1'
       r_class: .na.character
+    - navn: aktiv
+      type: '-7'
+      r_class: .na.character
+    - navn: kilde_id
+      type: '12'
+      r_class: .na.character
     sample_raekker:
     - Id: 1
       parent_id: .na.integer
@@ -234,6 +240,8 @@ tabeller:
       indikator_niveau: 1
       beskrivelse_kort: .na.character
       beskrivelse_lang: .na.character
+      aktiv: yes
+      kilde_id: .na.character
     - Id: 4
       parent_id: 1
       hierarki_navn: Vi møder den enkelte patients behov
@@ -241,6 +249,8 @@ tabeller:
       indikator_niveau: 2
       beskrivelse_kort: .na.character
       beskrivelse_lang: .na.character
+      aktiv: yes
+      kilde_id: .na.character
     - Id: 5
       parent_id: 1
       hierarki_navn: Vi forsker og forbedrer til gavn for patienterne
@@ -248,6 +258,8 @@ tabeller:
       indikator_niveau: 2
       beskrivelse_kort: .na.character
       beskrivelse_lang: .na.character
+      aktiv: yes
+      kilde_id: .na.character
     - Id: 6
       parent_id: 1
       hierarki_navn: Vi engagerer og uddanner de bedste medarbejdere og ledere
@@ -255,6 +267,8 @@ tabeller:
       indikator_niveau: 2
       beskrivelse_kort: .na.character
       beskrivelse_lang: .na.character
+      aktiv: yes
+      kilde_id: .na.character
     - Id: 7
       parent_id: 1
       hierarki_navn: Vi er en del af et samarbejdende sundhedsvæsen
@@ -262,6 +276,8 @@ tabeller:
       indikator_niveau: 2
       beskrivelse_kort: .na.character
       beskrivelse_lang: .na.character
+      aktiv: yes
+      kilde_id: .na.character
   tblIndikatorNiveauer:
     navn: tblIndikatorNiveauer
     row_count: 7
@@ -400,7 +416,7 @@ tabeller:
       organisatorisk_enhed: 1
   tblOrganisationStruktur:
     navn: tblOrganisationStruktur
-    row_count: 335
+    row_count: 362
     kolonne_antal: 6
     kolonner:
     - navn: Id
@@ -454,7 +470,7 @@ tabeller:
       parent_Id: 1
   tblOrganisationOversaettelse:
     navn: tblOrganisationOversaettelse
-    row_count: 404
+    row_count: 443
     kolonne_antal: 3
     kolonner:
     - navn: organisatorisk_navn_fra_data
@@ -477,7 +493,7 @@ tabeller:
       organisatorisk_navn_teknisk: 23
       Id: 3
     - organisatorisk_navn_fra_data: BFH AM, ARBEJDS- OG MILJØMEDICINSK OVERAFDELING
-      organisatorisk_navn_teknisk: 5
+      organisatorisk_navn_teknisk: 359
       Id: 5
     - organisatorisk_navn_fra_data: BFH D, DERMATO-VENEROLOGISK OVERAFD.
       organisatorisk_navn_teknisk: 7
@@ -536,7 +552,7 @@ tabeller:
       faggruppe_id: 2
   tblForbindIndikatorerOrganisation:
     navn: tblForbindIndikatorerOrganisation
-    row_count: 3852
+    row_count: 3866
     kolonne_antal: 2
     kolonner:
     - navn: indikator_id
@@ -580,8 +596,8 @@ tabeller:
       indikator_id: 822
   tblDiagrammer:
     navn: tblDiagrammer
-    row_count: 1086
-    kolonne_antal: 7
+    row_count: 4126
+    kolonne_antal: 8
     kolonner:
     - navn: id
       type: '4'
@@ -594,6 +610,9 @@ tabeller:
       r_class: .na.character
     - navn: diagram_type
       type: '4'
+      r_class: .na.character
+    - navn: periode_aggregering
+      type: '12'
       r_class: .na.character
     - navn: indgaar_i_aggregering
       type: '-7'
@@ -609,6 +628,7 @@ tabeller:
       organisatorisk_navn_teknisk: 1
       indikator: 452
       diagram_type: 10
+      periode_aggregering: uge
       indgaar_i_aggregering: yes
       diagram_aktivt: no
       direktionens_tavle: yes
@@ -616,6 +636,7 @@ tabeller:
       organisatorisk_navn_teknisk: 1
       indikator: 769
       diagram_type: 10
+      periode_aggregering: uge
       indgaar_i_aggregering: yes
       diagram_aktivt: no
       direktionens_tavle: yes
@@ -623,6 +644,7 @@ tabeller:
       organisatorisk_navn_teknisk: 1
       indikator: 714
       diagram_type: 10
+      periode_aggregering: uge
       indgaar_i_aggregering: yes
       diagram_aktivt: no
       direktionens_tavle: yes
@@ -630,6 +652,7 @@ tabeller:
       organisatorisk_navn_teknisk: 1
       indikator: 745
       diagram_type: 10
+      periode_aggregering: uge
       indgaar_i_aggregering: yes
       diagram_aktivt: no
       direktionens_tavle: yes
@@ -637,12 +660,13 @@ tabeller:
       organisatorisk_navn_teknisk: 2
       indikator: 452
       diagram_type: 10
+      periode_aggregering: uge
       indgaar_i_aggregering: yes
       diagram_aktivt: no
       direktionens_tavle: no
   tblDiagramTyper:
     navn: tblDiagramTyper
-    row_count: 12
+    row_count: 13
     kolonne_antal: 3
     kolonner:
     - navn: Id
@@ -959,7 +983,7 @@ tabeller:
       id: 2
   tblDiagrammerMedian:
     navn: tblDiagrammerMedian
-    row_count: 9
+    row_count: 105
     kolonne_antal: 3
     kolonner:
     - navn: diagram
@@ -972,21 +996,21 @@ tabeller:
       type: '4'
       r_class: .na.character
     sample_raekker:
-    - diagram: 1
-      laas_median: 1.6369344e+09
-      id: 1
-    - diagram: 2
-      laas_median: 1.6369344e+09
-      id: 2
-    - diagram: 2
-      laas_median: 1.6435872e+09
-      id: 3
-    - diagram: 5
-      laas_median: 1.6308864e+09
-      id: 4
-    - diagram: 4
-      laas_median: 1.6296768e+09
-      id: 5
+    - diagram: 467
+      laas_median: 1.719792e+09
+      id: 9
+    - diagram: 1403
+      laas_median: 1.7172e+09
+      id: 10
+    - diagram: 479
+      laas_median: 1.7172e+09
+      id: 11
+    - diagram: 479
+      laas_median: 1.7566848e+09
+      id: 12
+    - diagram: 668
+      laas_median: 1.7172e+09
+      id: 13
   tblDiagrammerKommentar:
     navn: tblDiagrammerKommentar
     row_count: 1

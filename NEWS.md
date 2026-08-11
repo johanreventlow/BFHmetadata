@@ -1,3 +1,11 @@
+# BFHmetadata 0.6.0
+
+## Nye features
+* Organisations-oversættelse (tblOrganisationOversaettelse) kan nu redigeres
+  i appen som opslagstabel: navn-fra-data + organisatorisk enhed (dropdown).
+  Første fase af fuld-CRUD-planen — se
+  docs/superpowers/specs/2026-08-10-fuld-crud-design.md.
+
 # BFHmetadata 0.5.0
 
 ## Nye features
