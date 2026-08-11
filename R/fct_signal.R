@@ -32,17 +32,30 @@ resolve_median_breaks <- function(diagram_id, all_medians, x_dates) {
 
 #' Beregn run chart + Anhøj-signal for ét diagram-slice.
 #' Alle faser beregnes (historik); signal-flag = seneste fase (max fase).
-#' @param slice data.frame med dato/vaerdi (+ evt. taeller/naevner)
+#'
+#' Kolonnevalg (spejler BFHddl's resolve_column_mapping for run-charts):
+#' naevner med data → rate (taeller/naevner); ellers vaerdi hvis den findes;
+#' ellers taeller som rå tælling (rene tælle-serier har hverken naevner-
+#' eller vaerdi-kolonne — uden denne gren fejlede de med "Column 'vaerdi'
+#' not found"). En naevner-kolonne der kun indeholder NA er reelt fravaerende.
+#'
+#' @param slice data.frame med dato + vaerdi og/eller taeller (+ evt. naevner)
 #' @param parts integer-vektor af part-positioner (fra resolve_median_breaks) el. NULL
 #' @return list(signal, latest, summary_all, qic_result)
 #' @noRd
 compute_signal <- function(slice, parts = NULL) {
   has_n <- "naevner" %in% names(slice) && any(!is.na(slice$naevner))
-  res <- if (has_n)
+  res <- if (has_n) {
     BFHcharts::bfh_qic(slice, x = dato, y = taeller, n = naevner,
                        chart_type = "run", part = parts, multiply = 100)
-  else
+  } else if ("vaerdi" %in% names(slice)) {
     BFHcharts::bfh_qic(slice, x = dato, y = vaerdi, chart_type = "run", part = parts)
+  } else if ("taeller" %in% names(slice)) {
+    BFHcharts::bfh_qic(slice, x = dato, y = taeller, chart_type = "run", part = parts)
+  } else {
+    stop("Slice mangler baade 'vaerdi'- og 'taeller'-kolonne (kan ikke tegne run chart)",
+         call. = FALSE)
+  }
   s <- res$summary
   latest <- s[s$fase == max(s$fase), , drop = FALSE]
   list(
