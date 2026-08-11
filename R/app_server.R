@@ -2,15 +2,30 @@
 app_server <- function(input, output, session) {
   pool <- db_connect()
   onStop(function() pool::poolClose(pool))
-  db <- make_db(pool)
-  mod_indikator_crud_server("indik", db)
-  mod_signal_review_server("signal", db)
-  mod_diagram_server("diagram", db)
+  # Delt cache-lager: alle modulers læse-accessors deler cache, og enhver
+  # skrivning (uanset modul) rydder den → ingen stale visning på tværs af faner.
+  store <- new_cache_store()
+  db <- make_db_cached(make_db(pool), store = store)
+
+  # Lazy-init: modulernes opstart-queries køres først når fanen åbnes.
+  # Appen lander på "Start", så en app-start koster nu ingen DB-kald ud over
+  # forbindelsen selv.
+  selected_tab <- reactive(input$nav)
+  lazy_module("indikatorer", selected_tab,
+              function() mod_indikator_crud_server("indik", db))
+  lazy_module("signal", selected_tab,
+              function() mod_signal_review_server("signal", db))
+  lazy_module("diagrammer", selected_tab,
+              function() mod_diagram_server("diagram", db))
 
   # Opslagstabeller: ét generisk modul pr. LOOKUP_TABLES-element
-  for (cfg in LOOKUP_TABLES) {
-    mod_lookup_table_server(cfg$id, make_lookup_db(pool, cfg), cfg)
-  }
+  for (cfg in LOOKUP_TABLES) local({
+    cc <- cfg
+    lazy_module(cc$id, selected_tab, function() {
+      mod_lookup_table_server(cc$id, make_db_cached(make_lookup_db(pool, cc),
+                                                    store = store), cc)
+    })
+  })
 
   # Landing-fliser → naviger til valgt fane
   observeEvent(input$go_indikatorer, bslib::nav_select("nav", "indikatorer"))
