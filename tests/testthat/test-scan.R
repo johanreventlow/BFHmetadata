@@ -192,6 +192,36 @@ test_that("scan_diagram: slice_loader-slice for ANDEN enhed → ingen_data (filt
   expect_equal(res$status, "ingen_data")
 })
 
+test_that("medians_by_diagram: split pr. diagram; manglende id → NULL-agtig tom df", {
+  m <- data.frame(id = 1:3, diagram = c(7L, 7L, 9L),
+                  laas_median = as.Date(c("2020-02-01", "2020-05-01", "2020-03-01")))
+  idx <- medians_by_diagram(m, c(7L, 9L, 11L))
+  expect_equal(nrow(idx[["7"]]), 2L)
+  expect_equal(nrow(idx[["9"]]), 1L)
+  # Diagram uden knæk skal give en TOM df (ikke NULL) med diagram-kolonnen
+  # intakt, så resolve_median_breaks() rammer sin nrow==0-guard som normalt.
+  expect_equal(nrow(idx[["11"]]), 0L)
+  expect_true("diagram" %in% names(idx[["11"]]))
+})
+
+test_that("medians_by_diagram: tom/NULL input → tomme df'er for alle id'er", {
+  idx <- medians_by_diagram(NULL, c(1L, 2L))
+  expect_equal(nrow(idx[["1"]]), 0L)
+  expect_true("laas_median" %in% names(idx[["1"]]))
+  idx2 <- medians_by_diagram(
+    data.frame(id = integer(0), diagram = integer(0),
+               laas_median = as.Date(character(0))), 5L)
+  expect_equal(nrow(idx2[["5"]]), 0L)
+})
+
+test_that("medians_by_diagram: resultat virker i resolve_median_breaks (kontrakt)", {
+  x <- as.Date("2020-01-01") + 0:23 * 30
+  m <- data.frame(id = 1L, diagram = 7L, laas_median = x[13])
+  idx <- medians_by_diagram(m, c(7L, 8L))
+  expect_equal(resolve_median_breaks(7L, idx[["7"]], x), 13L)
+  expect_null(resolve_median_breaks(8L, idx[["8"]], x))   # tom df → ingen knæk
+})
+
 test_that("index_filter_choices: sorterede unikke valg pr. dimension (drop NA)", {
   idx <- data.frame(
     overafdeling = c("B", "A", "A", NA),

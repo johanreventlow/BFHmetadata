@@ -137,7 +137,11 @@ mod_signal_review_server <- function(id, db) {
         key <- paste0(row$diagram_id, "|", ctx$wk)
         res <- cc[[key]]
         if (is.null(res)) {
-          meds <- db$diagram_medians(row$diagram_id)
+          # Medians er forhåndshentet for HELE scannet i ét kald (ctx$meds).
+          # Fallback til per-diagram-opslag hvis batch-hentningen fejlede, så
+          # et DB-hikke degraderer i stedet for at tømme alle knæk.
+          meds <- ctx$meds[[as.character(row$diagram_id)]]
+          if (is.null(meds)) meds <- db$diagram_medians(row$diagram_id)
           res <- scan_diagram(row, ctx$base, meds, ctx$vdf, window_n = ctx$wn,
                               slice_loader = get_slice)
           res$row <- row
@@ -177,10 +181,17 @@ mod_signal_review_server <- function(id, db) {
       groups <- unname(split(seq_len(nrow(cand)), factor(tekn, levels = unique(tekn))))
       gen <- scan_gen() + 1L
       scan_gen(gen)
+      # Hent ALLE median-knæk i ét kald frem for ét pr. diagram: ved ~600
+      # diagrammer sparer det ~600 round-trips til Supabase. NULL ved fejl →
+      # scan-loopet falder tilbage til per-diagram-opslag.
+      all_meds <- safe_operation("batch-hent medians",
+        medians_by_diagram(db$diagram_medians_batch(cand$diagram_id),
+                           cand$diagram_id),
+        fallback = NULL)
       scan_ctx <<- list2env(list(
         cand = cand, groups = groups, gi = 1L,
         wn = wn, wk = .wkey(wn), vdf = variants(), base = base,
-        force = isTRUE(input$force_refresh),
+        force = isTRUE(input$force_refresh), meds = all_meds %||% list(),
         sig = rep(NA, nrow(cand))), envir = new.env(parent = emptyenv()))
       signal_list(cand[0, , drop = FALSE])
       scanned_n(wn)          # vindue låst til denne scan (bruges af .scan_of_current/Task 7)

@@ -135,6 +135,16 @@ test_that("median SQL-byggere er parametriserede", {
     'DELETE FROM "tblDiagrammerMedian" WHERE "id" = \\$1')
 })
 
+test_that("build_median_batch_sql henter medians for MANGE diagrammer i ét kald", {
+  sql <- build_median_batch_sql()
+  expect_match(sql, 'FROM "tblDiagrammerMedian"')
+  # ANY($1) med array-parameter → ét round-trip uanset antal diagrammer
+  # (mod ~600 separate queries ved koldt scan)
+  expect_match(sql, 'WHERE "diagram" = ANY\\(\\$1\\)', fixed = FALSE)
+  expect_match(sql, 'ORDER BY')
+  expect_false(grepl("paste|sprintf", sql))   # ingen streng-interpolation
+})
+
 test_that("build_org_enhed_variants_sql joiner org + oversaettelse på int-FK", {
   sql <- build_org_enhed_variants_sql()
   expect_match(sql, '"tblOrganisationStruktur"')

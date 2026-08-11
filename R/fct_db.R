@@ -125,6 +125,17 @@ make_db <- function(pool) {
     diagram_medians = function(diagram_id) {
       DBI::dbGetQuery(pool, build_median_list_sql(), params = list(diagram_id))
     },
+    # Alle median-knæk for en vektor af diagram-id'er i ÉT kald. Bruges af
+    # signal-scannet, hvor per-diagram-opslag ellers giver ~600 round-trips.
+    diagram_medians_batch = function(diagram_ids) {
+      ids <- unique(as.integer(diagram_ids))
+      ids <- ids[!is.na(ids)]
+      if (length(ids) == 0) {
+        return(data.frame(id = integer(0), diagram = integer(0),
+                          laas_median = as.Date(character(0))))
+      }
+      DBI::dbGetQuery(pool, build_median_batch_sql(), params = list(ids))
+    },
     add_median_break = function(diagram_id, dato) {
       assert_write_enabled()
       DBI::dbGetQuery(pool, build_median_insert_sql(),

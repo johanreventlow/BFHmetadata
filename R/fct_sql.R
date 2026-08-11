@@ -160,6 +160,16 @@ build_median_list_sql <- function() {
   'SELECT * FROM "tblDiagrammerMedian" WHERE "diagram" = $1 ORDER BY "laas_median"'
 }
 
+#' Alle median-knæk for MANGE diagrammer i ét kald. Et koldt scan af ~600
+#' diagrammer ville ellers koste ~600 round-trips til Supabase (Irland,
+#' ~40-80 ms hver). ANY($1) tager en array-parameter → ingen streng-
+#' interpolation og ét fast statement uanset antal diagrammer.
+#' @noRd
+build_median_batch_sql <- function() {
+  paste0('SELECT * FROM "tblDiagrammerMedian" WHERE "diagram" = ANY($1) ',
+         'ORDER BY "diagram", "laas_median"')
+}
+
 #' @noRd
 build_median_insert_sql <- function() {
   'INSERT INTO "tblDiagrammerMedian" ("diagram", "laas_median") VALUES ($1, $2) RETURNING "id"'

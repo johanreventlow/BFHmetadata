@@ -92,6 +92,29 @@ apply_index_filters <- function(index, filters) {
   index[keep, , drop = FALSE]
 }
 
+#' Split et batch-hentet median-datasæt op pr. diagram-id.
+#' Diagrammer uden knæk får en TOM df (ej NULL) med samme kolonner, så
+#' resolve_median_breaks() rammer sin normale nrow==0-guard.
+#' @param medians_df samlet df fra db$diagram_medians_batch() (må være NULL)
+#' @param diagram_ids alle id'er der skal have en indgang
+#' @return named list (nøgle = as.character(diagram_id)) → df
+#' @noRd
+medians_by_diagram <- function(medians_df, diagram_ids) {
+  ids <- as.character(diagram_ids)
+  empty <- if (!is.null(medians_df) && is.data.frame(medians_df)) {
+    medians_df[0, , drop = FALSE]
+  } else {
+    data.frame(id = integer(0), diagram = integer(0),
+               laas_median = as.Date(character(0)))
+  }
+  if (is.null(medians_df) || !is.data.frame(medians_df) ||
+      nrow(medians_df) == 0 || !"diagram" %in% names(medians_df)) {
+    return(stats::setNames(rep(list(empty), length(ids)), ids))
+  }
+  parts <- split(medians_df, as.character(medians_df$diagram))
+  stats::setNames(lapply(ids, function(k) parts[[k]] %||% empty), ids)
+}
+
 #' Part-positioner for et forhåndsvist faseskift: eksisterende median-knæk +
 #' ét ekstra. Alt normaliseres til Date FØR resolve, så preview og save bruger
 #' samme dato-semantik (undgår rbind-coercion af Date på en POSIXct-kolonne fra
