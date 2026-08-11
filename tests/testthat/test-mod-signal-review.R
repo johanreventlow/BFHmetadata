@@ -684,3 +684,126 @@ test_that("gem faseskift stempler diagrammets aggregering", {
     expect_equal(saved$args$aggregering, "uge")
   })
 })
+
+test_that("checkbox 'vis ogsaa uden signal' udvider visningen til alle ok-scannede", {
+  skip_if_not_installed("arrow")
+  base <- build_fixture()
+  idx <- data.frame(diagram_id = c(1L, 2L), indikator_id = c(1L, 2L),
+    indikator_navn = c("Sig", "Flad"),
+    indikator_navn_teknisk = c("ind_sig", "ind_flat"),
+    datasaet = "d", datapakke = "p", org_id = 5L, org_teknisk = "E",
+    org_navn = "E", org_niveau = 5L, overafdeling = "OA", afdeling = NA,
+    afsnit = NA, stringsAsFactors = FALSE)
+  db <- make_fake_signal_db(base, idx)
+  shiny::testServer(mod_signal_review_server, args = list(db = db), {
+    session$setInputs(parquet_dir = base, window_mode = "all", window_n = 24,
+      f_overafdeling = "", f_afsnit = "", f_datapakke = "", f_datasaet = "",
+      f_indikator_navn = "", scan = 1)
+    drain_scan()
+    expect_equal(view_list()$diagram_id, 1L)              # default: kun signal
+    expect_setequal(scanned_list()$diagram_id, c(1L, 2L)) # begge er ok-scannede
+    session$setInputs(show_no_signal = TRUE)
+    expect_setequal(view_list()$diagram_id, c(1L, 2L))    # + ok uden signal
+    expect_equal(signal_list()$diagram_id, 1L)            # kompat-reaktiv uaendret
+    session$setInputs(show_no_signal = FALSE)
+    expect_equal(view_list()$diagram_id, 1L)
+  })
+})
+
+test_that("cursor bevares ved checkbox-toggle (samme diagram forbliver aktivt)", {
+  skip_if_not_installed("arrow")
+  base <- withr::local_tempdir()
+  # a + c har signal, b er flad -> view uden checkbox: 10,30; med: 10,20,30
+  for (ind in c("a", "c")) {
+    dir.create(file.path(base, ind))
+    arrow::write_parquet(data.frame(dato = as.Date("2020-01-01") + 0:23 * 30,
+      vaerdi = c(rep(10, 12), rep(2, 12)), taeller = NA_real_,
+      naevner = NA_real_, enhed = "e"), file.path(base, ind, "p.parquet"))
+  }
+  dir.create(file.path(base, "b"))
+  arrow::write_parquet(data.frame(dato = as.Date("2020-01-01") + 0:23 * 30,
+    vaerdi = rep(c(4, 6), 12), taeller = NA_real_, naevner = NA_real_,
+    enhed = "e"), file.path(base, "b", "p.parquet"))
+  idx <- data.frame(diagram_id = c(10L, 20L, 30L), indikator_id = 1:3,
+    indikator_navn = c("A", "B", "C"), indikator_navn_teknisk = c("a", "b", "c"),
+    datasaet = "d", datapakke = "p", org_id = 5L, org_teknisk = "E",
+    org_navn = "E", org_niveau = 5L, overafdeling = "OA", afdeling = NA,
+    afsnit = NA, stringsAsFactors = FALSE)
+  db <- make_fake_signal_db(base, idx)
+  shiny::testServer(mod_signal_review_server, args = list(db = db), {
+    session$setInputs(parquet_dir = base, window_mode = "all", window_n = 24,
+      f_overafdeling = "", f_afsnit = "", f_datapakke = "", f_datasaet = "",
+      f_indikator_navn = "", scan = 1)
+    drain_scan()
+    session$setInputs(show_no_signal = TRUE)     # view: 10,20,30
+    session$setInputs(next_ = 1)
+    session$setInputs(next_ = 2)
+    expect_equal(current_diagram()$diagram_id, 30L)
+    session$setInputs(show_no_signal = FALSE)    # view: 10,30 -> 30 er pos 2
+    expect_equal(current_diagram()$diagram_id, 30L)
+    expect_equal(cursor(), 2L)
+    session$setInputs(show_no_signal = TRUE)     # view: 10,20,30 -> 30 er pos 3
+    expect_equal(current_diagram()$diagram_id, 30L)
+    expect_equal(cursor(), 3L)
+  })
+})
+
+test_that("diagram der forsvinder fra visningen ved toggle -> cursor = 1", {
+  skip_if_not_installed("arrow")
+  base <- withr::local_tempdir()
+  dir.create(file.path(base, "a"))
+  arrow::write_parquet(data.frame(dato = as.Date("2020-01-01") + 0:23 * 30,
+    vaerdi = c(rep(10, 12), rep(2, 12)), taeller = NA_real_,
+    naevner = NA_real_, enhed = "e"), file.path(base, "a", "p.parquet"))
+  dir.create(file.path(base, "b"))
+  arrow::write_parquet(data.frame(dato = as.Date("2020-01-01") + 0:23 * 30,
+    vaerdi = rep(c(4, 6), 12), taeller = NA_real_, naevner = NA_real_,
+    enhed = "e"), file.path(base, "b", "p.parquet"))
+  idx <- data.frame(diagram_id = c(10L, 20L), indikator_id = 1:2,
+    indikator_navn = c("A", "B"), indikator_navn_teknisk = c("a", "b"),
+    datasaet = "d", datapakke = "p", org_id = 5L, org_teknisk = "E",
+    org_navn = "E", org_niveau = 5L, overafdeling = "OA", afdeling = NA,
+    afsnit = NA, stringsAsFactors = FALSE)
+  db <- make_fake_signal_db(base, idx)
+  shiny::testServer(mod_signal_review_server, args = list(db = db), {
+    session$setInputs(parquet_dir = base, window_mode = "all", window_n = 24,
+      f_overafdeling = "", f_afsnit = "", f_datapakke = "", f_datasaet = "",
+      f_indikator_navn = "", scan = 1)
+    drain_scan()
+    session$setInputs(show_no_signal = TRUE)   # view: 10,20
+    session$setInputs(next_ = 1)               # staa paa 20 (flad)
+    expect_equal(current_diagram()$diagram_id, 20L)
+    session$setInputs(show_no_signal = FALSE)  # 20 forsvinder -> cursor 1 (10)
+    expect_equal(current_diagram()$diagram_id, 10L)
+    expect_equal(cursor(), 1L)
+  })
+})
+
+test_that("ingen_data-diagrammer optages ALDRIG i visningen (heller ej med checkbox)", {
+  skip_if_not_installed("arrow")
+  base <- withr::local_tempdir()
+  dir.create(file.path(base, "a"))
+  arrow::write_parquet(data.frame(dato = as.Date("2020-01-01") + 0:23 * 30,
+    vaerdi = c(rep(10, 12), rep(2, 12)), taeller = NA_real_,
+    naevner = NA_real_, enhed = "e"), file.path(base, "a", "p.parquet"))
+  dir.create(file.path(base, "b"))
+  arrow::write_parquet(data.frame(dato = as.Date("2020-01-01") + 0:23 * 30,
+    vaerdi = rep(c(4, 6), 12), taeller = NA_real_, naevner = NA_real_,
+    enhed = "e"), file.path(base, "b", "p.parquet"))
+  # org_id 99 har ingen enhed-varianter -> scan_diagram giver "ingen_data"
+  idx <- data.frame(diagram_id = c(10L, 20L), indikator_id = 1:2,
+    indikator_navn = c("A", "B"), indikator_navn_teknisk = c("a", "b"),
+    datasaet = "d", datapakke = "p", org_id = c(5L, 99L), org_teknisk = "E",
+    org_navn = "E", org_niveau = 5L, overafdeling = "OA", afdeling = NA,
+    afsnit = NA, stringsAsFactors = FALSE)
+  db <- make_fake_signal_db(base, idx)
+  shiny::testServer(mod_signal_review_server, args = list(db = db), {
+    session$setInputs(parquet_dir = base, window_mode = "all", window_n = 24,
+      f_overafdeling = "", f_afsnit = "", f_datapakke = "", f_datasaet = "",
+      f_indikator_navn = "", scan = 1)
+    drain_scan()
+    session$setInputs(show_no_signal = TRUE)
+    expect_equal(view_list()$diagram_id, 10L)          # 20 (ingen_data) er ude
+    expect_equal(scanned_list()$diagram_id, 10L)
+  })
+})

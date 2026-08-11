@@ -52,7 +52,13 @@ mod_signal_review_server <- function(id, db) {
     index <- reactiveVal(db$list_active_seriediagrammer())
     variants <- reactiveVal(db$org_enhed_variants())
     cache <- reactiveVal(list())          # nøgle "<diagram_id>|<window>" → scan-res
-    signal_list <- reactiveVal(NULL)      # df: diagrammer med signal
+    scanned_list <- reactiveVal(NULL)     # df: ALLE ok-scannede (+ signal/status)
+    show_all <- reactiveVal(FALSE)        # checkbox-tilstand (styret via observer,
+                                          # saa cursor kan remappes deterministisk)
+    # Visningen der bladres i: checkbox fra -> kun signal; til -> alle ok-scannede
+    view_list <- reactive(scan_view_filter(scanned_list(), show_all()))
+    # Bagudkompat (tests + evt. eksterne laesere): kun signal-diagrammer
+    signal_list <- reactive(scan_view_filter(scanned_list(), FALSE))
     cursor <- reactiveVal(1L)
     preview_parts <- reactiveVal(NULL)    # ekstra forhåndsvist knæk (dato)
     selected_cursor <- reactiveVal(NULL)  # cursor-stempel da punkt sidst blev klikket
@@ -61,6 +67,29 @@ mod_signal_review_server <- function(id, db) {
     # ggiraph-input kan ikke nulstilles fra server → stempl med cursor ved klik,
     # så et valg fra ET diagram aldrig læses som gyldigt på et ANDET (Task 7-guard).
     observeEvent(input$chart_selected, selected_cursor(cursor()))
+
+    # Checkbox-toggle: bevar det aktuelle diagram i visningen hvis muligt.
+    # show_all opdateres HER (ikke direkte fra input) saa gammel/ny visning kan
+    # beregnes side om side - en reaktiv afledning ville miste den gamle
+    # position foer remap.
+    observeEvent(input$show_no_signal, {
+      sl <- scanned_list()
+      old_view <- scan_view_filter(sl, show_all())
+      old_id <- if (!is.null(old_view) && nrow(old_view) > 0) {
+        old_view$diagram_id[min(cursor(), nrow(old_view))]
+      } else {
+        NULL
+      }
+      show_all(isTRUE(input$show_no_signal))
+      new_view <- scan_view_filter(sl, show_all())
+      pos <- if (!is.null(old_id) && !is.null(new_view)) {
+        match(old_id, new_view$diagram_id)
+      } else {
+        NA_integer_
+      }
+      cursor(if (is.na(pos)) 1L else as.integer(pos))
+      preview_parts(NULL)
+    }, ignoreInit = TRUE)
 
     # Populér filter-valg ved start
     observeEvent(index(), {
@@ -109,7 +138,8 @@ mod_signal_review_server <- function(id, db) {
       if (!identical(gen, isolate(scan_gen()))) return(invisible())
       scan_running(FALSE)
       showNotification(sprintf("%d af %d diagrammer har signal",
-        nrow(isolate(signal_list())), nrow(scan_ctx$cand)), session = session)
+        sum(isolate(scanned_list())$signal, na.rm = TRUE), nrow(scan_ctx$cand)),
+        session = session)
     }
 
     .scan_process_group <- function(gen) {
@@ -162,10 +192,16 @@ mod_signal_review_server <- function(id, db) {
       }
       cache(cc)
       ctx$gi <- ctx$gi + 1L
-      # Opdater signal-listen løbende i cand-rækkefølge. Grupper processeres i
-      # cand-rækkefølge, så nye rækker tilføjes altid EFTER de viste → cursor
-      # peger stadig på samme diagram mens listen vokser.
-      signal_list(ctx$cand[which(ctx$sig %in% TRUE), , drop = FALSE])
+      # Opdater den scannede liste løbende i cand-rækkefølge. Grupper
+      # processeres i cand-rækkefølge, så nye rækker tilføjes altid EFTER de
+      # viste → cursor peger stadig på samme diagram mens listen vokser.
+      # Alle ok-scannede optages (signal-flag som kolonne). ingen_data/fejl
+      # holdes ude - de har ingen tegnbar graf (design 2026-08-11).
+      ok_idx <- which(ctx$status %in% "ok")
+      sl <- ctx$cand[ok_idx, , drop = FALSE]
+      sl$signal <- ctx$sig[ok_idx] %in% TRUE
+      sl$status <- ctx$status[ok_idx]
+      scanned_list(sl)
       scan_progress(list(done = ctx$gi - 1L, total = length(ctx$groups),
                          found = sum(ctx$sig, na.rm = TRUE),
                          n_cand = nrow(ctx$cand),
@@ -212,7 +248,10 @@ mod_signal_review_server <- function(id, db) {
         sig = rep(NA, nrow(cand)),
         status = rep(NA_character_, nrow(cand))),
         envir = new.env(parent = emptyenv()))
-      signal_list(cand[0, , drop = FALSE])
+      empty <- cand[0, , drop = FALSE]
+      empty$signal <- logical(0)
+      empty$status <- character(0)
+      scanned_list(empty)
       scanned_n(wn)          # vindue låst til denne scan (bruges af .scan_of_current/Task 7)
       cursor(1L)
       preview_parts(NULL)
@@ -231,9 +270,9 @@ mod_signal_review_server <- function(id, db) {
     })
 
     current_diagram <- reactive({
-      sl <- signal_list()
-      if (is.null(sl) || nrow(sl) == 0) return(NULL)
-      as.list(sl[cursor(), ])
+      vl <- view_list()
+      if (is.null(vl) || nrow(vl) == 0) return(NULL)
+      as.list(vl[min(cursor(), nrow(vl)), ])
     })
 
     .scan_of_current <- reactive({
@@ -244,20 +283,20 @@ mod_signal_review_server <- function(id, db) {
     })
 
     observeEvent(input$next_, {
-      sl <- signal_list(); if (is.null(sl) || nrow(sl) == 0) return()
+      sl <- view_list(); if (is.null(sl) || nrow(sl) == 0) return()
       cursor(min(cursor() + 1L, nrow(sl))); preview_parts(NULL)
     })
     observeEvent(input$prev, {
-      sl <- signal_list(); if (is.null(sl) || nrow(sl) == 0) return()
+      sl <- view_list(); if (is.null(sl) || nrow(sl) == 0) return()
       cursor(max(cursor() - 1L, 1L)); preview_parts(NULL)
     })
 
     output$nav_label <- renderUI({
-      sl <- signal_list()
+      sl <- view_list()
       if (is.null(sl)) return(span("Ingen scan endnu", class = "text-muted"))
       if (nrow(sl) == 0) {
         txt <- if (isTRUE(scan_running())) "Scanner — endnu ingen signaler" else
-          "Scannet — 0 diagrammer med signal"
+          "Scannet — 0 diagrammer i visningen"
         return(span(txt, class = "text-muted"))
       }
       cd <- current_diagram()
@@ -474,7 +513,8 @@ mod_signal_review_server <- function(id, db) {
     })
 
     # Eksponér til test
-    list(signal_list = signal_list, current_diagram = current_diagram,
+    list(signal_list = signal_list, scanned_list = scanned_list,
+         view_list = view_list, current_diagram = current_diagram,
          cursor = cursor, cache = cache, preview_parts = preview_parts,
          scan_of_current = .scan_of_current, scan_running = scan_running)
   })
