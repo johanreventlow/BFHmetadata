@@ -69,7 +69,8 @@
     }, "")
     stats::setNames(d$id[choices], labels[choices])
   }
-  niveau_choices <- stats::setNames(niveauer$id, niveauer$label)
+  niveau_choices <- c("(vælg)" = "",
+                       stats::setNames(niveauer$id, niveauer$label))
   padding <- function(depth) {
     value <- htmltools::htmlEscape(as.character(depth * 1.5), attribute = TRUE)
     sprintf('<div style="padding-left:%srem">', value)

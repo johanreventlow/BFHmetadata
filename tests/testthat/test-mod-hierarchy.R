@@ -144,6 +144,17 @@ test_that("hierarki-tabel viser manglende tekst som et tomt editorfelt", {
   expect_false(grepl('value="NA"', out[["Kort navn"]][2], fixed = TRUE))
 })
 
+test_that("hierarki-tabel bevarer manglende niveau som tomt valgt vaerdi", {
+  db <- fake_hierarchy_db()
+  d <- hierarchy_order(db$list_nodes(), "id", "parent_id_raw",
+                       .hierarchy_cfg()$display_col)
+  d$niveau_id[2] <- NA_integer_
+  out <- .hierarchy_editor_data(d, .hierarchy_cfg(), identity,
+                                db$niveau_options())
+  expect_true(grepl('<option value="" selected>(vælg)</option>',
+                    out[["Niveau"]][2], fixed = TRUE))
+})
+
 test_that("hierarki-tabel kan rendere et tomt traee", {
   db <- fake_hierarchy_db()
   d <- hierarchy_order(db$list_nodes()[FALSE, ], "id", "parent_id_raw",
