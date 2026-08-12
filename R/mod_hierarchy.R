@@ -53,6 +53,62 @@
   sprintf("(uden navn #%s)", id)
 }
 
+#' Byg de fem permanente inline-editor-kolonner til hierarki-tabellen.
+#' @noRd
+.hierarchy_editor_data <- function(d, cfg, ns, niveauer) {
+  fields <- .hierarchy_inline_fields(cfg)
+  text_cols <- unname(fields[c("teknisk", "langt", "kort")])
+  teknisk_col <- text_cols[1]
+  column_names <- c(vapply(cfg$fields, function(field) field$label, ""),
+                    "Forælder", "Niveau")
+  parent_labels <- function(choices) {
+    teknisk <- d[[teknisk_col]]
+    display <- d[[cfg$display_col]]
+    labels <- vapply(seq_len(nrow(d)), function(i) {
+      .node_label(cfg, display[i], teknisk[i], d$id[i])
+    }, "")
+    stats::setNames(d$id[choices], labels[choices])
+  }
+  niveau_choices <- c("(vælg)" = "",
+                       stats::setNames(niveauer$id, niveauer$label))
+  padding <- function(depth) {
+    value <- htmltools::htmlEscape(as.character(depth * 1.5), attribute = TRUE)
+    sprintf('<div style="padding-left:%srem">', value)
+  }
+  text_value <- function(col, row) {
+    value <- d[[col]][row]
+    if (is.na(value)) "" else value
+  }
+  if (nrow(d) == 0) {
+    return(as.data.frame(stats::setNames(
+      replicate(length(column_names), character(), simplify = FALSE),
+      column_names), stringsAsFactors = FALSE, check.names = FALSE))
+  }
+
+  out <- lapply(seq_len(nrow(d)), function(i) {
+    id <- d$id[i]
+    excluded <- hierarchy_descendants(d, "id", "parent_id_raw", id)
+    parent_choices <- c("(rod)" = "", parent_labels(!(d$id %in% excluded)))
+    c(
+      .hierarchy_text_editor_html(ns, id, text_cols[1], text_value(text_cols[1], i)),
+      paste0(padding(d$depth[i]),
+             .hierarchy_text_editor_html(ns, id, text_cols[2],
+                                         text_value(text_cols[2], i), d$depth[i]),
+             "</div>"),
+      .hierarchy_text_editor_html(ns, id, text_cols[3], text_value(text_cols[3], i)),
+      .hierarchy_select_editor_html(ns, id, fields[["parent"]],
+                                    d$parent_id_raw[i], parent_choices,
+                                    root = TRUE),
+      .hierarchy_select_editor_html(ns, id, fields[["niveau"]],
+                                    d$niveau_id[i], niveau_choices)
+    )
+  })
+  out <- as.data.frame(do.call(rbind, out), stringsAsFactors = FALSE,
+                       check.names = FALSE)
+  names(out) <- column_names
+  out
+}
+
 #' Saml formular-inputs → named list i hierarchy_edit_cols(cfg)-orden. Tom
 #' forælder → NA (rodnode OK). Tomme tekstfelter → NA.
 #' @noRd
@@ -77,8 +133,17 @@
 mod_hierarchy_ui <- function(id, cfg) {
   ns <- NS(id)
   div(class = "mt-2",
-    div(class = "d-flex justify-content-end mb-2",
-      actionButton(ns("new_node"), "Ny node", class = "btn-success")),
+    tags$style(HTML(sprintf(paste0(
+      "#%s .hierarchy-editor { min-height:calc(1.5em + .5rem + 2px); ",
+      "padding:.25rem .5rem; background-color:#f8f9fa; } ",
+      "#%s .hierarchy-editor:focus { background-color:#fff; } ",
+      "#%s .hierarchy-editor:disabled, #%s .hierarchy-editor.hierarchy-saving ",
+      "{ opacity:.65; background-color:#e9ecef; cursor:wait; }"),
+      ns("tbl"), ns("tbl"), ns("tbl"), ns("tbl")))),
+    div(class = "d-flex justify-content-end gap-2 mb-2",
+      actionButton(ns("new_node"), "Ny node", class = "btn-success"),
+      actionButton(ns("delete_selected"), "Slet valgt",
+                   class = "btn-outline-danger")),
     DT::DTOutput(ns("tbl")))
 }
 
@@ -89,21 +154,43 @@ mod_hierarchy_server <- function(id, db, cfg) {
     niveauer <- reactiveVal(db$niveau_options())
     status_msg <- reactiveVal("")
     warn_msg <- reactiveVal("")
-    editing_id <- reactiveVal(NULL)
-    last_opened_parent <- reactiveVal(NULL)
-    reload <- function() nodes(db$list_nodes())
+    status_event <- reactiveVal(list(message = "", nonce = 0L))
+    warn_event <- reactiveVal(list(message = "", nonce = 0L))
+    table_revision <- reactiveVal(0L)
+    selected_id <- reactiveVal(NULL)
+    delete_id <- reactiveVal(NULL)
+    reload <- function() {
+      nodes(db$list_nodes())
+      table_revision(isolate(table_revision()) + 1L)
+    }
+    notify_status <- function(message) {
+      status_msg(message)
+      event <- isolate(status_event())
+      status_event(list(message = message, nonce = event$nonce + 1L))
+    }
+    notify_warning <- function(message) {
+      warn_msg(message)
+      event <- isolate(warn_event())
+      warn_event(list(message = message, nonce = event$nonce + 1L))
+    }
 
     tree <- reactive(hierarchy_order(nodes(), "id", "parent_id_raw",
                                      sort_col = cfg$display_col))
 
     # Flydende notifikationer (synlige over modal, jf. mod_diagram)
-    observeEvent(status_msg(), {
-      if (nzchar(status_msg())) showNotification(status_msg(), duration = 5)
+    observeEvent(status_event(), {
+      event <- status_event()
+      if (nzchar(event$message)) showNotification(event$message, duration = 5)
     }, ignoreInit = TRUE)
-    observeEvent(warn_msg(), {
-      if (nzchar(warn_msg()))
-        showNotification(warn_msg(), type = "warning", duration = 8)
+    observeEvent(warn_event(), {
+      event <- warn_event()
+      if (nzchar(event$message))
+        showNotification(event$message, type = "warning", duration = 8)
     }, ignoreInit = TRUE)
+
+    observeEvent(input$selected_node_id, {
+      selected_id(.hierarchy_editor_integer(input$selected_node_id))
+    }, ignoreNULL = FALSE)
 
     .labels <- function(d) {
       teknisk <- if ("organisatorisk_navn_teknisk" %in% names(d))
@@ -113,41 +200,51 @@ mod_hierarchy_server <- function(id, db, cfg) {
     }
 
     output$tbl <- DT::renderDT({
+      table_revision()
       d <- tree()
-      ns <- session$ns
-      navn <- htmltools::htmlEscape(.labels(d))
-      indent <- vapply(d$depth, function(n)
-        paste(rep("&nbsp;&nbsp;&nbsp;", n), collapse = ""), "")
-      navn_html <- paste0(indent, navn)
-      btn <- sprintf(paste0(
-        '<button class="btn btn-outline-secondary btn-sm" ',
-        'onclick="Shiny.setInputValue(\'%s\', %d, {priority: \'event\'})">',
-        'Åbn &rsaquo;</button>'), ns("open_id"), d$id)
-      out <- data.frame(
-        Navn = navn_html,
-        Niveau = ifelse(is.na(d$niveau_navn), "", d$niveau_navn),
-        ` ` = btn,
-        check.names = FALSE, stringsAsFactors = FALSE)
-      esc <- which(names(out) == "Niveau")
-      if (!is.null(cfg$aktiv_col)) {
-        flag <- function(x) ifelse(x %in% TRUE,
-          '<span style="color:#198754;font-weight:700;">&#10003;</span>',
-          '<span style="color:#adb5bd;">&mdash;</span>')
-        out$Aktiv <- flag(d$aktiv)
-        out <- out[, c("Navn", "Niveau", "Aktiv", " "), drop = FALSE]
+      selected <- isolate(selected_id())
+      selected_row <- if (is.null(selected)) integer() else match(selected, d$id)
+      if (length(selected_row) == 1L && is.na(selected_row)) {
+        selected_row <- integer()
       }
-      DT::datatable(out, escape = esc, rownames = FALSE, selection = "none",
+      out <- .hierarchy_editor_data(d, cfg, session$ns, niveauer())
+      editor_value <- htmlwidgets::JS(
+        "function(data, type) {\n          if (type === 'sort' || type === 'filter') {\n            return $('<div>').html(data).find('.hierarchy-editor').val() || '';\n          }\n          return data;\n        }")
+      DT::datatable(out, escape = FALSE, rownames = FALSE,
+        selection = list(mode = "single", selected = selected_row),
+        callback = .hierarchy_dt_callback(session$ns),
         options = list(pageLength = 25, columnDefs = list(
-          list(orderable = FALSE, targets = ncol(out) - 1))))
+          list(targets = 0:4, render = editor_value))))
+    }, server = FALSE)
+
+    observeEvent(input$inline_edit, {
+      result <- .prepare_hierarchy_inline_update(
+        nodes(), niveauer(), cfg, input$inline_edit)
+      if (!isTRUE(result$ok)) {
+        notify_warning(result$error)
+        reload()
+        return()
+      }
+      if (isTRUE(result$unchanged)) {
+        reload()
+        return()
+      }
+
+      ok <- safe_operation("hierarki-inline-gem", {
+        db$update_node(result$id, result$values)
+        TRUE
+      }, fallback = FALSE)
+      reload()
+      if (isTRUE(ok)) {
+        notify_status("Gemt")
+        if (nzchar(result$warning)) notify_warning(result$warning)
+      } else {
+        notify_warning("Fejl ved gem; v\u00e6rdien er gendannet")
+      }
     })
 
-    .parent_choices <- function(exclude_subtree_of = NULL) {
+    .parent_choices <- function() {
       d <- tree()
-      if (!is.null(exclude_subtree_of)) {
-        excl <- hierarchy_descendants(nodes(), "id", "parent_id_raw",
-                                      exclude_subtree_of)
-        d <- d[!(d$id %in% excl), , drop = FALSE]
-      }
       stats::setNames(d$id, .labels(d))
     }
 
@@ -156,62 +253,30 @@ mod_hierarchy_server <- function(id, db, cfg) {
       stats::setNames(nv$id, nv$label)
     }
 
-    .show_form_modal <- function(vals = NULL, exclude_subtree_of = NULL) {
+    .show_form_modal <- function() {
       ns <- session$ns
-      is_new <- is.null(vals)
       showModal(modalDialog(
-        title = if (is_new) "Ny node" else "Redigér node",
+        title = "Ny node",
         size = "m", easyClose = FALSE,
-        .hierarchy_form_ui(ns, cfg, vals,
-          parent_choices = .parent_choices(exclude_subtree_of),
+        .hierarchy_form_ui(ns, cfg, NULL,
+          parent_choices = .parent_choices(),
           niveau_choices = .niveau_choices()),
-        footer = div(class = "d-flex justify-content-between w-100",
-          if (is_new) span() else
-            actionButton(ns("h_delete"), "Slet", class = "btn-outline-danger"),
-          div(class = "d-flex gap-2",
-            modalButton("Annullér"),
-            actionButton(ns("h_save"), "Gem", class = "btn-primary")))))
+        footer = div(class = "d-flex justify-content-end gap-2 w-100",
+          modalButton("Annullér"),
+          actionButton(ns("h_save"), "Gem", class = "btn-primary"))))
     }
 
-    observeEvent(input$open_id, {
-      rid <- as.integer(input$open_id)
-      row <- nodes()[nodes()$id == rid, , drop = FALSE]
-      if (nrow(row) == 0) { status_msg("Node ikke fundet"); return() }
-      editing_id(rid)
-      last_opened_parent(row[[cfg$parent_col %||% "parent_id_raw"]][1])
-      vals <- as.list(row[1, , drop = FALSE])
-      vals[[cfg$parent_col]] <- row$parent_id_raw[1]
-      vals[[cfg$level$col]] <- row$niveau_id[1]
-      .show_form_modal(vals, exclude_subtree_of = rid)
-    })
-
     observeEvent(input$new_node, {
-      editing_id(NULL)
-      prefill_parent <- last_opened_parent()
-      vals <- NULL
-      if (!is.null(prefill_parent) && !is.na(prefill_parent)) {
-        vals <- stats::setNames(list(prefill_parent), cfg$parent_col)
-      }
-      .show_form_modal(vals)
+      .show_form_modal()
     })
 
     observeEvent(input$h_save, {
       vals <- .collect_hierarchy_form(input, cfg)
       if (is.na(vals[[cfg$display_col]]) || !nzchar(vals[[cfg$display_col]])) {
-        status_msg(sprintf("%s er obligatorisk", cfg$label))
+        notify_status(sprintf("%s er obligatorisk", cfg$label))
         return()
       }
-      rid <- editing_id()
       new_parent <- vals[[cfg$parent_col]]
-
-      # Server-side cyklus-assert: forælder må ikke være i egen subtree
-      if (!is.null(rid) && !is.na(new_parent)) {
-        subtree <- hierarchy_descendants(nodes(), "id", "parent_id_raw", rid)
-        if (new_parent %in% subtree) {
-          status_msg("Kan ikke flytte node til dens egen subtree (cyklus)")
-          return()
-        }
-      }
 
       # Blød niveau-konsistens-advarsel (springer NA-niveauer over)
       new_niveau <- vals[[cfg$level$col]]
@@ -226,41 +291,83 @@ mod_hierarchy_server <- function(id, db, cfg) {
           } else NA
           if (!is.na(niveau_num_row) &&
               niveau_num_row <= parent_row$niveau_num[1]) {
-            warn_msg("Niveau er ikke dybere end forælderens niveau")
+            notify_warning("Niveau er ikke dybere end forælderens niveau")
           }
         }
       }
 
       safe_operation("hierarki-gem", {
-        if (is.null(rid)) {
-          newid <- db$create_node(vals)
-          status_msg(paste("Oprettet node", newid))
-        } else {
-          db$update_node(rid, vals)
-          status_msg(paste("Gemt node", rid))
-        }
+        newid <- db$create_node(vals)
+        notify_status(paste("Oprettet node", newid))
         removeModal(); reload()
-      }, fallback = status_msg("Fejl ved gem (se log)"))
+      }, fallback = notify_status("Fejl ved gem (se log)"))
     })
 
-    observeEvent(input$h_delete, {
-      rid <- editing_id()
-      if (is.null(rid)) return()
-      n <- db$child_count(rid)
-      if (n > 0) {
-        warn_msg(sprintf("Noden har %d børn — flyt eller slet dem først.", n))
+    .clear_delete_selection <- function() {
+      selected_id(NULL)
+      delete_id(NULL)
+      DT::selectRows(DT::dataTableProxy("tbl", session), NULL)
+    }
+
+    observeEvent(input$delete_selected, {
+      rid <- selected_id()
+      if (is.null(rid)) {
+        notify_warning("V\u00e6lg en node f\u00f8rst")
         return()
       }
-      safe_operation("hierarki-slet", {
+      row <- nodes()[nodes()$id == rid, , drop = FALSE]
+      if (nrow(row) != 1L) {
+        reload()
+        notify_status("Node ikke fundet")
+        .clear_delete_selection()
+        return()
+      }
+      delete_id(rid)
+      showModal(modalDialog(
+        title = "Slet node",
+        sprintf("Vil du slette %s?", .labels(row)[1]),
+        easyClose = FALSE,
+        footer = div(class = "d-flex justify-content-end gap-2 w-100",
+          modalButton("Annull\u00e9r"),
+          actionButton(session$ns("confirm_delete"), "Slet",
+                       class = "btn-danger"))))
+    })
+
+    observeEvent(input$confirm_delete, {
+      rid <- delete_id()
+      if (is.null(rid)) return()
+      removeModal()
+      reload()
+      row <- nodes()[nodes()$id == rid, , drop = FALSE]
+      if (nrow(row) == 0) {
+        notify_status("Node ikke fundet")
+        .clear_delete_selection()
+        return()
+      }
+      n <- db$child_count(rid)
+      if (n > 0) {
+        notify_warning(sprintf("Noden har %d b\u00f8rn \u2014 flyt eller slet dem f\u00f8rst.", n))
+        reload()
+        .clear_delete_selection()
+        return()
+      }
+      ok <- safe_operation("hierarki-slet", {
         db$delete_node(rid)
-        status_msg(paste("Slettet node", rid))
-        removeModal(); editing_id(NULL); reload()
-      }, fallback = warn_msg(
-        "Noden er i brug og kan ikke slettes (referencer findes)."))
+        TRUE
+      }, fallback = FALSE)
+      reload()
+      .clear_delete_selection()
+      if (isTRUE(ok)) {
+        notify_status(paste("Slettet node", rid))
+      } else {
+        notify_warning("Noden er i brug og kan ikke slettes (referencer findes).")
+      }
     })
 
     # eksponér til test
     list(nodes = nodes, tree = tree, status_msg = status_msg,
-         warn_msg = warn_msg, editing_id = editing_id)
+         warn_msg = warn_msg, status_event = status_event,
+         warn_event = warn_event, table_revision = table_revision,
+         selected_id = selected_id, delete_id = delete_id)
   })
 }
