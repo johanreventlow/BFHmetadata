@@ -182,3 +182,17 @@ test_that("aggregate_slice_for_center: max_depth begraenser rekursionen", {
   expect_equal(out$taeller, 9)
   expect_true(all(out$enhed == "center"))
 })
+
+test_that("aggregate_slice_for_center: cyklisk org-trae terminerer rent (.visited-vaern)", {
+  # Malformet org_struct med et 2<->3-kredslob under center 1. Kilden
+  # (data_aggregate_children_recursive) short-circuiter allerede besoegte
+  # noder via .visited; denne adapter skal terminere lige saa rent - uden
+  # fejl/uendelig rekursion - og give NULL, fordi ingen enhed i cyklussen
+  # har data i slicet (kun flaget, aldrig egne raekker).
+  os <- .os(2, 1,  3, 2,  2, 3)                # 1 -> 2 -> 3 -> 2 (cyklus 2<->3)
+  fl <- .fl(3, 9, TRUE)                        # 3 er TRUE, men har ingen data
+  vr <- .variants(list(2L, "niv2"), list(3L, "niv3"))
+  slice <- data.frame(dato = as.Date("2024-01-01"), enhed = "andet", taeller = 1)
+
+  expect_null(aggregate_slice_for_center(slice, 1L, 9L, "center", os, fl, vr))
+})

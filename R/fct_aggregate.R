@@ -168,13 +168,18 @@ aggregate_child_data <- function(child_data, center_enhed, date_col = "dato") {
 # @param variants_df org_enhed_variants()-lignende df brugt af
 #   enhed_variants_for() til at slaa et org_id's parquet-enhed-navne op.
 # @param max_depth Maks. rekursionsdybde. Default 5L.
+# @param .visited Internt brugt til cykel-beskyttelse (allerede besoegte
+#   org-id'er i denne rekursions-sti). Skal ikke saettes af kaldere -
+#   spejler kildens defensive vaern mod malformede (cykliske) org-traeer
+#   (data_aggregate_children_recursive, data_loader.R:796+801-803+830).
 #
 # @return Data frame (se aggregate_child_data), eller NULL hvis intet kan
 #   oprulles.
 # @noRd
 aggregate_slice_for_center <- function(full_slice, center_org_id, indikator_id,
                                         center_enhed, org_struct, agg_flags,
-                                        variants_df, max_depth = 5L) {
+                                        variants_df, max_depth = 5L,
+                                        .visited = integer(0)) {
   if (is.null(full_slice) || nrow(full_slice) == 0) {
     return(NULL)
   }
@@ -196,7 +201,15 @@ aggregate_slice_for_center <- function(full_slice, center_org_id, indikator_id,
     return(NULL)
   }
 
+  visited <- c(.visited, center_org_id)
+
   parts <- lapply(kids, function(kid) {
+    # Cykel-beskyttelse: spring over boern der allerede er besoegt i denne
+    # rekursions-sti (malformet/cyklisk org_struct).
+    if (kid %in% visited) {
+      return(NULL)
+    }
+
     variants <- enhed_variants_for(variants_df, kid)
     res <- slice_filter_enhed(full_slice, variants)
 
@@ -209,7 +222,8 @@ aggregate_slice_for_center <- function(full_slice, center_org_id, indikator_id,
       res <- aggregate_slice_for_center(
         full_slice, kid, indikator_id, kid_enhed,
         org_struct, agg_flags, variants_df,
-        max_depth = max_depth - 1L
+        max_depth = max_depth - 1L,
+        .visited = visited
       )
     }
     res
