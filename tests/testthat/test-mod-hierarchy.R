@@ -119,3 +119,38 @@ test_that("opret ny med tom foraelder kalder create_node med NA-parent", {
     expect_identical(created$organisatorisk_navn_teknisk, "ny_node")
   })
 })
+
+test_that("hierarki-tabel viser fem permanente editor-kolonner", {
+  db <- fake_hierarchy_db()
+  d <- hierarchy_order(db$list_nodes(), "id", "parent_id_raw",
+                       .hierarchy_cfg()$display_col)
+  out <- .hierarchy_editor_data(d, .hierarchy_cfg(), identity,
+                                db$niveau_options())
+  expect_named(out, c("Teknisk navn", "Langt navn", "Kort navn",
+                      "Forælder", "Niveau"))
+  expect_true(all(grepl("hierarchy-editor", out[["Langt navn"]], fixed = TRUE)))
+  expect_match(out[["Langt navn"]][3], "padding-left:3rem", fixed = TRUE)
+  expect_false(grepl('value="3"', out[["Forælder"]][1], fixed = TRUE))
+})
+
+test_that("hierarki-tabel viser manglende tekst som et tomt editorfelt", {
+  db <- fake_hierarchy_db()
+  d <- hierarchy_order(db$list_nodes(), "id", "parent_id_raw",
+                       .hierarchy_cfg()$display_col)
+  d$organisatorisk_navn_kort[2] <- NA_character_
+  out <- .hierarchy_editor_data(d, .hierarchy_cfg(), identity,
+                                db$niveau_options())
+  expect_match(out[["Kort navn"]][2], 'value=""', fixed = TRUE)
+  expect_false(grepl('value="NA"', out[["Kort navn"]][2], fixed = TRUE))
+})
+
+test_that("hierarki-tabel kan rendere et tomt traee", {
+  db <- fake_hierarchy_db()
+  d <- hierarchy_order(db$list_nodes()[FALSE, ], "id", "parent_id_raw",
+                       .hierarchy_cfg()$display_col)
+  out <- .hierarchy_editor_data(d, .hierarchy_cfg(), identity,
+                                db$niveau_options())
+  expect_equal(nrow(out), 0)
+  expect_named(out, c("Teknisk navn", "Langt navn", "Kort navn",
+                      "Forælder", "Niveau"))
+})

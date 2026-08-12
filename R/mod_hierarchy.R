@@ -53,6 +53,61 @@
   sprintf("(uden navn #%s)", id)
 }
 
+#' Byg de fem permanente inline-editor-kolonner til hierarki-tabellen.
+#' @noRd
+.hierarchy_editor_data <- function(d, cfg, ns, niveauer) {
+  fields <- .hierarchy_inline_fields(cfg)
+  text_cols <- unname(fields[c("teknisk", "langt", "kort")])
+  teknisk_col <- text_cols[1]
+  column_names <- c(vapply(cfg$fields, function(field) field$label, ""),
+                    "Forælder", "Niveau")
+  parent_labels <- function(choices) {
+    teknisk <- d[[teknisk_col]]
+    display <- d[[cfg$display_col]]
+    labels <- vapply(seq_len(nrow(d)), function(i) {
+      .node_label(cfg, display[i], teknisk[i], d$id[i])
+    }, "")
+    stats::setNames(d$id[choices], labels[choices])
+  }
+  niveau_choices <- stats::setNames(niveauer$id, niveauer$label)
+  padding <- function(depth) {
+    value <- htmltools::htmlEscape(as.character(depth * 1.5), attribute = TRUE)
+    sprintf('<div style="padding-left:%srem">', value)
+  }
+  text_value <- function(col, row) {
+    value <- d[[col]][row]
+    if (is.na(value)) "" else value
+  }
+  if (nrow(d) == 0) {
+    return(as.data.frame(stats::setNames(
+      replicate(length(column_names), character(), simplify = FALSE),
+      column_names), stringsAsFactors = FALSE, check.names = FALSE))
+  }
+
+  out <- lapply(seq_len(nrow(d)), function(i) {
+    id <- d$id[i]
+    excluded <- hierarchy_descendants(d, "id", "parent_id_raw", id)
+    parent_choices <- c("(rod)" = "", parent_labels(!(d$id %in% excluded)))
+    c(
+      .hierarchy_text_editor_html(ns, id, text_cols[1], text_value(text_cols[1], i)),
+      paste0(padding(d$depth[i]),
+             .hierarchy_text_editor_html(ns, id, text_cols[2],
+                                         text_value(text_cols[2], i), d$depth[i]),
+             "</div>"),
+      .hierarchy_text_editor_html(ns, id, text_cols[3], text_value(text_cols[3], i)),
+      .hierarchy_select_editor_html(ns, id, fields[["parent"]],
+                                    d$parent_id_raw[i], parent_choices,
+                                    root = TRUE),
+      .hierarchy_select_editor_html(ns, id, fields[["niveau"]],
+                                    d$niveau_id[i], niveau_choices)
+    )
+  })
+  out <- as.data.frame(do.call(rbind, out), stringsAsFactors = FALSE,
+                       check.names = FALSE)
+  names(out) <- column_names
+  out
+}
+
 #' Saml formular-inputs → named list i hierarchy_edit_cols(cfg)-orden. Tom
 #' forælder → NA (rodnode OK). Tomme tekstfelter → NA.
 #' @noRd
@@ -77,6 +132,13 @@
 mod_hierarchy_ui <- function(id, cfg) {
   ns <- NS(id)
   div(class = "mt-2",
+    tags$style(HTML(sprintf(paste0(
+      "#%s .hierarchy-editor { min-height:calc(1.5em + .5rem + 2px); ",
+      "padding:.25rem .5rem; background-color:#f8f9fa; } ",
+      "#%s .hierarchy-editor:focus { background-color:#fff; } ",
+      "#%s .hierarchy-editor:disabled, #%s .hierarchy-editor.hierarchy-saving ",
+      "{ opacity:.65; background-color:#e9ecef; cursor:wait; }"),
+      ns("tbl"), ns("tbl"), ns("tbl"), ns("tbl")))),
     div(class = "d-flex justify-content-end mb-2",
       actionButton(ns("new_node"), "Ny node", class = "btn-success")),
     DT::DTOutput(ns("tbl")))
@@ -114,32 +176,14 @@ mod_hierarchy_server <- function(id, db, cfg) {
 
     output$tbl <- DT::renderDT({
       d <- tree()
-      ns <- session$ns
-      navn <- htmltools::htmlEscape(.labels(d))
-      indent <- vapply(d$depth, function(n)
-        paste(rep("&nbsp;&nbsp;&nbsp;", n), collapse = ""), "")
-      navn_html <- paste0(indent, navn)
-      btn <- sprintf(paste0(
-        '<button class="btn btn-outline-secondary btn-sm" ',
-        'onclick="Shiny.setInputValue(\'%s\', %d, {priority: \'event\'})">',
-        'Åbn &rsaquo;</button>'), ns("open_id"), d$id)
-      out <- data.frame(
-        Navn = navn_html,
-        Niveau = ifelse(is.na(d$niveau_navn), "", d$niveau_navn),
-        ` ` = btn,
-        check.names = FALSE, stringsAsFactors = FALSE)
-      esc <- which(names(out) == "Niveau")
-      if (!is.null(cfg$aktiv_col)) {
-        flag <- function(x) ifelse(x %in% TRUE,
-          '<span style="color:#198754;font-weight:700;">&#10003;</span>',
-          '<span style="color:#adb5bd;">&mdash;</span>')
-        out$Aktiv <- flag(d$aktiv)
-        out <- out[, c("Navn", "Niveau", "Aktiv", " "), drop = FALSE]
-      }
-      DT::datatable(out, escape = esc, rownames = FALSE, selection = "none",
+      out <- .hierarchy_editor_data(d, cfg, session$ns, niveauer())
+      editor_value <- htmlwidgets::JS(
+        "function(data, type) {\n          if (type === 'sort' || type === 'filter') {\n            return $('<div>').html(data).find('.hierarchy-editor').val() || '';\n          }\n          return data;\n        }")
+      DT::datatable(out, escape = FALSE, rownames = FALSE, selection = "single",
+        callback = .hierarchy_dt_callback(session$ns),
         options = list(pageLength = 25, columnDefs = list(
-          list(orderable = FALSE, targets = ncol(out) - 1))))
-    })
+          list(targets = 0:4, render = editor_value))))
+    }, server = FALSE)
 
     .parent_choices <- function(exclude_subtree_of = NULL) {
       d <- tree()
