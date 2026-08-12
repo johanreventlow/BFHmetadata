@@ -73,14 +73,30 @@ scan_diagram <- function(row, base_path, medians_df, variants_df, window_n = NUL
         }
         slice <- slice_filter_enhed(full, variants)
         aggregated <- FALSE
+        agg_kids <- integer(0)
         if (is.null(slice) || nrow(slice) == 0) {
           # Fallback (spejler BFHddl trin 5.1b): direkte match vandt ikke →
           # forsøg hierarki-oprulning fra det fulde slice. NULL = kan ikke
           # oprulles → ingen_data som hidtil.
-          slice <- aggregate_slice_for_center(
-            full, row$org_id, row$indikator_id, row$org_teknisk,
-            org_struct, agg_flags, variants_df
-          )
+          # Boerne-listen beregnes HER (ét kald) og genbruges til n_agg_units
+          # nedenfor — undgaar et dobbelt find_aggregation_children-kald. Er
+          # kids tom, springes adapteren helt over (den ville blot returnere
+          # NULL igen, men uden at spilde vaerdi-guard-arbejdet undervejs).
+          agg_kids <- if (!is.null(org_struct) && !is.null(agg_flags)) {
+            find_aggregation_children(row$org_id, row$indikator_id,
+              org_struct, agg_flags
+            )
+          } else {
+            integer(0)
+          }
+          slice <- if (length(agg_kids) > 0) {
+            aggregate_slice_for_center(
+              full, row$org_id, row$indikator_id, row$org_teknisk,
+              org_struct, agg_flags, variants_df
+            )
+          } else {
+            NULL
+          }
           aggregated <- !is.null(slice) && nrow(slice) > 0
         }
         if (is.null(slice) || nrow(slice) == 0) {
@@ -116,13 +132,9 @@ scan_diagram <- function(row, base_path, medians_df, variants_df, window_n = NUL
             }
             parts <- resolve_median_breaks(row$diagram_id, meds_ok, slice$dato)
             sig <- compute_signal(slice, parts = parts)
-            n_agg_units <- if (aggregated) {
-              length(find_aggregation_children(
-                row$org_id, row$indikator_id, org_struct, agg_flags
-              ))
-            } else {
-              0L
-            }
+            # Genbrug af agg_kids fra ovenfor (ét find_aggregation_children-kald
+            # pr. diagram, ej to) — se kommentar ved beregningen.
+            n_agg_units <- if (aggregated) length(agg_kids) else 0L
             list(
               diagram_id = row$diagram_id, status = "ok", signal = isTRUE(sig$signal),
               n_obs = length(unique(as.Date(slice$dato))), slice = slice,

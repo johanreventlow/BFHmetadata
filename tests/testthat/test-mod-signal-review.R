@@ -1120,3 +1120,27 @@ test_that("direkte match vinder over oprulning", {
     expect_false(isTRUE(sc$signal))
   })
 })
+
+test_that("org_struct-fejl deaktiverer oprulning uden at vaelte scannet, og flages i scan_summary", {
+  skip_if_not_installed("arrow")
+  base <- build_fixture()
+  idx <- data.frame(diagram_id = c(1L, 2L), indikator_id = c(1L, 2L),
+    indikator_navn = c("Sig", "Flad"),
+    indikator_navn_teknisk = c("ind_sig", "ind_flat"),
+    datasaet = "d", datapakke = "p", org_id = 5L, org_teknisk = "E",
+    org_navn = "E", org_niveau = 5L, overafdeling = "OA", afdeling = NA,
+    afsnit = NA, stringsAsFactors = FALSE)
+  db <- make_fake_signal_db(base, idx)
+  db$org_struct <- function() stop("DB nede")
+  shiny::testServer(mod_signal_review_server, args = list(db = db), {
+    session$setInputs(parquet_dir = base, window_mode = "all", window_n = 24,
+      f_overafdeling = "", f_afsnit = "", f_datapakke = "", f_datasaet = "",
+      f_indikator_navn = "", scan = 1)
+    drain_scan()
+    # Eksisterende adfærd (uændret): scannet overlever fetch-fejlen, og finder
+    # stadig signalet i "Sig" - oprulning er blot slået fra for scannet.
+    expect_equal(signal_list()$diagram_id, 1L)
+    html <- as.character(output$scan_summary$html)
+    expect_match(html, "Oprulning deaktiveret")
+  })
+})

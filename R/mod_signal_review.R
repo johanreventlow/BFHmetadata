@@ -356,6 +356,11 @@ mod_signal_review_server <- function(id, db) {
       # Org-træ + aggregerings-flag til hierarki-oprulning: hentes ÉN gang pr.
       # scan (ikke pr. diagram/gruppe). NULL ved fejl slår oprulning fra for
       # scannet (scannet overlever, blot uden fallback for aggregat-diagrammer).
+      # Samme snapshot-pr-scan-mønster som meds/manifest ovenfor: flag-
+      # ændringer i DB midt i en session opdages først ved NÆSTE scan — et
+      # bevidst valg (konsistens inden for ét scan vejer tungere end friskhed;
+      # en gruppe diagrammer der deler org-træ skal alle se samme udgave af
+      # det, ellers kan to scans af samme session give modstridende resultater).
       agg_os <- safe_operation("hent org-træ", db$org_struct(), fallback = NULL)
       agg_fl <- safe_operation("hent aggregerings-flag",
         db$aggregation_flags(),
@@ -498,11 +503,21 @@ mod_signal_review_server <- function(id, db) {
       } else {
         sprintf("%d med signal", p$found)
       }
-      # Oversprungne diagrammer skal være SYNLIGE. Aggregat-enheder (diagrammer
-      # der i BFHddl får data via hierarki-oprulning) rammer "ingen_data" her,
-      # fordi oprulning ikke er implementeret i appen — uden denne tæller
-      # forsvinder de tavst, og scanningen ser mere komplet ud end den er.
+      # Oversprungne diagrammer skal være SYNLIGE. "ingen_data" kan nu dække
+      # flere årsager: (a) center-org uden nogen flagede bidragydere (ingen
+      # gyldig oprulning), (b) værdi-only serie der per design ikke må
+      # oprulles (sum-af-medianer er statistisk forkert), eller (c) oprulning
+      # slået fra for HELE scannet fordi org-træ/flag ikke kunne hentes (se
+      # advarslen nedenfor) — uden denne tæller forsvinder de tavst, og
+      # scanningen ser mere komplet ud end den er.
       skipped <- (p$ingen_data %||% 0L) + (p$fejl %||% 0L)
+      # Delvis/total fetch-fejl på oprulnings-konteksten er usynlig for
+      # brugeren medmindre den eksplicit flages her — uden advarslen ser en
+      # aggregat-diagram-flok der stille lander i ingen_data ud som "normal"
+      # scan-adfærd i stedet for en degraderet DB-hentning.
+      ac <- agg_ctx()
+      agg_disabled <- !is.null(p) && !is.null(ac) &&
+        (is.null(ac$os) || is.null(ac$fl))
       div(
         class = "small text-muted mt-2", txt,
         if (skipped > 0) {
@@ -510,6 +525,9 @@ mod_signal_review_server <- function(id, db) {
             "%d uden data, %d fejlede (ej vurderet)",
             p$ingen_data %||% 0L, p$fejl %||% 0L
           ))
+        },
+        if (agg_disabled) {
+          tagList(br(), "⚠ Oprulning deaktiveret (org-træ/flag kunne ikke hentes)")
         }
       )
     })
