@@ -175,6 +175,19 @@ test_that("hierarki-tabel bevarer manglende niveau som tomt valgt vaerdi", {
                     out[["Niveau"]][2], fixed = TRUE))
 })
 
+test_that("hierarki-tabel bevarer ukendt eksisterende parent og niveau", {
+  db <- fake_hierarchy_db()
+  d <- hierarchy_order(db$list_nodes(), "id", "parent_id_raw",
+                       .hierarchy_cfg()$display_col)
+  d$parent_id_raw[4] <- 999L
+  d$niveau_id[4] <- 999L
+  out <- .hierarchy_editor_data(d, .hierarchy_cfg(), identity,
+                                db$niveau_options())
+
+  expect_match(out[["Forælder"]][4], "Ukendt forælder #999", fixed = TRUE)
+  expect_match(out[["Niveau"]][4], "Ukendt niveau #999", fixed = TRUE)
+})
+
 test_that("inline tekstaendring gemmer straks hele noden og genindlaeser", {
   db <- fake_hierarchy_db()
   testServer(mod_hierarchy_server,

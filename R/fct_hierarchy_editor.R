@@ -165,6 +165,7 @@
       current_match <- match(current, as.character(choices))
       current_label <- if (is.na(current_match)) "" else names(choices)[current_match]
     }
+    if (length(current_label) != 1 || is.na(current_label)) current_label <- ""
     option_html <- sprintf('<option value="%s" selected>%s</option>',
                            esc_attr(current), esc_text(current_label))
   } else {
@@ -178,9 +179,11 @@
   input_id <- ns(paste0("inline_", id, "_", field))
   sprintf(paste0(
     '<select id="%s" class="form-select form-select-sm hierarchy-editor" ',
-    'data-saved="%s" data-node-id="%s" data-field="%s" data-root="%s" ',
+    'data-saved="%s" data-saved-label="%s" data-node-id="%s" ',
+    'data-field="%s" data-root="%s" ',
     'data-lazy="%s">%s</select>'),
-    esc_attr(input_id), esc_attr(current), esc_attr(id), esc_attr(field),
+    esc_attr(input_id), esc_attr(current), esc_attr(current_label %||% ""),
+    esc_attr(id), esc_attr(field),
     esc_attr(tolower(as.character(isTRUE(root)))),
     esc_attr(tolower(as.character(isTRUE(lazy)))),
     paste0(option_html, collapse = ""))
@@ -203,16 +206,17 @@
       var selectionName = %s;
       var parentChoices = %s;
       var levelChoices = %s;
+      var parentById = new Map(parentChoices.map(function(choice) {
+        return [Number(choice.id), choice.parent_id];
+      }));
       function wouldCreateCycle(candidateId, nodeId) {
         var current = candidateId;
         var seen = {};
         while (current !== null && current !== undefined && !seen[current]) {
           if (Number(current) === Number(nodeId)) return true;
           seen[current] = true;
-          var item = parentChoices.find(function(choice) {
-            return Number(choice.id) === Number(current);
-          });
-          current = item ? item.parent_id : null;
+          current = parentById.has(Number(current)) ?
+            parentById.get(Number(current)) : null;
         }
         return false;
       }
@@ -223,11 +227,19 @@
         var nodeId = Number(editor.dataset.nodeId);
         var emptyLabel = editor.dataset.root === 'true' ? '(rod)' : '(v\\u00e6lg)';
         editor.replaceChildren(new Option(emptyLabel, '', false, saved === ''));
+        var addedSaved = saved === '';
         choices.forEach(function(choice) {
           if (editor.dataset.root === 'true' && wouldCreateCycle(choice.id, nodeId)) return;
-          editor.add(new Option(choice.label, String(choice.id), false,
-            String(choice.id) === saved));
+          var selected = String(choice.id) === saved;
+          editor.add(new Option(choice.label, String(choice.id), false, selected));
+          if (selected) addedSaved = true;
         });
+        if (!addedSaved) {
+          var fallback = new Option(editor.dataset.savedLabel || ('#' + saved),
+            saved, false, true);
+          fallback.disabled = true;
+          editor.add(fallback);
+        }
         editor.dataset.hydrated = 'true';
       }
       function submit(editor) {

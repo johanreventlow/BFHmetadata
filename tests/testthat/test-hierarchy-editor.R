@@ -106,8 +106,21 @@ test_that("DT callback hydratiserer lazy dropdowns fra delte valg", {
   expect_match(js, "data-lazy", fixed = TRUE)
   expect_match(js, "wouldCreateCycle", fixed = TRUE)
   expect_match(js, "parent_id", fixed = TRUE)
+  expect_match(js, "new Map", fixed = TRUE)
+  expect_match(js, "addedSaved", fixed = TRUE)
+  expect_match(js, "editor.dataset.savedLabel", fixed = TRUE)
   expect_match(js, "(v\\u00e6lg)", fixed = TRUE)
   expect_false(grepl("vÃ¦lg", js, fixed = TRUE))
+})
+
+test_that("lazy select-editor bevarer label til ugyldig eksisterende vaerdi", {
+  html <- .hierarchy_select_editor_html(
+    identity, 7L, "parent_Id", "999", choices = character(), root = TRUE,
+    lazy = TRUE, current_label = "Manglende forælder")
+
+  expect_match(html, 'data-saved-label="Manglende forælder"', fixed = TRUE)
+  expect_match(html,
+    '<option value="999" selected>Manglende forælder</option>', fixed = TRUE)
 })
 
 test_that("DT callback bruger DataTables-argumentet og implementerer Enter Escape blur", {

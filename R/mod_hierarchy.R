@@ -84,12 +84,23 @@
     id <- d$id[i]
     parent_value <- d$parent_id_raw[i]
     parent_match <- match(parent_value, d$id)
-    parent_label <- if (is.na(parent_value)) "(rod)" else
+    parent_label <- if (is.na(parent_value)) {
+      "(rod)"
+    } else if (is.na(parent_match)) {
+      sprintf("Ukendt forælder #%s", parent_value)
+    } else {
       node_labels[parent_match]
+    }
     level_value <- d$niveau_id[i]
     level_match <- match(level_value, niveauer$id)
-    level_label <- if (is.na(level_value)) "(vælg)" else
+    level_label <- if (is.na(level_value)) {
+      "(vælg)"
+    } else if (is.na(level_match) || is.na(niveauer$label[level_match]) ||
+               !nzchar(niveauer$label[level_match])) {
+      sprintf("Ukendt niveau #%s", level_value)
+    } else {
       niveauer$label[level_match]
+    }
     c(
       .hierarchy_text_editor_html(ns, id, text_cols[1], text_value(text_cols[1], i)),
       paste0(padding(d$depth[i]),
