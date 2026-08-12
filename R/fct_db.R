@@ -167,6 +167,14 @@ make_db <- function(pool) {
     org_enhed_variants = function() {
       DBI::dbGetQuery(pool, build_org_enhed_variants_sql())
     },
+    # Hele org-træet + aggregerings-flag til hierarki-oprulning. Hentes én
+    # gang pr. scan (se fct_aggregate.R).
+    org_struct = function() {
+      DBI::dbGetQuery(pool, build_org_struct_sql())
+    },
+    aggregation_flags = function() {
+      DBI::dbGetQuery(pool, build_aggregation_flags_sql())
+    },
     # --- Diagram-CRUD (admin) --------------------------------------------
     list_diagrams_admin = function() {
       DBI::dbGetQuery(pool, build_diagram_admin_sql())

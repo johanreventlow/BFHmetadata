@@ -265,6 +265,22 @@ build_median_count_sql <- function() {
   'SELECT count(*) AS n FROM "tblDiagrammerMedian" WHERE "diagram" = $1'
 }
 
+#' Hele org-træet (id, parent) til hierarki-oprulning. Hentes én gang pr. scan.
+#' @noRd
+build_org_struct_sql <- function() {
+  'SELECT "Id" AS id, "parent_Id" AS parent_id FROM "tblOrganisationStruktur"'
+}
+
+#' Aggregerings-flag pr. diagram-række. BEVIDST uden aktiv-filter: BFHddl
+#' læser flagene med active_only = FALSE — et inaktivt diagram kan stadig
+#' bidrage opad.
+#' @noRd
+build_aggregation_flags_sql <- function() {
+  paste0('SELECT "organisatorisk_navn_teknisk" AS org_id, ',
+         '"indikator" AS indikator_id, ',
+         '"indgaar_i_aggregering" AS indgaar FROM "tblDiagrammer"')
+}
+
 #' Én række pr. (org, enhed-fra-data-variant). LEFT JOIN bevarer organisationer
 #' uden oversættelse. Bruges til at bygge parquet-enhed-filter pr. diagram.
 #' @noRd

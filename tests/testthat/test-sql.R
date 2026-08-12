@@ -215,3 +215,21 @@ test_that("build_diagram_delete_sql og duplicate/periode-byggere", {
   cnt <- build_median_count_sql()
   expect_match(cnt, 'FROM "tblDiagrammerMedian" WHERE "diagram" = \\$1')
 })
+
+# --- Hierarki-oprulning (org-træ + aggregerings-flag) -----------------------
+
+test_that("build_org_struct_sql henter id + parent fra org-tabellen", {
+  s <- build_org_struct_sql()
+  expect_match(s, "tblOrganisationStruktur")
+  expect_match(s, '"Id" AS id', fixed = TRUE)
+  expect_match(s, '"parent_Id" AS parent_id', fixed = TRUE)
+})
+
+test_that("build_aggregation_flags_sql henter flag pr. diagram-raekke UDEN aktiv-filter", {
+  s <- build_aggregation_flags_sql()
+  expect_match(s, "tblDiagrammer")
+  expect_match(s, '"organisatorisk_navn_teknisk" AS org_id', fixed = TRUE)
+  expect_match(s, '"indikator" AS indikator_id', fixed = TRUE)
+  expect_match(s, '"indgaar_i_aggregering" AS indgaar', fixed = TRUE)
+  expect_no_match(s, "diagram_aktivt")   # BFHddl laeser flag med active_only=FALSE
+})
