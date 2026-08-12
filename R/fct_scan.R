@@ -5,9 +5,13 @@
 #' org_enhed_variants()-df (org-navne + tblOrganisationOversaettelse-fra-data).
 #' @noRd
 enhed_variants_for <- function(variants_df, org_id) {
-  if (is.null(variants_df) || nrow(variants_df) == 0) return(character(0))
+  if (is.null(variants_df) || nrow(variants_df) == 0) {
+    return(character(0))
+  }
   rows <- variants_df[variants_df$org_id == org_id, , drop = FALSE]
-  if (nrow(rows) == 0) return(character(0))
+  if (nrow(rows) == 0) {
+    return(character(0))
+  }
   # teknisk/kort/langt kommer fra org-siden af LEFT JOIN → identiske for alle
   # rækker af samme org_id; derfor [1]. fra_data varierer pr. oversættelse.
   v <- c(rows$fra_data, rows$teknisk[1], rows$kort[1], rows$langt[1])
@@ -27,47 +31,131 @@ enhed_variants_for <- function(variants_df, org_id) {
 #'   slice (alle enheder). Bruges til per-indikator-genbrug: flere diagrammer
 #'   på samme indikator deler ét arrow-load (evt. via dags-cache) i stedet for
 #'   at genåbne datasættet pr. diagram. NULL = load selv fra base_path.
+#' @param period diagrammets periode_aggregering — dansk værdi ("uge",
+#'   "maaned", ...) el. lubridate-enhed ("week"/"month"); begge accepteres via
+#'   period_to_en. NULL/tom = ingen aggregering. Uden dette beregnes signalet
+#'   på en ANDEN serie end den BFHddl tegner — se fct_period.R.
+#'   Styrer også hvilke median-knæk der er gyldige: knæk sat under en anden
+#'   aggregering ignoreres (filter_medians_by_period).
+#' @param org_struct db$org_struct()-lignende df (id, parent_id) — hele
+#'   org-træet. NULL slår hierarki-oprulning fra (samme som før denne
+#'   parameter fandtes).
+#' @param agg_flags db$aggregation_flags()-lignende df (org_id, indikator_id,
+#'   indgaar). NULL slår hierarki-oprulning fra.
 #' @return list(diagram_id, status, signal, n_obs, slice, qic_result, summary)
 #' @noRd
 scan_diagram <- function(row, base_path, medians_df, variants_df, window_n = NULL,
-                         slice_loader = NULL) {
-  empty <- function(status) list(diagram_id = row$diagram_id, status = status,
-    signal = FALSE, n_obs = 0L, slice = NULL, qic_result = NULL, summary = NULL)
+                         slice_loader = NULL, period = NULL,
+                         org_struct = NULL, agg_flags = NULL) {
+  empty <- function(status) {
+    list(
+      diagram_id = row$diagram_id, status = status,
+      signal = FALSE, n_obs = 0L, slice = NULL, qic_result = NULL, summary = NULL
+    )
+  }
   # Værdi-givende if/else (ingen non-local return ud af safe_operation-blokken):
   # blokkens sidste udtryk er resultatet → fallback="fejl" rammes kun ved fejl.
-  safe_operation(sprintf("scan diagram %s", row$diagram_id), {
-    variants <- enhed_variants_for(variants_df, row$org_id)
-    if (length(variants) == 0) {
-      # Seriediagrammer er org-scopede: uden enhed-varianter kan slicet ikke
-      # afgrænses til rette enhed → "ingen_data" frem for signal på blandede
-      # enheder. (Rigtige org'er har altid navne → rammer ej normal-flow.)
-      empty("ingen_data")
-    } else {
-      full <- if (!is.null(slice_loader)) {
-        slice_loader()
-      } else {
-        parquet_load_slice(
-          parquet_indicator_path(base_path, row$indikator_navn_teknisk))
-      }
-      slice <- slice_filter_enhed(full, variants)
-      if (is.null(slice) || nrow(slice) == 0) {
+  safe_operation(sprintf("scan diagram %s", row$diagram_id),
+    {
+      variants <- enhed_variants_for(variants_df, row$org_id)
+      if (length(variants) == 0) {
+        # Seriediagrammer er org-scopede: uden enhed-varianter kan slicet ikke
+        # afgrænses til rette enhed → "ingen_data" frem for signal på blandede
+        # enheder. (Rigtige org'er har altid navne → rammer ej normal-flow.)
         empty("ingen_data")
       } else {
-        if (!is.null(window_n)) slice <- parquet_limit_observations(slice, window_n)
-        slice <- slice[order(slice$dato), , drop = FALSE]
-        parts <- resolve_median_breaks(row$diagram_id, medians_df, slice$dato)
-        sig <- compute_signal(slice, parts = parts)
-        list(diagram_id = row$diagram_id, status = "ok", signal = isTRUE(sig$signal),
-             n_obs = length(unique(as.Date(slice$dato))), slice = slice,
-             qic_result = sig$qic_result, summary = sig$summary_all)
+        full <- if (!is.null(slice_loader)) {
+          slice_loader()
+        } else {
+          parquet_load_slice(
+            parquet_indicator_path(base_path, row$indikator_navn_teknisk)
+          )
+        }
+        slice <- slice_filter_enhed(full, variants)
+        aggregated <- FALSE
+        agg_kids <- integer(0)
+        if (is.null(slice) || nrow(slice) == 0) {
+          # Fallback (spejler BFHddl trin 5.1b): direkte match vandt ikke →
+          # forsøg hierarki-oprulning fra det fulde slice. NULL = kan ikke
+          # oprulles → ingen_data som hidtil.
+          # Boerne-listen beregnes HER (ét kald) og genbruges til n_agg_units
+          # nedenfor — undgaar et dobbelt find_aggregation_children-kald. Er
+          # kids tom, springes adapteren helt over (den ville blot returnere
+          # NULL igen, men uden at spilde vaerdi-guard-arbejdet undervejs).
+          agg_kids <- if (!is.null(org_struct) && !is.null(agg_flags)) {
+            find_aggregation_children(
+              row$org_id, row$indikator_id,
+              org_struct, agg_flags
+            )
+          } else {
+            integer(0)
+          }
+          slice <- if (length(agg_kids) > 0) {
+            aggregate_slice_for_center(
+              full, row$org_id, row$indikator_id, row$org_teknisk,
+              org_struct, agg_flags, variants_df
+            )
+          } else {
+            NULL
+          }
+          aggregated <- !is.null(slice) && nrow(slice) > 0
+        }
+        if (is.null(slice) || nrow(slice) == 0) {
+          empty("ingen_data")
+        } else {
+          # Aggregér FØR vindue-begrænsningen (BFHddl-orden: §5.1 → §5.2a →
+          # §5.2b). Omvendt rækkefølge ville begrænse til N *dage* og derefter
+          # bucke dem — målt på produktionsdata: 24 punkter → 4.
+          # Ingen tryCatch-fallback til uaggregeret data (modsat BFHddl's
+          # pipeline): her ville det tavst genskabe præcis den bug vi fikser.
+          # Fejl bobler til safe_operation → status "fejl".
+          p <- period_to_en(period)
+          if (!identical(p, "day")) {
+            slice <- aggregate_to_period(slice, period = p)
+          }
+          # drop_incomplete kan tømme et slice der HAVDE rækker (serie hvis
+          # eneste data ligger i indeværende periode) → guard igen efter agg.
+          # Værdi-givende if/else, ej return(): en non-local return ville springe
+          # ud af safe_operation-blokken (se kommentar øverst).
+          if (nrow(slice) == 0) {
+            empty("ingen_data")
+          } else {
+            if (!is.null(window_n)) slice <- parquet_limit_observations(slice, window_n)
+            slice <- slice[order(slice$dato), , drop = FALSE]
+            # Knæk sat under en ANDEN aggregering ignoreres: deres dato ville
+            # lande på en fase-grænse der aldrig var tilsigtet. n_ignored
+            # rapporteres, så UI'et kan vise det (ellers ændres faserne usynligt).
+            meds_ok <- filter_medians_by_period(medians_df, period)
+            n_ignored <- if (is.data.frame(medians_df)) {
+              nrow(medians_df) - nrow(meds_ok)
+            } else {
+              0L
+            }
+            parts <- resolve_median_breaks(row$diagram_id, meds_ok, slice$dato)
+            sig <- compute_signal(slice, parts = parts)
+            # Genbrug af agg_kids fra ovenfor (ét find_aggregation_children-kald
+            # pr. diagram, ej to) — se kommentar ved beregningen.
+            n_agg_units <- if (aggregated) length(agg_kids) else 0L
+            list(
+              diagram_id = row$diagram_id, status = "ok", signal = isTRUE(sig$signal),
+              n_obs = length(unique(as.Date(slice$dato))), slice = slice,
+              qic_result = sig$qic_result, summary = sig$summary_all,
+              n_ignored_breaks = as.integer(n_ignored),
+              aggregated = aggregated, n_agg_units = as.integer(n_agg_units)
+            )
+          }
+        }
       }
-    }
-  }, fallback = empty("fejl"))
+    },
+    fallback = empty("fejl")
+  )
 }
 
 # De 5 filter-dimensioner (kolonnenavne i diagram-indekset).
-.SIGNAL_FILTER_DIMS <- c("overafdeling", "afsnit", "datapakke",
-                         "datasaet", "indikator_navn")
+.SIGNAL_FILTER_DIMS <- c(
+  "overafdeling", "afsnit", "datapakke",
+  "datasaet", "indikator_navn"
+)
 
 #' Sorterede unikke valg pr. filter-dimension (NA/tomme droppes).
 #' @noRd
@@ -104,11 +192,13 @@ medians_by_diagram <- function(medians_df, diagram_ids) {
   empty <- if (!is.null(medians_df) && is.data.frame(medians_df)) {
     medians_df[0, , drop = FALSE]
   } else {
-    data.frame(id = integer(0), diagram = integer(0),
-               laas_median = as.Date(character(0)))
+    data.frame(
+      id = integer(0), diagram = integer(0),
+      laas_median = as.Date(character(0))
+    )
   }
   if (is.null(medians_df) || !is.data.frame(medians_df) ||
-      nrow(medians_df) == 0 || !"diagram" %in% names(medians_df)) {
+    nrow(medians_df) == 0 || !"diagram" %in% names(medians_df)) {
     return(stats::setNames(rep(list(empty), length(ids)), ids))
   }
   parts <- split(medians_df, as.character(medians_df$diagram))
@@ -126,4 +216,54 @@ preview_break_parts <- function(diagram_id, base_meds, extra_date, x_dates) {
   laas <- c(as.Date(base_meds$laas_median), as.Date(extra_date))
   all_meds <- data.frame(diagram = diagram_id, laas_median = laas)
   resolve_median_breaks(diagram_id, all_meds, x_dates)
+}
+
+#' Filtrér den scannede liste til visning. show_all = FALSE → kun diagrammer
+#' med signal; TRUE → alle rækker (scanned indeholder kun ok-scannede —
+#' ingen_data/fejl optages aldrig, de har ingen tegnbar graf).
+#' NULL ind → NULL ud (skelner "ej scannet endnu" fra "tom visning").
+#' @noRd
+scan_view_filter <- function(scanned, show_all = FALSE) {
+  if (is.null(scanned)) {
+    return(NULL)
+  }
+  if (isTRUE(show_all)) {
+    return(scanned)
+  }
+  scanned[scanned$signal %in% TRUE, , drop = FALSE]
+}
+
+#' Fase-statistik-df til visning under grafen. Spejler PDF-rapporternes
+#' SPC-tabel: observeret serielængde mod forventet maks., observeret antal
+#' kryds mod forventet min. — pr. fase, fra BFHcharts format_qic_summary
+#' (bfh_qic-resultatets $summary).
+#' @param summary df med fase, antal_observationer, anvendelige_observationer,
+#'   laengste_loeb(_max), antal_kryds(_min), anhoej_signal — el. NULL
+#' @return df med danske visningskolonner el. NULL (intet at vise)
+#' @noRd
+phase_stats_df <- function(summary) {
+  if (is.null(summary) || !is.data.frame(summary) || nrow(summary) == 0) {
+    return(NULL)
+  }
+  fmt <- function(x) ifelse(is.na(x), "–", as.character(x))
+  out <- data.frame(
+    Fase = as.integer(summary$fase),
+    check.names = FALSE, stringsAsFactors = FALSE
+  )
+  out[["Obs."]] <- sprintf(
+    "%s (%s anv.)", fmt(summary$antal_observationer),
+    fmt(summary$anvendelige_observationer)
+  )
+  out[["Serielængde"]] <- sprintf(
+    "%s / maks. %s",
+    fmt(summary$laengste_loeb), fmt(summary$laengste_loeb_max)
+  )
+  out[["Antal kryds"]] <- sprintf(
+    "%s / min. %s",
+    fmt(summary$antal_kryds), fmt(summary$antal_kryds_min)
+  )
+  out[["Signal"]] <- ifelse(summary$anhoej_signal %in% TRUE,
+    "⚠ signal", "–"
+  )
+  out
 }

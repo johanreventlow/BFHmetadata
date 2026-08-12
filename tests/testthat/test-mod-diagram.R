@@ -13,6 +13,8 @@ fake_diagram_db <- function(dup_count = 0L, median_count = 0L) {
     indikator_navn = c("Tryksår", "Fald"),
     org_navn = c("Kirurgi", "Medicin"),
     type_navn = c("Seriediagram", "Søjlediagram"),
+    datasaet = c("Tryksår-datasæt", "Fald-datasæt"),
+    datapakke = c("Kliniske indikatorer", "Kliniske indikatorer"),
     stringsAsFactors = FALSE)
   calls <- list(created = NULL, updated = NULL, deleted = NULL)
   list(
@@ -128,6 +130,91 @@ test_that("slet uden median-knæk sletter og genindlæser", {
     session$setInputs(d_delete = 1)
     expect_identical(db$.calls()$deleted, 1L)
     expect_match(status_msg(), "Slettet")
+  })
+})
+
+test_that("filter på datapakke reducerer til matchende rækker", {
+  db <- fake_diagram_db()
+  testServer(mod_diagram_server, args = list(db = db), {
+    session$setInputs(filter_status = "alle")
+    expect_equal(nrow(filtered()), 2)
+    session$setInputs(filter_datapakke = "Kliniske indikatorer")
+    expect_equal(nrow(filtered()), 2)
+    session$setInputs(filter_datapakke = "")
+    expect_equal(nrow(filtered()), 2)
+  })
+})
+
+test_that("filter på datasæt reducerer til matchende rækker", {
+  db <- fake_diagram_db()
+  testServer(mod_diagram_server, args = list(db = db), {
+    session$setInputs(filter_status = "alle")
+    session$setInputs(filter_datasaet = "Fald-datasæt")
+    expect_equal(nrow(filtered()), 1)
+    expect_equal(filtered()$diagram_id, 2L)
+  })
+})
+
+test_that("kombination af datapakke + datasæt + status virker sammen", {
+  db <- fake_diagram_db()
+  testServer(mod_diagram_server, args = list(db = db), {
+    session$setInputs(filter_status = "alle",
+                      filter_datapakke = "Kliniske indikatorer",
+                      filter_datasaet = "Tryksår-datasæt")
+    expect_equal(nrow(filtered()), 1)
+    expect_equal(filtered()$diagram_id, 1L)
+    # Status-filter lægges oveni: diagram 1 er aktivt, så "inaktive" giver 0
+    session$setInputs(filter_status = "inaktive")
+    expect_equal(nrow(filtered()), 0)
+  })
+})
+
+test_that("tomt datapakke/datasæt-filter viser alle rækker", {
+  db <- fake_diagram_db()
+  testServer(mod_diagram_server, args = list(db = db), {
+    session$setInputs(filter_status = "alle", filter_datapakke = "",
+                      filter_datasaet = "")
+    expect_equal(nrow(filtered()), 2)
+  })
+})
+
+test_that("sætning af (nu ukendt) filter_type-input påvirker ikke filtered()", {
+  db <- fake_diagram_db()
+  testServer(mod_diagram_server, args = list(db = db), {
+    session$setInputs(filter_status = "alle")
+    before <- nrow(filtered())
+    session$setInputs(filter_type = "X")
+    expect_equal(nrow(filtered()), before)
+  })
+})
+
+test_that("indikator uden hierarki (NA datasaet/datapakke) vises under 'Alle' men udelades ved konkret filter", {
+  # Test-lokal fixture-kopi (tredje række med NA-hierarki) frem for at ændre
+  # den delte fake_diagram_db(): flere eksisterende tests har hardkodede
+  # rækketal (nrow(admin())==2 osv.), som en delt tredje række ville bryde.
+  db <- fake_diagram_db()
+  admin_na <- db$list_diagrams_admin()
+  admin_na <- rbind(admin_na, data.frame(
+    diagram_id = 3L, indikator = 12L, organisatorisk_navn_teknisk = 22L,
+    diagram_type = 1L, periode_aggregering = NA_character_,
+    indgaar_i_aggregering = FALSE, diagram_aktivt = TRUE,
+    direktionens_tavle = FALSE, indikator_navn = "Uden hierarki",
+    org_navn = "Onkologi", type_navn = "Seriediagram",
+    datasaet = NA_character_, datapakke = NA_character_,
+    stringsAsFactors = FALSE))
+  db$list_diagrams_admin <- function() admin_na
+
+  testServer(mod_diagram_server, args = list(db = db), {
+    session$setInputs(filter_status = "alle")
+    expect_equal(nrow(filtered()), 3)
+    expect_true(3L %in% filtered()$diagram_id)   # NA-rækken er med under "Alle"
+
+    session$setInputs(filter_datapakke = "Kliniske indikatorer")
+    expect_false(3L %in% filtered()$diagram_id)  # udelades ved konkret datapakke-filter
+    session$setInputs(filter_datapakke = "")
+
+    session$setInputs(filter_datasaet = "Fald-datasæt")
+    expect_false(3L %in% filtered()$diagram_id)  # udelades ved konkret datasæt-filter
   })
 })
 

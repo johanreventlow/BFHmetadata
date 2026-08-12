@@ -71,14 +71,15 @@ mod_diagram_ui <- function(id) {
     div(class = "d-flex justify-content-end mb-2",
       actionButton(ns("new_diagram"), "Nyt diagram", class = "btn-success")),
     bslib::layout_columns(
-      col_widths = c(3, 3, 3, 3),
+      col_widths = c(3, 3, 2, 2, 2),
       uiOutput(ns("filter_indikator_ui")),
       uiOutput(ns("filter_org_ui")),
+      uiOutput(ns("filter_datapakke_ui")),
+      uiOutput(ns("filter_datasaet_ui")),
       selectInput(ns("filter_status"), "Status",
         choices = c("Kun aktive" = "aktive", "Alle" = "alle",
                     "Kun inaktive" = "inaktive"),
-        selected = "aktive"),
-      uiOutput(ns("filter_type_ui"))),
+        selected = "aktive")),
     DT::DTOutput(ns("tbl")))
 }
 
@@ -113,8 +114,10 @@ mod_diagram_server <- function(id, db) {
       .filter_ui("filter_indikator", "Indikator", "indikator_navn"))
     output$filter_org_ui <- renderUI(
       .filter_ui("filter_org", "Organisatorisk enhed", "org_navn"))
-    output$filter_type_ui <- renderUI(
-      .filter_ui("filter_type", "Diagramtype", "type_navn"))
+    output$filter_datapakke_ui <- renderUI(
+      .filter_ui("filter_datapakke", "Datapakke", "datapakke"))
+    output$filter_datasaet_ui <- renderUI(
+      .filter_ui("filter_datasaet", "Datasæt", "datasaet"))
 
     filtered <- reactive({
       d <- admin()
@@ -128,8 +131,12 @@ mod_diagram_server <- function(id, db) {
         d <- d[d$indikator_navn %in% fi, , drop = FALSE]
       fo <- input$filter_org
       if (!is.null(fo) && nzchar(fo)) d <- d[d$org_navn %in% fo, , drop = FALSE]
-      ft <- input$filter_type
-      if (!is.null(ft) && nzchar(ft)) d <- d[d$type_navn %in% ft, , drop = FALSE]
+      fdp <- input$filter_datapakke
+      if (!is.null(fdp) && nzchar(fdp))
+        d <- d[d$datapakke %in% fdp, , drop = FALSE]
+      fds <- input$filter_datasaet
+      if (!is.null(fds) && nzchar(fds))
+        d <- d[d$datasaet %in% fds, , drop = FALSE]
       d
     })
 

@@ -119,6 +119,9 @@ test_that("build_diagram_index_sql joiner indikator/hierarki/datapakke/org + org
   expect_match(sql, "datapakke")       # forælder-hierarki
   expect_match(sql, "datasaet")
   expect_match(sql, "indikator_navn_teknisk")
+  # Perioden STYRER signalberegningen (aggregering før signal) — uden den
+  # beregnes signalet på en anden serie end BFHddl tegner.
+  expect_match(sql, '"periode_aggregering"')
   # Org-niveau-ancestry (rekursiv CTE)
   expect_match(sql, "WITH RECURSIVE")
   expect_match(sql, "overafdeling")
@@ -129,8 +132,11 @@ test_that("build_diagram_index_sql joiner indikator/hierarki/datapakke/org + org
 test_that("median SQL-byggere er parametriserede", {
   expect_match(build_median_list_sql(),
     'FROM "tblDiagrammerMedian" WHERE "diagram" = \\$1')
+  # aggregering gemmes med: uden den kan et knæk ikke valideres senere
+  # (samme dato = forskellig fase-position ved forskellig periode)
   expect_match(build_median_insert_sql(),
-    'INSERT INTO "tblDiagrammerMedian" \\("diagram", "laas_median"\\) VALUES \\(\\$1, \\$2\\) RETURNING "id"')
+    paste0('INSERT INTO "tblDiagrammerMedian" \\("diagram", "laas_median", ',
+           '"aggregering"\\) VALUES \\(\\$1, \\$2, \\$3\\) RETURNING "id"'))
   expect_match(build_median_delete_sql(),
     'DELETE FROM "tblDiagrammerMedian" WHERE "id" = \\$1')
 })
@@ -180,6 +186,13 @@ test_that("build_diagram_admin_sql joiner labels og har intet aktiv-filter", {
   expect_match(sql, '"periode_aggregering"', fixed = TRUE)
   expect_no_match(sql, "diagram_aktivt\\s*(=|AND)")  # admin ser ALT
   expect_no_match(sql, 'WHERE d\\."diagram_type"')
+})
+
+test_that("build_diagram_admin_sql joiner hierarki (datasaet/datapakke)", {
+  sql <- build_diagram_admin_sql()
+  expect_match(sql, "AS datasaet", fixed = TRUE)
+  expect_match(sql, "AS datapakke", fixed = TRUE)
+  expect_match(sql, '"tblIndikatorHierarki"', fixed = TRUE)
 })
 
 test_that("build_diagram_insert_sql parametriserer alle kolonner + RETURNING", {
@@ -236,4 +249,22 @@ test_that("hierarchy insert/update/delete parametriserer alle edit-kolonner", {
     'DELETE FROM "tblOrganisationStruktur" WHERE "Id" = $1')
   expect_identical(build_hierarchy_child_count_sql(cfg),
     'SELECT count(*) AS n FROM "tblOrganisationStruktur" WHERE "parent_Id" = $1')
+})
+
+# --- Hierarki-oprulning (org-træ + aggregerings-flag) -----------------------
+
+test_that("build_org_struct_sql henter id + parent fra org-tabellen", {
+  s <- build_org_struct_sql()
+  expect_match(s, "tblOrganisationStruktur")
+  expect_match(s, '"Id" AS id', fixed = TRUE)
+  expect_match(s, '"parent_Id" AS parent_id', fixed = TRUE)
+})
+
+test_that("build_aggregation_flags_sql henter flag pr. diagram-raekke UDEN aktiv-filter", {
+  s <- build_aggregation_flags_sql()
+  expect_match(s, "tblDiagrammer")
+  expect_match(s, '"organisatorisk_navn_teknisk" AS org_id', fixed = TRUE)
+  expect_match(s, '"indikator" AS indikator_id', fixed = TRUE)
+  expect_match(s, '"indgaar_i_aggregering" AS indgaar', fixed = TRUE)
+  expect_no_match(s, "diagram_aktivt")   # BFHddl laeser flag med active_only=FALSE
 })

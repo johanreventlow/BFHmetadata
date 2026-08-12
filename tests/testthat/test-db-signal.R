@@ -45,3 +45,15 @@ test_that("org_enhed_variants returnerer org-navne + fra-data-varianter", {
   # Mindst én org har en fra-data-oversættelse
   expect_gt(sum(!is.na(vdf$fra_data)), 0)
 })
+
+test_that("org_struct + aggregation_flags returnerer forventede kolonner", {
+  skip_if_no_db()
+  pool <- db_connect(); on.exit(pool::poolClose(pool))
+  db <- make_db(pool)
+  os <- db$org_struct()
+  expect_true(all(c("id", "parent_id") %in% names(os)))
+  expect_gt(nrow(os), 100)
+  fl <- db$aggregation_flags()
+  expect_true(all(c("org_id", "indikator_id", "indgaar") %in% names(fl)))
+  expect_gt(nrow(fl), 100)
+})
