@@ -154,20 +154,43 @@ mod_hierarchy_server <- function(id, db, cfg) {
     niveauer <- reactiveVal(db$niveau_options())
     status_msg <- reactiveVal("")
     warn_msg <- reactiveVal("")
+    status_event <- reactiveVal(list(message = "", nonce = 0L))
+    warn_event <- reactiveVal(list(message = "", nonce = 0L))
+    table_revision <- reactiveVal(0L)
+    selected_id <- reactiveVal(NULL)
     delete_id <- reactiveVal(NULL)
-    reload <- function() nodes(db$list_nodes())
+    reload <- function() {
+      nodes(db$list_nodes())
+      table_revision(isolate(table_revision()) + 1L)
+    }
+    notify_status <- function(message) {
+      status_msg(message)
+      event <- isolate(status_event())
+      status_event(list(message = message, nonce = event$nonce + 1L))
+    }
+    notify_warning <- function(message) {
+      warn_msg(message)
+      event <- isolate(warn_event())
+      warn_event(list(message = message, nonce = event$nonce + 1L))
+    }
 
     tree <- reactive(hierarchy_order(nodes(), "id", "parent_id_raw",
                                      sort_col = cfg$display_col))
 
     # Flydende notifikationer (synlige over modal, jf. mod_diagram)
-    observeEvent(status_msg(), {
-      if (nzchar(status_msg())) showNotification(status_msg(), duration = 5)
+    observeEvent(status_event(), {
+      event <- status_event()
+      if (nzchar(event$message)) showNotification(event$message, duration = 5)
     }, ignoreInit = TRUE)
-    observeEvent(warn_msg(), {
-      if (nzchar(warn_msg()))
-        showNotification(warn_msg(), type = "warning", duration = 8)
+    observeEvent(warn_event(), {
+      event <- warn_event()
+      if (nzchar(event$message))
+        showNotification(event$message, type = "warning", duration = 8)
     }, ignoreInit = TRUE)
+
+    observeEvent(input$selected_node_id, {
+      selected_id(.hierarchy_editor_integer(input$selected_node_id))
+    }, ignoreNULL = FALSE)
 
     .labels <- function(d) {
       teknisk <- if ("organisatorisk_navn_teknisk" %in% names(d))
@@ -177,11 +200,18 @@ mod_hierarchy_server <- function(id, db, cfg) {
     }
 
     output$tbl <- DT::renderDT({
+      table_revision()
       d <- tree()
+      selected <- isolate(selected_id())
+      selected_row <- if (is.null(selected)) integer() else match(selected, d$id)
+      if (length(selected_row) == 1L && is.na(selected_row)) {
+        selected_row <- integer()
+      }
       out <- .hierarchy_editor_data(d, cfg, session$ns, niveauer())
       editor_value <- htmlwidgets::JS(
         "function(data, type) {\n          if (type === 'sort' || type === 'filter') {\n            return $('<div>').html(data).find('.hierarchy-editor').val() || '';\n          }\n          return data;\n        }")
-      DT::datatable(out, escape = FALSE, rownames = FALSE, selection = "single",
+      DT::datatable(out, escape = FALSE, rownames = FALSE,
+        selection = list(mode = "single", selected = selected_row),
         callback = .hierarchy_dt_callback(session$ns),
         options = list(pageLength = 25, columnDefs = list(
           list(targets = 0:4, render = editor_value))))
@@ -191,7 +221,7 @@ mod_hierarchy_server <- function(id, db, cfg) {
       result <- .prepare_hierarchy_inline_update(
         nodes(), niveauer(), cfg, input$inline_edit)
       if (!isTRUE(result$ok)) {
-        warn_msg(result$error)
+        notify_warning(result$error)
         reload()
         return()
       }
@@ -206,10 +236,10 @@ mod_hierarchy_server <- function(id, db, cfg) {
       }, fallback = FALSE)
       reload()
       if (isTRUE(ok)) {
-        status_msg("Gemt")
-        if (nzchar(result$warning)) warn_msg(result$warning)
+        notify_status("Gemt")
+        if (nzchar(result$warning)) notify_warning(result$warning)
       } else {
-        warn_msg("Fejl ved gem; v\u00e6rdien er gendannet")
+        notify_warning("Fejl ved gem; v\u00e6rdien er gendannet")
       }
     })
 
@@ -243,7 +273,7 @@ mod_hierarchy_server <- function(id, db, cfg) {
     observeEvent(input$h_save, {
       vals <- .collect_hierarchy_form(input, cfg)
       if (is.na(vals[[cfg$display_col]]) || !nzchar(vals[[cfg$display_col]])) {
-        status_msg(sprintf("%s er obligatorisk", cfg$label))
+        notify_status(sprintf("%s er obligatorisk", cfg$label))
         return()
       }
       new_parent <- vals[[cfg$parent_col]]
@@ -261,33 +291,37 @@ mod_hierarchy_server <- function(id, db, cfg) {
           } else NA
           if (!is.na(niveau_num_row) &&
               niveau_num_row <= parent_row$niveau_num[1]) {
-            warn_msg("Niveau er ikke dybere end forælderens niveau")
+            notify_warning("Niveau er ikke dybere end forælderens niveau")
           }
         }
       }
 
       safe_operation("hierarki-gem", {
         newid <- db$create_node(vals)
-        status_msg(paste("Oprettet node", newid))
+        notify_status(paste("Oprettet node", newid))
         removeModal(); reload()
-      }, fallback = status_msg("Fejl ved gem (se log)"))
+      }, fallback = notify_status("Fejl ved gem (se log)"))
     })
 
     .clear_delete_selection <- function() {
+      selected_id(NULL)
       delete_id(NULL)
       DT::selectRows(DT::dataTableProxy("tbl", session), NULL)
     }
 
     observeEvent(input$delete_selected, {
-      selected <- input$tbl_rows_selected
-      d <- tree()
-      if (length(selected) != 1L || is.na(selected) || selected < 1L ||
-          selected > nrow(d)) {
-        warn_msg("V\u00e6lg en node f\u00f8rst")
+      rid <- selected_id()
+      if (is.null(rid)) {
+        notify_warning("V\u00e6lg en node f\u00f8rst")
         return()
       }
-      row <- d[as.integer(selected), , drop = FALSE]
-      rid <- as.integer(row$id[1])
+      row <- nodes()[nodes()$id == rid, , drop = FALSE]
+      if (nrow(row) != 1L) {
+        reload()
+        notify_status("Node ikke fundet")
+        .clear_delete_selection()
+        return()
+      }
       delete_id(rid)
       showModal(modalDialog(
         title = "Slet node",
@@ -306,13 +340,13 @@ mod_hierarchy_server <- function(id, db, cfg) {
       reload()
       row <- nodes()[nodes()$id == rid, , drop = FALSE]
       if (nrow(row) == 0) {
-        status_msg("Node ikke fundet")
+        notify_status("Node ikke fundet")
         .clear_delete_selection()
         return()
       }
       n <- db$child_count(rid)
       if (n > 0) {
-        warn_msg(sprintf("Noden har %d b\u00f8rn \u2014 flyt eller slet dem f\u00f8rst.", n))
+        notify_warning(sprintf("Noden har %d b\u00f8rn \u2014 flyt eller slet dem f\u00f8rst.", n))
         reload()
         .clear_delete_selection()
         return()
@@ -324,14 +358,16 @@ mod_hierarchy_server <- function(id, db, cfg) {
       reload()
       .clear_delete_selection()
       if (isTRUE(ok)) {
-        status_msg(paste("Slettet node", rid))
+        notify_status(paste("Slettet node", rid))
       } else {
-        warn_msg("Noden er i brug og kan ikke slettes (referencer findes).")
+        notify_warning("Noden er i brug og kan ikke slettes (referencer findes).")
       }
     })
 
     # eksponér til test
     list(nodes = nodes, tree = tree, status_msg = status_msg,
-         warn_msg = warn_msg, delete_id = delete_id)
+         warn_msg = warn_msg, status_event = status_event,
+         warn_event = warn_event, table_revision = table_revision,
+         selected_id = selected_id, delete_id = delete_id)
   })
 }

@@ -21,7 +21,7 @@ test_that("slet med boern blokeres (delete_node IKKE kaldt)", {
   db <- fake_hierarchy_db()
   testServer(mod_hierarchy_server,
     args = list(db = db, cfg = .hierarchy_cfg()), {
-      session$setInputs(tbl_rows_selected = 1, delete_selected = 1)
+      session$setInputs(selected_node_id = 1, delete_selected = 1)
       session$setInputs(confirm_delete = 1)
     expect_null(db$.calls()$deleted)
     expect_match(warn_msg(), "børn")
@@ -34,7 +34,7 @@ test_that("slet valgt kraever valg og bekraeftelse", {
     args = list(db = db, cfg = .hierarchy_cfg()), {
       session$setInputs(delete_selected = 1)
       expect_match(warn_msg(), "V\u00e6lg", fixed = TRUE)
-      session$setInputs(tbl_rows_selected = 4, delete_selected = 2)
+      session$setInputs(selected_node_id = 4, delete_selected = 2)
       expect_identical(delete_id(), 4L)
       expect_null(db$.calls()$deleted)
       session$setInputs(confirm_delete = 1)
@@ -48,12 +48,43 @@ test_that("referencefejl ved sletning genindlaeser autoritative rækker", {
   db$.set_delete_error(TRUE)
   testServer(mod_hierarchy_server,
     args = list(db = db, cfg = .hierarchy_cfg()), {
-      session$setInputs(tbl_rows_selected = 4, delete_selected = 1)
+      session$setInputs(selected_node_id = 4, delete_selected = 1)
       session$setInputs(confirm_delete = 1)
       expect_identical(db$.calls()$deleted, 4L)
       expect_identical(nodes(), db$.nodes())
       expect_true(4L %in% nodes()$id)
       expect_match(warn_msg(), "i brug", fixed = TRUE)
+    })
+})
+
+test_that("sletning bruger stabilt node-id efter at traeet er genordnet", {
+  db <- fake_hierarchy_db()
+  testServer(mod_hierarchy_server,
+    args = list(db = db, cfg = .hierarchy_cfg()), {
+      session$setInputs(selected_node_id = 3)
+      session$setInputs(inline_edit = list(
+        id = 3, field = "parent_Id", oldValue = "2", value = "4", nonce = 1))
+      expect_identical(tree()$id, c(1L, 2L, 4L, 3L))
+      widget <- jsonlite::fromJSON(output$tbl, simplifyVector = FALSE)
+      expect_identical(widget$x$selection$selected, 4L)
+
+      session$setInputs(delete_selected = 1)
+      expect_identical(delete_id(), 3L)
+      session$setInputs(confirm_delete = 1)
+      expect_identical(db$.calls()$deleted, 3L)
+      expect_false(3L %in% nodes()$id)
+      expect_true(4L %in% nodes()$id)
+    })
+})
+
+test_that("raekkevalg alene genopbygger ikke DT-widgeten", {
+  db <- fake_hierarchy_db()
+  testServer(mod_hierarchy_server,
+    args = list(db = db, cfg = .hierarchy_cfg()), {
+      before <- output$tbl
+      session$setInputs(selected_node_id = 3)
+      expect_identical(output$tbl, before)
+      expect_identical(selected_id(), 3L)
     })
 })
 
@@ -153,6 +184,7 @@ test_that("afviste inline-events skriver ikke og genindlaeser autoritativ vaerdi
       expect_length(db$.calls()$updates, 0)
       expect_match(warn_msg(), "cyklus", ignore.case = TRUE)
       expect_identical(nodes(), db$.nodes())
+      expect_identical(table_revision(), 2L)
     })
 })
 
@@ -165,6 +197,7 @@ test_that("uaendret inline-vaerdi genindlaeser uden databaseopdatering", {
         oldValue = "B", value = "B", nonce = 1))
       expect_length(db$.calls()$updates, 0)
       expect_identical(nodes(), db$.nodes())
+      expect_identical(table_revision(), 1L)
     })
 })
 
@@ -205,6 +238,29 @@ test_that("databasefejl genindlaeser autoritativ vaerdi og melder rollback", {
       expect_length(db$.calls()$updates, 1)
       expect_identical(nodes(), db$.nodes())
       expect_match(warn_msg(), "gendannet", ignore.case = TRUE)
+      expect_identical(table_revision(), 1L)
+    })
+})
+
+test_that("identiske status- og advarselsbeskeder udloeser nye events", {
+  db <- fake_hierarchy_db()
+  testServer(mod_hierarchy_server,
+    args = list(db = db, cfg = .hierarchy_cfg()), {
+      session$setInputs(inline_edit = list(
+        id = 2, field = "organisatorisk_navn_kort",
+        oldValue = "B", value = "B1", nonce = 1))
+      session$setInputs(inline_edit = list(
+        id = 2, field = "organisatorisk_navn_kort",
+        oldValue = "B1", value = "B2", nonce = 2))
+      expect_identical(status_msg(), "Gemt")
+      expect_identical(status_event()$nonce, 2L)
+
+      session$setInputs(inline_edit = list(
+        id = 2, field = "id", oldValue = "2", value = "99", nonce = 3))
+      session$setInputs(inline_edit = list(
+        id = 2, field = "id", oldValue = "2", value = "99", nonce = 4))
+      expect_identical(warn_msg(), "Ukendt felt")
+      expect_identical(warn_event()$nonce, 2L)
     })
 })
 

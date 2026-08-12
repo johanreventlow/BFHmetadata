@@ -93,6 +93,17 @@ test_that("DT callback bruger DataTables-argumentet og implementerer Enter Escap
   expect_match(js, "blur", fixed = TRUE)
 })
 
+test_that("DT callback sender valgt nodes stabile id uden at overtage raekkevalg", {
+  js <- as.character(.hierarchy_dt_callback(function(x) paste0("org-", x)))
+  expect_match(js, "org-selected_node_id", fixed = TRUE)
+  expect_match(js, "tbody tr", fixed = TRUE)
+  expect_match(js, ".hierarchy-editor[data-node-id]", fixed = TRUE)
+  expect_match(js, "editor.dataset.nodeId", fixed = TRUE)
+  expect_match(js, "classList.contains('selected')", fixed = TRUE)
+  expect_match(js, "priority: 'event'", fixed = TRUE)
+  expect_false(grepl("stopPropagation", js, fixed = TRUE))
+})
+
 test_that("DT callback bevarer gemt baseline mens en redigering afventer", {
   js <- as.character(.hierarchy_dt_callback(function(x) paste0("org-", x)))
   expect_match(js, "classList.contains('hierarchy-saving')", fixed = TRUE)

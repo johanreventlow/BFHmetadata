@@ -177,10 +177,12 @@
 #' @noRd
 .hierarchy_dt_callback <- function(ns) {
   input_name <- jsonlite::toJSON(ns("inline_edit"), auto_unbox = TRUE)
+  selection_name <- jsonlite::toJSON(ns("selected_node_id"), auto_unbox = TRUE)
   htmlwidgets::JS(sprintf(
     "function(table) {
       var $table = $(table.table().node());
       var inputName = %s;
+      var selectionName = %s;
       function submit(editor) {
         if (editor.dataset.cancelled === 'true') {
           delete editor.dataset.cancelled;
@@ -199,6 +201,12 @@
         }, {priority: 'event'});
       }
       $table.off('.hierarchy-editor');
+      $table.on('click.hierarchy-editor', 'tbody tr', function() {
+        var editor = this.querySelector('.hierarchy-editor[data-node-id]');
+        var selectedId = this.classList.contains('selected') && editor ?
+          Number(editor.dataset.nodeId) : null;
+        Shiny.setInputValue(selectionName, selectedId, {priority: 'event'});
+      });
       $table.on('keydown.hierarchy-editor', '.hierarchy-editor', function(event) {
         if (event.key === 'Enter' && this.tagName === 'INPUT') {
           event.preventDefault();
@@ -213,5 +221,5 @@
       });
       $table.on('blur.hierarchy-editor change.hierarchy-editor',
         '.hierarchy-editor', function() { submit(this); });
-    }", input_name))
+    }", input_name, selection_name))
 }
