@@ -16,7 +16,7 @@ Tabellen beholder hierarkiets depth-first-rækkefølge og visuelle indrykning.
 Hver række repræsenterer fortsat én node og er knyttet til nodens skjulte,
 stabile database-id.
 
-Følgende felter kan redigeres inline:
+Følgende felter vises som permanent synlige editorer i tabellen:
 
 - teknisk navn;
 - langt navn;
@@ -24,9 +24,21 @@ Følgende felter kan redigeres inline:
 - forælder;
 - niveau.
 
-Tekstfelter redigeres som tekstceller. Forælder og niveau redigeres med
-dropdowns, der viser læsbare labels, men sender de tilhørende id'er til
-serveren. En redigering afsluttes efter DT's normale celle-redigeringsflow.
+De tre tekstkolonner indeholder kompakte tekstfelter. Forælder og niveau
+indeholder dropdowns, der viser læsbare labels, men sender de tilhørende id'er
+til serveren. Brugeren skal derfor ikke aktivere DT's indbyggede editor med et
+dobbeltklik.
+
+Et tekstfelt gemmes, når brugeren trykker **Enter**, eller når feltet mister
+fokus. **Escape** gendanner feltets senest gemte værdi uden en
+databaseskrivning. En dropdown gemmes straks, når valget ændres. Klientkoden
+sammenligner med den senest gemte værdi, så et efterfølgende blur-event eller
+et valg af samme værdi ikke sender en ny ændring.
+
+Editorerne får en diskret visuel markering, så det er tydeligt, at tabellen kan
+redigeres. Hierarkiindrykningen placeres i feltet for det lange navn, så
+træstrukturen fortsat kan aflæses. DT's søgning og sortering skal bruge
+editorernes viste værdier frem for den genererede HTML.
 
 Når en celleændring er gemt, vises en kort succesnotifikation. Der indføres
 ingen separat Gem-knap og ingen lokal samling af ugemte ændringer.
@@ -37,7 +49,9 @@ bekræftelsesdialog. Sletning udføres først efter bekræftelse.
 
 ## Dataflow ved inline-redigering
 
-1. Klienten sender række, kolonne og ny celleværdi til Shiny.
+1. Hver editor indeholder nodens stabile id, feltnavn og senest gemte værdi som
+   data-attributter. Klienten sender id, felt, gammel værdi og ny værdi til
+   Shiny, når redigeringen afsluttes.
 2. Serveren finder noden via det stabile id og oversætter den viste kolonne til
    konfigurationsfeltet i `HIERARCHY_TABLES`.
 3. Den nye værdi normaliseres til den forventede datatype. Tom tekst bliver
@@ -50,9 +64,11 @@ bekræftelsesdialog. Sletning udføres først efter bekræftelse.
    beregner hierarkiets rækkefølge og indrykning igen, hvilket også håndterer en
    ændret forælder eller et ændret navn.
 
-Kun én celleændring behandles per event. Shiny-sessionens normale sekventielle
-eventbehandling sikrer, at to hurtige ændringer ikke skriver ud fra hver sin
-lokale kopi uden genindlæsning imellem.
+Kun én celleændring behandles per event. Den berørte editor markeres som i gang,
+mens skrivningen behandles, så brugeren kan se, at ændringen endnu ikke er
+kvitteret. Shiny-sessionens normale sekventielle eventbehandling sikrer, at to
+hurtige ændringer ikke skriver ud fra hver sin lokale kopi uden genindlæsning
+imellem.
 
 ## Validering
 
@@ -77,6 +93,11 @@ Databaseværdien er autoritativ. Ved validerings- eller databasefejl
 genindlæses noderne, så cellen og resten af tabellen gendannes til den senest
 gemte tilstand. Brugeren får en tydelig advarselsnotifikation. Tabellen må ikke
 efterlade en værdi, der kun findes i browseren.
+
+Alle værdier og labels HTML-escapes, før de indsættes i editorernes markup.
+Klientens id og feltnavn betragtes ikke som autoritative: serveren slår noden
+op i de indlæste data og accepterer kun felter fra modulets eksplicitte
+kolonnemapping.
 
 Ved en vellykket ændring invaliderer den eksisterende cache-wrapper fortsat de
 relevante organisationsdata gennem `db$update_node()`.
@@ -111,11 +132,14 @@ skal fortsat bestå. Nye tests skal mindst dække:
 - obligatorisk langt navn;
 - blød niveauadvarsel med gennemført gemning;
 - genindlæsning og brugerbesked ved databasefejl;
+- ingen databaseskrivning ved uændret værdi eller Escape;
+- HTML-escaping af tekstværdier og dropdown-labels;
 - rækkevalg og sletning gennem bekræftelsesflowet;
 - bevaret oprettelsesdialog.
 
 Der tilføjes desuden en UI-test, som fastholder, at hierarkitabellen er
-inline-redigerbar, og at knapperne **Ny node** og **Slet valgt** findes.
+inline-redigerbar med permanent synlige tekstfelter og dropdowns, og at
+knapperne **Ny node** og **Slet valgt** findes.
 
 ## Afgrænsning
 
