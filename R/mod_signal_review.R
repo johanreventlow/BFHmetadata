@@ -539,15 +539,28 @@ mod_signal_review_server <- function(id, db) {
       # Perioden SKAL med her også — ellers falder netop dette diagram tavst
       # tilbage til uaggregeret efter et gemt/fjernet knæk (grafen ser fin ud,
       # men er en anden serie end scannet).
-      cc[[paste0(cd$diagram_id, "|", .wkey(scanned_n()))]] <-
-        c(
-          scan_diagram(as.list(cd), base, meds, variants(),
-            window_n = scanned_n(), slice_loader = loader,
-            period = cd$periode_aggregering
-          ),
-          list(row = as.list(cd))
-        )
+      res <- c(
+        scan_diagram(as.list(cd), base, meds, variants(),
+          window_n = scanned_n(), slice_loader = loader,
+          period = cd$periode_aggregering
+        ),
+        list(row = as.list(cd))
+      )
+      cc[[paste0(cd$diagram_id, "|", .wkey(scanned_n()))]] <- res
       cache(cc)
+      # Synkronisér listen: gem/fjern af knæk kan ændre diagrammets signal-
+      # status — uden denne opdatering viser sidebar-listen et forældet ikon,
+      # og et løst diagram bliver hængende i visningen (eller omvendt).
+      sl <- scanned_list()
+      i <- which(sl$diagram_id == cd$diagram_id)
+      if (!is.null(sl) && length(i) == 1L) {
+        sl$signal[i] <- isTRUE(res$signal)
+        sl$status[i] <- res$status %||% sl$status[i]
+        scanned_list(sl)
+      }
+      # Visningens sammensætning kan være ændret → et klik-stempel fra før
+      # må aldrig overleve (jf. toggle-guarden).
+      selected_cursor(NULL)
     }
 
     # --- Graf -------------------------------------------------------------

@@ -961,3 +961,53 @@ test_that("fase-statistik tåler summary/qic_result = NULL (fejl-scannet diagram
     expect_no_error(output$phase_stats)
   })
 })
+
+test_that("gem faseskift synkroniserer scanned_list (signal-flag + view-medlemskab)", {
+  skip_if_not_installed("arrow")
+  base <- withr::local_tempdir()
+  dir.create(file.path(base, "a"))
+  arrow::write_parquet(data.frame(dato = as.Date("2020-01-01") + 0:23 * 30,
+    vaerdi = c(rep(10, 12), rep(2, 12)), taeller = NA_real_,
+    naevner = NA_real_, enhed = "e"), file.path(base, "a", "p.parquet"))
+  idx <- data.frame(diagram_id = 7L, indikator_id = 1L, indikator_navn = "A",
+    indikator_navn_teknisk = "a", datasaet = "d", datapakke = "p", org_id = 5L,
+    org_teknisk = "E", org_navn = "E", org_niveau = 5L, overafdeling = "OA",
+    afdeling = NA, afsnit = NA, stringsAsFactors = FALSE)
+  # Fake db der HUSKER gemte knæk (mutable env), så re-scan efter gem rent
+  # faktisk ser det nye knæk - modsat de andre fixtures' altid-tomme medians.
+  meds_env <- new.env(); meds_env$df <- data.frame(
+    id = integer(0), diagram = integer(0), laas_median = as.Date(character(0)))
+  calls <- new.env(); calls$n <- 0L
+  db <- make_fake_signal_db(base, idx)
+  db$diagram_medians <- function(diagram_id) meds_env$df
+  db$add_median_break <- function(diagram_id, dato, aggregering = NA_character_) {
+    calls$n <- calls$n + 1L
+    new_id <- nrow(meds_env$df) + 1L
+    meds_env$df <- rbind(meds_env$df, data.frame(
+      id = new_id, diagram = diagram_id, laas_median = as.Date(dato)))
+    new_id
+  }
+  shiny::testServer(mod_signal_review_server, args = list(db = db), {
+    session$setInputs(parquet_dir = base, window_mode = "all", window_n = 24,
+      f_overafdeling = "", f_afsnit = "", f_datapakke = "", f_datasaet = "",
+      f_indikator_navn = "", scan = 1)
+    drain_scan()
+    # Før gem: diagram 7 har signal, og er derfor med i visningen (checkbox fra)
+    sl0 <- scanned_list()
+    expect_true(isTRUE(sl0$signal[sl0$diagram_id == 7L]))
+    expect_true(7L %in% view_list()$diagram_id)
+    # Knæk ved obs 13 (2020-12-26, første obs i den lave fase) løser signalet
+    # (verificeret separat: compute_signal uden knæk -> TRUE, med -> FALSE).
+    session$setInputs(chart_selected = "2020-12-26")
+    session$setInputs(save_break = 1)
+    # EFTER gem: scanned_list-raekken SKAL afspejle det friske scan-resultat -
+    # ikke det forældede signal-flag fra selve scannet.
+    sl1 <- scanned_list()
+    expect_false(isTRUE(sl1$signal[sl1$diagram_id == 7L]))
+    expect_false(7L %in% view_list()$diagram_id)  # checkbox fra -> falder ud
+    # Bonus-regression: klik-stemplet må ikke overleve synkroniseringen - et
+    # nyt "Gem faseskift" UDEN nyt klik må ikke skrive endnu et knæk.
+    session$setInputs(save_break = 2)
+    expect_equal(calls$n, 1L)
+  })
+})
