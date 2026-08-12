@@ -1,6 +1,9 @@
 # Lokal udvikling — starter appen + åbner browser på fast port.
 # Kør:  Rscript dev/run_dev.R    (eller source() i en R-session)
 options(shiny.autoreload = TRUE)
+
+options(bfhmeta.write_enabled = TRUE)
+
 pkgload::load_all(".", reset = TRUE, helpers = FALSE)
 
 # runApp() med eksplicit port + browser så den åbner pålideligt
