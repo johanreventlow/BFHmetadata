@@ -155,34 +155,81 @@
 #' Sikker select-editor til en enkelt DT-celle.
 #' @noRd
 .hierarchy_select_editor_html <- function(ns, id, field, current, choices,
-                                          root = FALSE) {
+                                          root = FALSE, lazy = FALSE,
+                                          current_label = NULL) {
   esc_attr <- function(x) htmltools::htmlEscape(as.character(x), attribute = TRUE)
   esc_text <- function(x) htmltools::htmlEscape(as.character(x))
   current <- if (is.null(current) || is.na(current)) "" else as.character(current)
-  option_html <- vapply(seq_along(choices), function(i) {
-    value <- as.character(choices[[i]])
-    selected <- if (identical(value, current)) " selected" else ""
-    sprintf('<option value="%s"%s>%s</option>',
-      esc_attr(value), selected, esc_text(names(choices)[i]))
-  }, "")
+  if (isTRUE(lazy)) {
+    if (is.null(current_label)) {
+      current_match <- match(current, as.character(choices))
+      current_label <- if (is.na(current_match)) "" else names(choices)[current_match]
+    }
+    option_html <- sprintf('<option value="%s" selected>%s</option>',
+                           esc_attr(current), esc_text(current_label))
+  } else {
+    option_html <- vapply(seq_along(choices), function(i) {
+      value <- as.character(choices[[i]])
+      selected <- if (identical(value, current)) " selected" else ""
+      sprintf('<option value="%s"%s>%s</option>',
+        esc_attr(value), selected, esc_text(names(choices)[i]))
+    }, "")
+  }
   input_id <- ns(paste0("inline_", id, "_", field))
   sprintf(paste0(
     '<select id="%s" class="form-select form-select-sm hierarchy-editor" ',
-    'data-saved="%s" data-node-id="%s" data-field="%s" data-root="%s">%s</select>'),
+    'data-saved="%s" data-node-id="%s" data-field="%s" data-root="%s" ',
+    'data-lazy="%s">%s</select>'),
     esc_attr(input_id), esc_attr(current), esc_attr(id), esc_attr(field),
-    esc_attr(isTRUE(root)), paste0(option_html, collapse = ""))
+    esc_attr(tolower(as.character(isTRUE(root)))),
+    esc_attr(tolower(as.character(isTRUE(lazy)))),
+    paste0(option_html, collapse = ""))
 }
 
 #' Delegated DT-callback til inline-editorernes change/blur-events.
 #' @noRd
-.hierarchy_dt_callback <- function(ns) {
+.hierarchy_dt_callback <- function(ns, parent_choices = NULL,
+                                   level_choices = NULL) {
   input_name <- jsonlite::toJSON(ns("inline_edit"), auto_unbox = TRUE)
   selection_name <- jsonlite::toJSON(ns("selected_node_id"), auto_unbox = TRUE)
+  parent_json <- jsonlite::toJSON(parent_choices %||% data.frame(),
+                                  dataframe = "rows", na = "null")
+  level_json <- jsonlite::toJSON(level_choices %||% data.frame(),
+                                 dataframe = "rows", na = "null")
   htmlwidgets::JS(sprintf(
     "function(table) {
       var $table = $(table.table().node());
       var inputName = %s;
       var selectionName = %s;
+      var parentChoices = %s;
+      var levelChoices = %s;
+      function wouldCreateCycle(candidateId, nodeId) {
+        var current = candidateId;
+        var seen = {};
+        while (current !== null && current !== undefined && !seen[current]) {
+          if (Number(current) === Number(nodeId)) return true;
+          seen[current] = true;
+          var item = parentChoices.find(function(choice) {
+            return Number(choice.id) === Number(current);
+          });
+          current = item ? item.parent_id : null;
+        }
+        return false;
+      }
+      function hydrate(editor) {
+        if (editor.dataset.lazy !== 'true' || editor.dataset.hydrated === 'true') return;
+        var choices = editor.dataset.root === 'true' ? parentChoices : levelChoices;
+        var saved = editor.dataset.saved;
+        var nodeId = Number(editor.dataset.nodeId);
+        var emptyLabel = editor.dataset.root === 'true' ? '(rod)' : '(v\\u00e6lg)';
+        editor.replaceChildren(new Option(emptyLabel, '', false, saved === ''));
+        choices.forEach(function(choice) {
+          if (editor.dataset.root === 'true' && wouldCreateCycle(choice.id, nodeId)) return;
+          editor.add(new Option(choice.label, String(choice.id), false,
+            String(choice.id) === saved));
+        });
+        editor.dataset.hydrated = 'true';
+      }
       function submit(editor) {
         if (editor.dataset.cancelled === 'true') {
           delete editor.dataset.cancelled;
@@ -201,6 +248,8 @@
         }, {priority: 'event'});
       }
       $table.off('.hierarchy-editor');
+      $table.on('focus.hierarchy-editor mousedown.hierarchy-editor',
+        'select.hierarchy-editor[data-lazy=\"true\"]', function() { hydrate(this); });
       $table.on('click.hierarchy-editor', 'tbody tr', function() {
         var row = this;
         setTimeout(function() {
@@ -226,5 +275,5 @@
       });
       $table.on('blur.hierarchy-editor change.hierarchy-editor',
         '.hierarchy-editor', function() { submit(this); });
-    }", input_name, selection_name))
+    }", input_name, selection_name, parent_json, level_json))
 }

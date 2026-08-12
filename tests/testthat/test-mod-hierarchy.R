@@ -118,6 +118,41 @@ test_that("hierarki-tabel viser fem permanente editor-kolonner", {
   expect_false(grepl('value="3"', out[["Forælder"]][1], fixed = TRUE))
 })
 
+test_that("hierarki-tabel gentager ikke hele foraelderlisten i hver raekke", {
+  db <- fake_hierarchy_db()
+  d <- hierarchy_order(db$list_nodes(), "id", "parent_id_raw",
+                       .hierarchy_cfg()$display_col)
+  out <- .hierarchy_editor_data(d, .hierarchy_cfg(), identity,
+                                db$niveau_options())
+
+  expect_true(all(vapply(out[["Forælder"]], function(cell) {
+    lengths(regmatches(cell, gregexpr("<option", cell, fixed = TRUE))) == 1L
+  }, logical(1))))
+  expect_false(grepl("Barn C", out[["Forælder"]][4], fixed = TRUE))
+})
+
+test_that("hierarki-editor-data vokser lineaert med antal noder", {
+  make_nodes <- function(n) data.frame(
+    id = seq_len(n),
+    parent_id_raw = c(NA_integer_, seq_len(n - 1L)),
+    organisatorisk_navn_teknisk = sprintf("teknisk_%04d", seq_len(n)),
+    organisatorisk_navn_langt = sprintf("Organisation %04d", seq_len(n)),
+    organisatorisk_navn_kort = sprintf("Org %04d", seq_len(n)),
+    niveau_id = rep(10L, n), niveau_num = rep(1L, n),
+    niveau_navn = rep("Niveau", n), depth = seq_len(n) - 1L,
+    stringsAsFactors = FALSE)
+  niveauer <- data.frame(id = 10L, label = "Niveau")
+
+  small <- .hierarchy_editor_data(make_nodes(50L), .hierarchy_cfg(), identity,
+                                  niveauer)
+  large <- .hierarchy_editor_data(make_nodes(400L), .hierarchy_cfg(), identity,
+                                  niveauer)
+
+  expect_lt(as.numeric(object.size(large)),
+            12 * as.numeric(object.size(small)))
+  expect_lt(as.numeric(object.size(large)), 1.5e6)
+})
+
 test_that("hierarki-tabel viser manglende tekst som et tomt editorfelt", {
   db <- fake_hierarchy_db()
   d <- hierarchy_order(db$list_nodes(), "id", "parent_id_raw",

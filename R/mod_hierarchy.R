@@ -61,16 +61,11 @@
   teknisk_col <- text_cols[1]
   column_names <- c(vapply(cfg$fields, function(field) field$label, ""),
                     "Forælder", "Niveau")
-  parent_labels <- function(choices) {
-    teknisk <- d[[teknisk_col]]
-    display <- d[[cfg$display_col]]
-    labels <- vapply(seq_len(nrow(d)), function(i) {
-      .node_label(cfg, display[i], teknisk[i], d$id[i])
-    }, "")
-    stats::setNames(d$id[choices], labels[choices])
-  }
-  niveau_choices <- c("(vælg)" = "",
-                       stats::setNames(niveauer$id, niveauer$label))
+  teknisk <- d[[teknisk_col]]
+  display <- d[[cfg$display_col]]
+  node_labels <- vapply(seq_len(nrow(d)), function(i) {
+    .node_label(cfg, display[i], teknisk[i], d$id[i])
+  }, "")
   padding <- function(depth) {
     value <- htmltools::htmlEscape(as.character(depth * 1.5), attribute = TRUE)
     sprintf('<div style="padding-left:%srem">', value)
@@ -87,8 +82,14 @@
 
   out <- lapply(seq_len(nrow(d)), function(i) {
     id <- d$id[i]
-    excluded <- hierarchy_descendants(d, "id", "parent_id_raw", id)
-    parent_choices <- c("(rod)" = "", parent_labels(!(d$id %in% excluded)))
+    parent_value <- d$parent_id_raw[i]
+    parent_match <- match(parent_value, d$id)
+    parent_label <- if (is.na(parent_value)) "(rod)" else
+      node_labels[parent_match]
+    level_value <- d$niveau_id[i]
+    level_match <- match(level_value, niveauer$id)
+    level_label <- if (is.na(level_value)) "(vælg)" else
+      niveauer$label[level_match]
     c(
       .hierarchy_text_editor_html(ns, id, text_cols[1], text_value(text_cols[1], i)),
       paste0(padding(d$depth[i]),
@@ -97,10 +98,12 @@
              "</div>"),
       .hierarchy_text_editor_html(ns, id, text_cols[3], text_value(text_cols[3], i)),
       .hierarchy_select_editor_html(ns, id, fields[["parent"]],
-                                    d$parent_id_raw[i], parent_choices,
-                                    root = TRUE),
+                                    parent_value, choices = character(),
+                                    root = TRUE, lazy = TRUE,
+                                    current_label = parent_label),
       .hierarchy_select_editor_html(ns, id, fields[["niveau"]],
-                                    d$niveau_id[i], niveau_choices)
+                                    level_value, choices = character(),
+                                    lazy = TRUE, current_label = level_label)
     )
   })
   out <- as.data.frame(do.call(rbind, out), stringsAsFactors = FALSE,
@@ -208,11 +211,21 @@ mod_hierarchy_server <- function(id, db, cfg) {
         selected_row <- integer()
       }
       out <- .hierarchy_editor_data(d, cfg, session$ns, niveauer())
+      parent_choices <- data.frame(
+        id = d$id,
+        label = .labels(d),
+        parent_id = d$parent_id_raw,
+        stringsAsFactors = FALSE)
+      level_choices <- data.frame(
+        id = niveauer()$id,
+        label = niveauer()$label,
+        stringsAsFactors = FALSE)
       editor_value <- htmlwidgets::JS(
         "function(data, type) {\n          if (type === 'sort' || type === 'filter') {\n            return $('<div>').html(data).find('.hierarchy-editor').val() || '';\n          }\n          return data;\n        }")
       DT::datatable(out, escape = FALSE, rownames = FALSE,
         selection = list(mode = "single", selected = selected_row),
-        callback = .hierarchy_dt_callback(session$ns),
+        callback = .hierarchy_dt_callback(session$ns, parent_choices,
+                                          level_choices),
         options = list(pageLength = 25, columnDefs = list(
           list(targets = 0:4, render = editor_value))))
     }, server = FALSE)

@@ -81,6 +81,35 @@ test_that("select-editor escaper labels og udelader subtree-valg", {
   expect_match(html, "data-saved=\"\"")
 })
 
+test_that("lazy select-editor renderer kun den aktuelle vaerdi", {
+  html <- .hierarchy_select_editor_html(
+    function(x) paste0("org-", x), 7L, "parent_Id", "2",
+    choices = c("(rod)" = "", "Barn & B" = "2"), root = TRUE,
+    lazy = TRUE, current_label = "Barn & B")
+
+  expect_match(html, 'data-lazy="true"', fixed = TRUE)
+  expect_match(html, '<option value="2" selected>Barn &amp; B</option>',
+               fixed = TRUE)
+  expect_length(regmatches(html, gregexpr("<option", html, fixed = TRUE))[[1]],
+                1L)
+})
+
+test_that("DT callback hydratiserer lazy dropdowns fra delte valg", {
+  js <- as.character(.hierarchy_dt_callback(
+    function(x) paste0("org-", x),
+    parent_choices = data.frame(id = c(1L, 2L), label = c("Rod", "Barn")),
+    level_choices = data.frame(id = 10L, label = "Niveau")))
+
+  expect_match(js, "parentChoices", fixed = TRUE)
+  expect_match(js, "levelChoices", fixed = TRUE)
+  expect_match(js, "focus.hierarchy-editor", fixed = TRUE)
+  expect_match(js, "data-lazy", fixed = TRUE)
+  expect_match(js, "wouldCreateCycle", fixed = TRUE)
+  expect_match(js, "parent_id", fixed = TRUE)
+  expect_match(js, "(v\\u00e6lg)", fixed = TRUE)
+  expect_false(grepl("vÃ¦lg", js, fixed = TRUE))
+})
+
 test_that("DT callback bruger DataTables-argumentet og implementerer Enter Escape blur", {
   js <- as.character(.hierarchy_dt_callback(function(x) paste0("org-", x)))
   expect_match(js, "function(table)", fixed = TRUE)
