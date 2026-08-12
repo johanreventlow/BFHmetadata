@@ -131,7 +131,7 @@
     if (nrow(parent_row) == 1 && length(own_num) == 1 &&
         !is.na(parent_row$niveau_num[1]) && !is.na(own_num) &&
         own_num <= parent_row$niveau_num[1]) {
-      warning <- "Niveau er ikke dybere end forÃ¦lderens niveau"
+      warning <- "Niveau er ikke dybere end for\u00e6lderens niveau"
     }
   }
 
@@ -178,15 +178,15 @@
 .hierarchy_dt_callback <- function(ns) {
   input_name <- jsonlite::toJSON(ns("inline_edit"), auto_unbox = TRUE)
   htmlwidgets::JS(sprintf(
-    "function(settings) {
-      var table = this.api().table().node();
-      var $table = $(table);
+    "function(table) {
+      var $table = $(table.table().node());
       var inputName = %s;
       function submit(editor) {
         if (editor.dataset.cancelled === 'true') {
           delete editor.dataset.cancelled;
           return;
         }
+        if (editor.classList.contains('hierarchy-saving')) return;
         if (editor.value === editor.dataset.saved) return;
         var oldValue = editor.dataset.saved;
         editor.classList.add('hierarchy-saving');
@@ -197,7 +197,6 @@
           value: editor.value,
           nonce: Date.now()
         }, {priority: 'event'});
-        editor.dataset.saved = editor.value;
       }
       $table.off('.hierarchy-editor');
       $table.on('keydown.hierarchy-editor', '.hierarchy-editor', function(event) {

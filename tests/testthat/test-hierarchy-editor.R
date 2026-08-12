@@ -81,13 +81,22 @@ test_that("select-editor escaper labels og udelader subtree-valg", {
   expect_match(html, "data-saved=\"\"")
 })
 
-test_that("DT callback sender change og implementerer Enter Escape blur", {
+test_that("DT callback bruger DataTables-argumentet og implementerer Enter Escape blur", {
   js <- as.character(.hierarchy_dt_callback(function(x) paste0("org-", x)))
+  expect_match(js, "function(table)", fixed = TRUE)
+  expect_match(js, "table.table().node()", fixed = TRUE)
+  expect_false(grepl("this.api()", js, fixed = TRUE))
   expect_match(js, "Shiny.setInputValue", fixed = TRUE)
   expect_match(js, "org-inline_edit", fixed = TRUE)
   expect_match(js, "keydown", fixed = TRUE)
   expect_match(js, "Escape", fixed = TRUE)
   expect_match(js, "blur", fixed = TRUE)
+})
+
+test_that("DT callback bevarer gemt baseline mens en redigering afventer", {
+  js <- as.character(.hierarchy_dt_callback(function(x) paste0("org-", x)))
+  expect_match(js, "classList.contains('hierarchy-saving')", fixed = TRUE)
+  expect_false(grepl("editor.dataset.saved = editor.value", js, fixed = TRUE))
 })
 
 test_that("ugyldigt visningsfelt afvises uden en intern fejl", {
@@ -140,12 +149,12 @@ test_that("inline-opdatering afviser ukendt foraelder og niveau", {
   expect_match(niveau$error, "niveau", ignore.case = TRUE)
 })
 
-test_that("uændret vaerdi bevarer raekken og advarer om niveau-spring", {
+test_that("uaendret vaerdi bevarer raekken og advarer om niveau-spring", {
   db <- fake_hierarchy_db()
   result <- .prepare_hierarchy_inline_update(
     db$list_nodes(), db$niveau_options(), .hierarchy_cfg(),
     list(id = 3, field = "organisatorisk_navn_kort", value = "C"))
   expect_true(result$ok)
   expect_true(result$unchanged)
-  expect_match(result$warning, "Niveau", fixed = TRUE)
+  expect_identical(result$warning, "Niveau er ikke dybere end for\u00e6lderens niveau")
 })
