@@ -1144,3 +1144,61 @@ test_that("org_struct-fejl deaktiverer oprulning uden at vaelte scannet, og flag
     expect_match(html, "Oprulning deaktiveret")
   })
 })
+
+test_that("aggregat-badge vises for oprullede diagrammer og kun dér", {
+  skip_if_not_installed("arrow")
+  base <- withr::local_tempdir()
+  dir.create(file.path(base, "ind_agg"))
+  arrow::write_parquet(data.frame(
+    dato = rep(as.Date("2020-01-01") + 0:23 * 30, 2),
+    taeller = c(rep(10, 12), rep(2, 12), rep(10, 12), rep(2, 12)),
+    naevner = 100,
+    enhed = rep(c("afsnit_a", "afsnit_b"), each = 24)),
+    file.path(base, "ind_agg", "p.parquet"))
+  idx <- data.frame(diagram_id = 70L, indikator_id = 9L,
+    indikator_navn = "Agg", indikator_navn_teknisk = "ind_agg",
+    datasaet = "d", datapakke = "p", org_id = 1L, org_teknisk = "center",
+    org_navn = "Center", org_niveau = 5L, overafdeling = "OA", afdeling = NA,
+    afsnit = NA, stringsAsFactors = FALSE)
+  db <- make_fake_signal_db(base, idx)
+  db$org_enhed_variants <- function() data.frame(
+    org_id = c(1L, 2L, 3L), teknisk = c("center", "afsnit_a", "afsnit_b"),
+    kort = NA, langt = NA, fra_data = NA, stringsAsFactors = FALSE)
+  db$org_struct <- function() data.frame(id = c(2L, 3L), parent_id = c(1L, 1L))
+  db$aggregation_flags <- function() data.frame(
+    org_id = c(2L, 3L), indikator_id = 9L, indgaar = TRUE)
+  shiny::testServer(mod_signal_review_server, args = list(db = db), {
+    session$setInputs(parquet_dir = base, window_mode = "all", window_n = 24,
+      f_overafdeling = "", f_afsnit = "", f_datapakke = "", f_datasaet = "",
+      f_indikator_navn = "", scan = 1)
+    drain_scan()
+    html <- as.character(output$agg_badge$html)
+    expect_match(html, "Aggregeret fra 2 enheder")
+  })
+})
+
+test_that("agg_badge er tom for direkte-matchede diagrammer", {
+  skip_if_not_installed("arrow")
+  base <- build_fixture()
+  idx <- data.frame(diagram_id = c(1L, 2L), indikator_id = c(1L, 2L),
+    indikator_navn = c("Sig", "Flad"),
+    indikator_navn_teknisk = c("ind_sig", "ind_flat"),
+    datasaet = "d", datapakke = "p", org_id = 5L, org_teknisk = "E",
+    org_navn = "E", org_niveau = 5L, overafdeling = "OA", afdeling = NA,
+    afsnit = NA, stringsAsFactors = FALSE)
+  db <- make_fake_signal_db(base, idx)
+  shiny::testServer(mod_signal_review_server, args = list(db = db), {
+    session$setInputs(parquet_dir = base, window_mode = "all", window_n = 24,
+      f_overafdeling = "", f_afsnit = "", f_datapakke = "", f_datasaet = "",
+      f_indikator_navn = "", scan = 1)
+    drain_scan()
+    # renderUI der returnerer NULL giver typisk tom/whitespace html - test
+    # den BEHAVIORELLE regel: "Aggregeret"-teksten må aldrig optræde her,
+    # uanset om testServer eksponerer output som NULL, "" eller tomt tag.
+    html <- tryCatch(
+      paste(as.character(output$agg_badge$html), collapse = ""),
+      error = function(e) ""
+    )
+    expect_no_match(html, "Aggregeret")
+  })
+})

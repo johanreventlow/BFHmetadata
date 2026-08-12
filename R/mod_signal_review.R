@@ -52,6 +52,7 @@ mod_signal_review_ui <- function(id) {
         actionButton(ns("next_"), "Næste ›", class = "btn-outline-secondary btn-sm")
       )
     ),
+    uiOutput(ns("agg_badge")),
     uiOutput(ns("break_warning")),
     ggiraph::girafeOutput(ns("chart"), height = "420px"),
     div(class = "small", tableOutput(ns("phase_stats"))),
@@ -667,6 +668,18 @@ mod_signal_review_server <- function(id, db) {
       width = "auto",
       na = ""
     )
+
+    # Transparens: en oprullet serie SKAL kunne kendes fra en direkte målt —
+    # tallene er en sum af underliggende enheder, ikke egne målinger.
+    output$agg_badge <- renderUI({
+      sc <- .scan_of_current()
+      if (is.null(sc) || !isTRUE(sc$aggregated)) {
+        return(NULL)
+      }
+      div(class = "alert alert-info py-1 px-2 small mb-2",
+        sprintf("Aggregeret fra %d enheder (hierarki-oprulning som i BFHddl)",
+                sc$n_agg_units %||% 0L))
+    })
 
     # Advarsel ved grafen når knæk er udeladt af beregningen — så en ændret
     # periode_aggregering ikke ændrer faserne uden at brugeren opdager det.
