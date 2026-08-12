@@ -81,6 +81,24 @@ test_that("aggregate_child_data: ikke-overlappende datoer = det ene barns vaerdi
   expect_false("naevner" %in% names(out))      # ingen naevner-kolonne ind -> ingen ud
 })
 
+test_that("aggregate_child_data: blandet naevner (NA-fillet raekke) giver NA for beroerte datoer", {
+  # Pinner adfaerden hvis en naevner-kolonne findes men er NA for nogle
+  # raekker (fx efter bind_rows af parts hvor kun nogle havde naevner):
+  # na.rm=FALSE-princippet gaelder ogsaa her - NA smitter til center-total
+  # for enhver dato der har mindst een NA-raekke. Fra ét full_slice kan
+  # blandede parts reelt ikke opstaa (se kommentar ved bind_rows-kaldet i
+  # aggregate_slice_for_center), men selve na.rm=FALSE-semantikken skal
+  # vaere pinnet uafhaengigt af hvordan input opstaar.
+  d <- data.frame(
+    dato = as.Date(c("2024-01-01", "2024-01-01", "2024-02-01")),
+    taeller = c(2, 3, 4),
+    naevner = c(10, NA, 10),
+    enhed = c("a", "b", "a"))
+  out <- aggregate_child_data(d, center_enhed = "center")
+  out <- out[order(out$dato), ]
+  expect_equal(out$naevner, c(NA_real_, 10))   # 01-01 beroert af NA-raekken, 02-01 ikke
+})
+
 test_that("find_aggregation_children: indgaar=NA paa mellemniveau blokerer gennemfald", {
   # Test-gap fra quality review: en eksplicit registreret raekke med NA
   # (ikke kun FALSE) skal ogsaa ekskludere hele grenen - koden bruger

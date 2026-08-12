@@ -217,8 +217,8 @@ aggregate_slice_for_center <- function(full_slice, center_org_id, indikator_id,
     # undertrae (uanset om barnet var TRUE-flagget eller gennemfald;
     # kilden skelner ikke her, jf. data_loader.R:817-820).
     if ((is.null(res) || nrow(res) == 0) && max_depth > 1L) {
-      kid_variants <- enhed_variants_for(variants_df, kid)
-      kid_enhed <- if (length(kid_variants) > 0) kid_variants[[1]] else as.character(kid)
+      kid_enhed <- if (length(variants) > 0) variants[[1]] else
+        as.character(kid)
       res <- aggregate_slice_for_center(
         full_slice, kid, indikator_id, kid_enhed,
         org_struct, agg_flags, variants_df,
@@ -229,11 +229,23 @@ aggregate_slice_for_center <- function(full_slice, center_org_id, indikator_id,
     res
   })
 
+  # Fravalgt-parts (NULL/tomme) filtreres her, FOER bind_rows - kildens
+  # aggregate_child_data() filtrerer selv sin child_data-liste internt
+  # (Filter(...) foerst i funktionen); denne port pre-filtrerer/
+  # pre-kombinerer via bind_rows i stedet, saa aggregate_child_data her
+  # altid modtager en allerede-flad, allerede-renset data frame.
   parts <- Filter(function(p) !is.null(p) && nrow(p) > 0, parts)
   if (length(parts) == 0) {
     return(NULL)
   }
 
+  # bind_rows fylder manglende kolonner med NA (fx naevner hvis kun nogle
+  # parts har den, eller vaerdi fra raa slice-raekker). Fra ét full_slice
+  # kan naevner reelt ikke opstaa blandet paa tvaers af parts (raa raekker
+  # deler slicets kolonnesaet, og rekursive parts bevarer naevner-
+  # tilstedevaerelse via aggregate_child_data) - men HVIS det sker, er
+  # NA-propagering den tilsigtede semantik: na.rm=FALSE-princippet
+  # (samme muster som kilden, der ogsaa bind_rows'er foer summering).
   combined <- dplyr::bind_rows(parts)
   aggregate_child_data(combined, center_enhed = center_enhed)
 }
