@@ -676,9 +676,11 @@ mod_signal_review_server <- function(id, db) {
       if (is.null(sc) || !isTRUE(sc$aggregated)) {
         return(NULL)
       }
-      div(class = "alert alert-info py-1 px-2 small mb-2",
-        sprintf("Aggregeret fra %d enheder (hierarki-oprulning som i BFHddl)",
-                sc$n_agg_units %||% 0L))
+      div(
+        class = "alert alert-info py-1 px-2 small mb-2",
+        sprintf("Aggregeret fra %d underliggende enheder",
+                sc$n_agg_units %||% 0L)
+      )
     })
 
     # Advarsel ved grafen når knæk er udeladt af beregningen — så en ændret

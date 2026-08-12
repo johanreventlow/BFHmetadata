@@ -1173,7 +1173,7 @@ test_that("aggregat-badge vises for oprullede diagrammer og kun dér", {
       f_indikator_navn = "", scan = 1)
     drain_scan()
     html <- as.character(output$agg_badge$html)
-    expect_match(html, "Aggregeret fra 2 enheder")
+    expect_match(html, "Aggregeret fra 2 underliggende enheder")
   })
 })
 
@@ -1192,13 +1192,11 @@ test_that("agg_badge er tom for direkte-matchede diagrammer", {
       f_overafdeling = "", f_afsnit = "", f_datapakke = "", f_datasaet = "",
       f_indikator_navn = "", scan = 1)
     drain_scan()
-    # renderUI der returnerer NULL giver typisk tom/whitespace html - test
-    # den BEHAVIORELLE regel: "Aggregeret"-teksten må aldrig optræde her,
-    # uanset om testServer eksponerer output som NULL, "" eller tomt tag.
-    html <- tryCatch(
-      paste(as.character(output$agg_badge$html), collapse = ""),
-      error = function(e) ""
-    )
+    # renderUI der returnerer NULL -> output$agg_badge$html er NULL ->
+    # as.character(NULL) giver character(0), altså tom html. Direkte
+    # læsning (uden tryCatch) bevarer at en reelt fejlende render stadig
+    # fejler testen i stedet for at blive tavst absorberet.
+    html <- paste(as.character(output$agg_badge$html), collapse = "")
     expect_no_match(html, "Aggregeret")
   })
 })
