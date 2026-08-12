@@ -8,7 +8,10 @@ make_fake_signal_db <- function(base, idx) {
     diagram_medians_batch = function(diagram_ids) data.frame(
       id = integer(0), diagram = integer(0), laas_median = as.Date(character(0))),
     add_median_break = function(diagram_id, dato, aggregering = NA_character_) 999L,
-    delete_median_break = function(median_id) 1L)
+    delete_median_break = function(median_id) 1L,
+    org_struct = function() data.frame(id = integer(0), parent_id = integer(0)),
+    aggregation_flags = function() data.frame(org_id = integer(0),
+      indikator_id = integer(0), indgaar = logical(0)))
 }
 
 build_fixture <- function() {
@@ -1009,5 +1012,111 @@ test_that("gem faseskift synkroniserer scanned_list (signal-flag + view-medlemsk
     # nyt "Gem faseskift" UDEN nyt klik må ikke skrive endnu et knæk.
     session$setInputs(save_break = 2)
     expect_equal(calls$n, 1L)
+  })
+})
+
+test_that("aggregat-diagram oprulles og scannes (signal fra summeret serie)", {
+  skip_if_not_installed("arrow")
+  base <- withr::local_tempdir()
+  dir.create(file.path(base, "ind_agg"))
+  arrow::write_parquet(data.frame(
+    dato = rep(as.Date("2020-01-01") + 0:23 * 30, 2),
+    taeller = c(rep(10, 12), rep(2, 12), rep(10, 12), rep(2, 12)),
+    naevner = 100,
+    enhed = rep(c("afsnit_a", "afsnit_b"), each = 24)),
+    file.path(base, "ind_agg", "p.parquet"))
+  idx <- data.frame(diagram_id = 70L, indikator_id = 9L,
+    indikator_navn = "Agg", indikator_navn_teknisk = "ind_agg",
+    datasaet = "d", datapakke = "p", org_id = 1L, org_teknisk = "center",
+    org_navn = "Center", org_niveau = 5L, overafdeling = "OA", afdeling = NA,
+    afsnit = NA, stringsAsFactors = FALSE)
+  db <- make_fake_signal_db(base, idx)
+  db$org_enhed_variants <- function() data.frame(
+    org_id = c(1L, 2L, 3L), teknisk = c("center", "afsnit_a", "afsnit_b"),
+    kort = NA, langt = NA, fra_data = NA, stringsAsFactors = FALSE)
+  db$org_struct <- function() data.frame(id = c(2L, 3L), parent_id = c(1L, 1L))
+  db$aggregation_flags <- function() data.frame(
+    org_id = c(2L, 3L), indikator_id = 9L, indgaar = TRUE)
+  shiny::testServer(mod_signal_review_server, args = list(db = db), {
+    session$setInputs(parquet_dir = base, window_mode = "all", window_n = 24,
+      f_overafdeling = "", f_afsnit = "", f_datapakke = "", f_datasaet = "",
+      f_indikator_navn = "", scan = 1)
+    drain_scan()
+    expect_equal(scanned_list()$diagram_id, 70L)
+    sc <- .scan_of_current()
+    expect_equal(sc$status, "ok")
+    expect_true(isTRUE(sc$aggregated))
+    expect_equal(sc$n_agg_units, 2L)
+    expect_true(isTRUE(sc$signal))
+  })
+})
+
+test_that("center uden flagede boern forbliver ingen_data", {
+  skip_if_not_installed("arrow")
+  base <- withr::local_tempdir()
+  dir.create(file.path(base, "ind_agg"))
+  arrow::write_parquet(data.frame(
+    dato = rep(as.Date("2020-01-01") + 0:23 * 30, 2),
+    taeller = c(rep(10, 12), rep(2, 12), rep(10, 12), rep(2, 12)),
+    naevner = 100,
+    enhed = rep(c("afsnit_a", "afsnit_b"), each = 24)),
+    file.path(base, "ind_agg", "p.parquet"))
+  idx <- data.frame(diagram_id = 70L, indikator_id = 9L,
+    indikator_navn = "Agg", indikator_navn_teknisk = "ind_agg",
+    datasaet = "d", datapakke = "p", org_id = 1L, org_teknisk = "center",
+    org_navn = "Center", org_niveau = 5L, overafdeling = "OA", afdeling = NA,
+    afsnit = NA, stringsAsFactors = FALSE)
+  db <- make_fake_signal_db(base, idx)
+  db$org_enhed_variants <- function() data.frame(
+    org_id = c(1L, 2L, 3L), teknisk = c("center", "afsnit_a", "afsnit_b"),
+    kort = NA, langt = NA, fra_data = NA, stringsAsFactors = FALSE)
+  db$org_struct <- function() data.frame(id = c(2L, 3L), parent_id = c(1L, 1L))
+  # Ingen flag registreret for boernene -> intet grundlag for oprulning.
+  shiny::testServer(mod_signal_review_server, args = list(db = db), {
+    session$setInputs(parquet_dir = base, window_mode = "all", window_n = 24,
+      f_overafdeling = "", f_afsnit = "", f_datapakke = "", f_datasaet = "",
+      f_indikator_navn = "", scan = 1)
+    drain_scan()
+    expect_equal(nrow(scanned_list()), 0L)
+    expect_equal(scan_progress()$ingen_data, 1L)
+  })
+})
+
+test_that("direkte match vinder over oprulning", {
+  skip_if_not_installed("arrow")
+  base <- withr::local_tempdir()
+  dir.create(file.path(base, "ind_agg"))
+  arrow::write_parquet(data.frame(
+    dato = rep(as.Date("2020-01-01") + 0:23 * 30, 3),
+    taeller = c(rep(10, 12), rep(2, 12), rep(10, 12), rep(2, 12),
+                rep(c(4, 6), 12)),
+    naevner = 100,
+    enhed = rep(c("afsnit_a", "afsnit_b", "center"), each = 24)),
+    file.path(base, "ind_agg", "p.parquet"))
+  idx <- data.frame(diagram_id = 70L, indikator_id = 9L,
+    indikator_navn = "Agg", indikator_navn_teknisk = "ind_agg",
+    datasaet = "d", datapakke = "p", org_id = 1L, org_teknisk = "center",
+    org_navn = "Center", org_niveau = 5L, overafdeling = "OA", afdeling = NA,
+    afsnit = NA, stringsAsFactors = FALSE)
+  db <- make_fake_signal_db(base, idx)
+  db$org_enhed_variants <- function() data.frame(
+    org_id = c(1L, 2L, 3L), teknisk = c("center", "afsnit_a", "afsnit_b"),
+    kort = NA, langt = NA, fra_data = NA, stringsAsFactors = FALSE)
+  db$org_struct <- function() data.frame(id = c(2L, 3L), parent_id = c(1L, 1L))
+  db$aggregation_flags <- function() data.frame(
+    org_id = c(2L, 3L), indikator_id = 9L, indgaar = TRUE)
+  shiny::testServer(mod_signal_review_server, args = list(db = db), {
+    session$setInputs(parquet_dir = base, window_mode = "all", window_n = 24,
+      f_overafdeling = "", f_afsnit = "", f_datapakke = "", f_datasaet = "",
+      f_indikator_navn = "", scan = 1)
+    drain_scan()
+    # Den flade direkte-match-serie giver intet signal -> uden checkbox'en
+    # er diagrammet ikke i visningen, og current_diagram()/.scan_of_current()
+    # ville derfor være NULL (view-filter, ej scan-resultat).
+    session$setInputs(show_no_signal = TRUE)
+    sc <- .scan_of_current()
+    expect_equal(sc$status, "ok")
+    expect_false(isTRUE(sc$aggregated))
+    expect_false(isTRUE(sc$signal))
   })
 })

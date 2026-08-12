@@ -88,6 +88,10 @@ mod_signal_review_server <- function(id, db) {
     preview_parts <- reactiveVal(NULL) # ekstra forhåndsvist knæk (dato)
     selected_cursor <- reactiveVal(NULL) # cursor-stempel da punkt sidst blev klikket
     scanned_n <- reactiveVal(NULL) # vindue-værdi (NULL/int) brugt ved SIDSTE scan
+    # org-træ + aggregerings-flag til hierarki-oprulning (Task 4). Hentes én
+    # gang pr. scan (se scan-start-observeren) — list(os=..., fl=...); NULL
+    # indtil første scan, hvilket blot slår oprulning fra (safe default).
+    agg_ctx <- reactiveVal(NULL)
 
     # ggiraph-input kan ikke nulstilles fra server → stempl med cursor ved klik,
     # så et valg fra ET diagram aldrig læses som gyldigt på et ANDET (Task 7-guard).
@@ -284,7 +288,8 @@ mod_signal_review_server <- function(id, db) {
           res <- scan_diagram(row, ctx$base, meds, ctx$vdf,
             window_n = ctx$wn,
             slice_loader = get_slice,
-            period = row$periode_aggregering
+            period = row$periode_aggregering,
+            org_struct = ctx$agg_os, agg_flags = ctx$agg_fl
           )
           res$row <- row
           cc[[key]] <- res
@@ -348,6 +353,15 @@ mod_signal_review_server <- function(id, db) {
         ),
         fallback = NULL
       )
+      # Org-træ + aggregerings-flag til hierarki-oprulning: hentes ÉN gang pr.
+      # scan (ikke pr. diagram/gruppe). NULL ved fejl slår oprulning fra for
+      # scannet (scannet overlever, blot uden fallback for aggregat-diagrammer).
+      agg_os <- safe_operation("hent org-træ", db$org_struct(), fallback = NULL)
+      agg_fl <- safe_operation("hent aggregerings-flag",
+        db$aggregation_flags(),
+        fallback = NULL
+      )
+      agg_ctx(list(os = agg_os, fl = agg_fl))
       scan_ctx <<- list2env(
         list(
           cand = cand, groups = groups, gi = 1L,
@@ -358,6 +372,7 @@ mod_signal_review_server <- function(id, db) {
             compact_manifest_read(base),
             fallback = NULL
           ),
+          agg_os = agg_os, agg_fl = agg_fl,
           sig = rep(NA, nrow(cand)),
           status = rep(NA_character_, nrow(cand))
         ),
@@ -539,10 +554,16 @@ mod_signal_review_server <- function(id, db) {
       # Perioden SKAL med her også — ellers falder netop dette diagram tavst
       # tilbage til uaggregeret efter et gemt/fjernet knæk (grafen ser fin ud,
       # men er en anden serie end scannet).
+      # Samme org-træ/flag som selve scannet — ellers går aggregat-diagrammer
+      # blanke (ingen_data) igen efter et gemt/fjernet knæk. Defensivt guardet
+      # (agg_ctx() er reelt altid sat her, da cd forudsætter et forudgående
+      # scan) med %||%, så en fremtidig kaldevej ikke kan fejle på NULL$os.
+      ac <- agg_ctx() %||% list(os = NULL, fl = NULL)
       res <- c(
         scan_diagram(as.list(cd), base, meds, variants(),
           window_n = scanned_n(), slice_loader = loader,
-          period = cd$periode_aggregering
+          period = cd$periode_aggregering,
+          org_struct = ac$os, agg_flags = ac$fl
         ),
         list(row = as.list(cd))
       )
