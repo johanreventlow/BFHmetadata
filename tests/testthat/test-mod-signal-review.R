@@ -1200,3 +1200,66 @@ test_that("agg_badge er tom for direkte-matchede diagrammer", {
     expect_no_match(html, "Aggregeret")
   })
 })
+
+test_that("knæk-gem på aggregat-diagram bevarer oprulningen (.refresh_diagram-traadning)", {
+  skip_if_not_installed("arrow")
+  base <- withr::local_tempdir()
+  dir.create(file.path(base, "ind_agg"))
+  arrow::write_parquet(data.frame(
+    dato = rep(as.Date("2020-01-01") + 0:23 * 30, 2),
+    taeller = c(rep(10, 12), rep(2, 12), rep(10, 12), rep(2, 12)),
+    naevner = 100,
+    enhed = rep(c("afsnit_a", "afsnit_b"), each = 24)),
+    file.path(base, "ind_agg", "p.parquet"))
+  idx <- data.frame(diagram_id = 70L, indikator_id = 9L,
+    indikator_navn = "Agg", indikator_navn_teknisk = "ind_agg",
+    datasaet = "d", datapakke = "p", org_id = 1L, org_teknisk = "center",
+    org_navn = "Center", org_niveau = 5L, overafdeling = "OA", afdeling = NA,
+    afsnit = NA, stringsAsFactors = FALSE)
+  # Fake db der HUSKER gemte knæk (mutable env), så re-scan efter gem rent
+  # faktisk ser det nye knæk - modsat de andre agg-fixtures' altid-tomme
+  # medians (mønster fra "gem faseskift synkroniserer scanned_list").
+  meds_env <- new.env(); meds_env$df <- data.frame(
+    id = integer(0), diagram = integer(0), laas_median = as.Date(character(0)))
+  calls <- new.env(); calls$n <- 0L
+  db <- make_fake_signal_db(base, idx)
+  db$org_enhed_variants <- function() data.frame(
+    org_id = c(1L, 2L, 3L), teknisk = c("center", "afsnit_a", "afsnit_b"),
+    kort = NA, langt = NA, fra_data = NA, stringsAsFactors = FALSE)
+  db$org_struct <- function() data.frame(id = c(2L, 3L), parent_id = c(1L, 1L))
+  db$aggregation_flags <- function() data.frame(
+    org_id = c(2L, 3L), indikator_id = 9L, indgaar = TRUE)
+  db$diagram_medians <- function(diagram_id) meds_env$df
+  db$add_median_break <- function(diagram_id, dato, aggregering = NA_character_) {
+    calls$n <- calls$n + 1L
+    new_id <- nrow(meds_env$df) + 1L
+    meds_env$df <- rbind(meds_env$df, data.frame(
+      id = new_id, diagram = diagram_id, laas_median = as.Date(dato)))
+    new_id
+  }
+  shiny::testServer(mod_signal_review_server, args = list(db = db), {
+    session$setInputs(parquet_dir = base, window_mode = "all", window_n = 24,
+      f_overafdeling = "", f_afsnit = "", f_datapakke = "", f_datasaet = "",
+      f_indikator_navn = "", scan = 1)
+    drain_scan()
+    expect_true(isTRUE(.scan_of_current()$aggregated)) # foer: oprullet
+    # Gyldig (ikke-foerste) observation paa den oprullede serie
+    session$setInputs(chart_selected = "2020-12-26")
+    session$setInputs(save_break = 1)
+    # Knækket ved obs 13 løser signalet (samme dynamik som den ikke-oprullede
+    # "gem faseskift synkroniserer scanned_list"-test) -> uden checkbox'en
+    # ville diagrammet falde ud af default-visningen (signal-only), og
+    # current_diagram()/.scan_of_current() ville være NULL af GRUNDE DER
+    # INTET HAR MED agg_ctx-traadningen at gøre (view-filter, ej scan-cache).
+    session$setInputs(show_no_signal = TRUE)
+    sc <- .scan_of_current()
+    # Efter gem + .refresh_diagram: diagrammet er STADIG oprullet (agg_ctx
+    # traadt igennem) — uden traadningen ville re-scan falde til ingen_data/
+    # blank og aggregated ville vaere FALSE/NULL
+    expect_equal(sc$status, "ok")
+    expect_true(isTRUE(sc$aggregated))
+    expect_equal(sc$n_agg_units, 2L)
+    # Knaekket blev faktisk skrevet
+    expect_equal(calls$n, 1L)
+  })
+})
