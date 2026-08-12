@@ -202,10 +202,15 @@
       }
       $table.off('.hierarchy-editor');
       $table.on('click.hierarchy-editor', 'tbody tr', function() {
-        var editor = this.querySelector('.hierarchy-editor[data-node-id]');
-        var selectedId = this.classList.contains('selected') && editor ?
-          Number(editor.dataset.nodeId) : null;
-        Shiny.setInputValue(selectionName, selectedId, {priority: 'event'});
+        var row = this;
+        setTimeout(function() {
+          var editor = row.querySelector('.hierarchy-editor[data-node-id]');
+          var isSelected = row.classList.contains('selected') ||
+            row.classList.contains('active');
+          var selectedId = isSelected && editor ?
+            Number(editor.dataset.nodeId) : null;
+          Shiny.setInputValue(selectionName, selectedId, {priority: 'event'});
+        }, 0);
       });
       $table.on('keydown.hierarchy-editor', '.hierarchy-editor', function(event) {
         if (event.key === 'Enter' && this.tagName === 'INPUT') {
