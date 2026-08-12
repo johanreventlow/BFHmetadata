@@ -125,7 +125,7 @@ test_that("lazy select-editor bevarer label til ugyldig eksisterende vaerdi", {
 
 test_that("DT callback bruger DataTables-argumentet og implementerer Enter Escape blur", {
   js <- as.character(.hierarchy_dt_callback(function(x) paste0("org-", x)))
-  expect_match(js, "function(table)", fixed = TRUE)
+  expect_false(startsWith(trimws(js), "function(table)"))
   expect_match(js, "table.table().node()", fixed = TRUE)
   expect_false(grepl("this.api()", js, fixed = TRUE))
   expect_match(js, "Shiny.setInputValue", fixed = TRUE)
@@ -133,6 +133,18 @@ test_that("DT callback bruger DataTables-argumentet og implementerer Enter Escap
   expect_match(js, "keydown", fixed = TRUE)
   expect_match(js, "Escape", fixed = TRUE)
   expect_match(js, "blur", fixed = TRUE)
+})
+
+test_that("DT callback bliver kun pakket i een funktion af DT", {
+  widget <- DT::datatable(
+    data.frame(x = 1L),
+    callback = .hierarchy_dt_callback(function(x) paste0("org-", x)))
+  callback <- as.character(widget$x$callback)
+
+  expect_match(callback, "function(table) {", fixed = TRUE)
+  expect_length(gregexpr("function(table)", callback, fixed = TRUE)[[1]], 1L)
+  expect_false(grepl("function(table) {function(table)",
+                     gsub("[[:space:]]+", "", callback), fixed = TRUE))
 })
 
 test_that("DT callback sender valgt nodes stabile id uden at overtage raekkevalg", {

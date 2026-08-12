@@ -200,8 +200,7 @@
   level_json <- jsonlite::toJSON(level_choices %||% data.frame(),
                                  dataframe = "rows", na = "null")
   htmlwidgets::JS(sprintf(
-    "function(table) {
-      var $table = $(table.table().node());
+    "var $table = $(table.table().node());
       var inputName = %s;
       var selectionName = %s;
       var parentChoices = %s;
@@ -287,5 +286,5 @@
       });
       $table.on('blur.hierarchy-editor change.hierarchy-editor',
         '.hierarchy-editor', function() { submit(this); });
-    }", input_name, selection_name, parent_json, level_json))
+    ", input_name, selection_name, parent_json, level_json))
 }
