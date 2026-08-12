@@ -18,16 +18,37 @@ fake_hierarchy_db <- function() {
   niveauer <- data.frame(id = c(10L, 20L),
                          label = c("Direktion", "Afdeling"),
                          stringsAsFactors = FALSE)
-  calls <- list(created = NULL, updated = NULL, deleted = NULL)
+  calls <- list(created = NULL, updated = NULL, updates = list(), deleted = NULL)
+  update_error <- FALSE
   list(
     list_nodes = function() nodes,
     niveau_options = function() niveauer,
     create_node = function(values) { calls$created <<- values; 99L },
     update_node = function(id, values) {
-      calls$updated <<- list(id = id, values = values); 1L
+      call <- list(id = as.integer(id), values = values)
+      calls$updated <<- call
+      calls$updates[[length(calls$updates) + 1L]] <<- call
+      if (isTRUE(update_error)) stop("Forceret update-fejl")
+
+      row <- match(as.integer(id), nodes$id)
+      if (is.na(row)) stop("Node ikke fundet")
+      for (col in names(values)) {
+        node_col <- switch(col,
+          parent_Id = "parent_id_raw",
+          organisatorisk_niveau = "niveau_id",
+          col)
+        if (node_col %in% names(nodes)) nodes[[node_col]][row] <<- values[[col]]
+      }
+      niveau_row <- match(nodes$niveau_id[row], niveauer$id)
+      nodes$niveau_num[row] <<- if (is.na(niveau_row)) NA_integer_ else niveau_row
+      nodes$niveau_navn[row] <<- if (is.na(niveau_row)) NA_character_ else
+        niveauer$label[niveau_row]
+      1L
     },
     delete_node = function(id) { calls$deleted <<- id; 1L },
     child_count = function(id) sum(nodes$parent_id_raw %in% id, na.rm = TRUE),
-    .calls = function() calls
+    .calls = function() calls,
+    .nodes = function() nodes,
+    .set_update_error = function(value) update_error <<- isTRUE(value)
   )
 }

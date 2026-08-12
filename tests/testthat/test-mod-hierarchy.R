@@ -155,6 +155,105 @@ test_that("hierarki-tabel bevarer manglende niveau som tomt valgt vaerdi", {
                     out[["Niveau"]][2], fixed = TRUE))
 })
 
+test_that("inline tekstaendring gemmer straks hele noden og genindlaeser", {
+  db <- fake_hierarchy_db()
+  testServer(mod_hierarchy_server,
+    args = list(db = db, cfg = .hierarchy_cfg()), {
+      session$setInputs(inline_edit = list(
+        id = 2, field = "organisatorisk_navn_langt",
+        oldValue = "Barn B", value = "Barn B ny", nonce = 1))
+      upd <- tail(db$.calls()$updates, 1)[[1]]
+      expect_identical(upd$id, 2L)
+      expect_identical(upd$values$organisatorisk_navn_langt, "Barn B ny")
+      expect_identical(nodes()$organisatorisk_navn_langt[nodes()$id == 2L],
+                       "Barn B ny")
+      expect_match(status_msg(), "Gemt")
+    })
+})
+
+test_that("inline dropdowns gemmer integer-id og flytning genordner traeet", {
+  db <- fake_hierarchy_db()
+  testServer(mod_hierarchy_server,
+    args = list(db = db, cfg = .hierarchy_cfg()), {
+      session$setInputs(inline_edit = list(
+        id = 3, field = "parent_Id", oldValue = "2", value = "4", nonce = 1))
+      expect_identical(db$.nodes()$parent_id_raw[db$.nodes()$id == 3L], 4L)
+      expect_identical(tree()$id, c(1L, 2L, 4L, 3L))
+      session$setInputs(inline_edit = list(
+        id = 3, field = "organisatorisk_niveau",
+        oldValue = "10", value = "20", nonce = 2))
+      expect_identical(db$.nodes()$niveau_id[db$.nodes()$id == 3L], 20L)
+    })
+})
+
+test_that("afviste inline-events skriver ikke og genindlaeser autoritativ vaerdi", {
+  db <- fake_hierarchy_db()
+  testServer(mod_hierarchy_server,
+    args = list(db = db, cfg = .hierarchy_cfg()), {
+      session$setInputs(inline_edit = list(
+        id = 2, field = "id", oldValue = "2", value = "99", nonce = 1))
+      expect_length(db$.calls()$updates, 0)
+      expect_match(warn_msg(), "ukendt felt", ignore.case = TRUE)
+      session$setInputs(inline_edit = list(
+        id = 1, field = "parent_Id", oldValue = "", value = "3", nonce = 2))
+      expect_length(db$.calls()$updates, 0)
+      expect_match(warn_msg(), "cyklus", ignore.case = TRUE)
+      expect_identical(nodes(), db$.nodes())
+    })
+})
+
+test_that("uaendret inline-vaerdi genindlaeser uden databaseopdatering", {
+  db <- fake_hierarchy_db()
+  testServer(mod_hierarchy_server,
+    args = list(db = db, cfg = .hierarchy_cfg()), {
+      session$setInputs(inline_edit = list(
+        id = 2, field = "organisatorisk_navn_kort",
+        oldValue = "B", value = "B", nonce = 1))
+      expect_length(db$.calls()$updates, 0)
+      expect_identical(nodes(), db$.nodes())
+    })
+})
+
+test_that("tomt langt navn giver obligatorisk advarsel uden databaseopdatering", {
+  db <- fake_hierarchy_db()
+  testServer(mod_hierarchy_server,
+    args = list(db = db, cfg = .hierarchy_cfg()), {
+      session$setInputs(inline_edit = list(
+        id = 2, field = "organisatorisk_navn_langt",
+        oldValue = "Barn B", value = "", nonce = 1))
+      expect_length(db$.calls()$updates, 0)
+      expect_match(warn_msg(), "obligatorisk", ignore.case = TRUE)
+      expect_identical(nodes(), db$.nodes())
+    })
+})
+
+test_that("niveau der ikke er dybere end foraelder gemmes med advarsel", {
+  db <- fake_hierarchy_db()
+  testServer(mod_hierarchy_server,
+    args = list(db = db, cfg = .hierarchy_cfg()), {
+      session$setInputs(inline_edit = list(
+        id = 2, field = "organisatorisk_niveau",
+        oldValue = "20", value = "10", nonce = 1))
+      expect_length(db$.calls()$updates, 1)
+      expect_identical(db$.nodes()$niveau_id[db$.nodes()$id == 2L], 10L)
+      expect_match(warn_msg(), "ikke dybere", ignore.case = TRUE)
+    })
+})
+
+test_that("databasefejl genindlaeser autoritativ vaerdi og melder rollback", {
+  db <- fake_hierarchy_db()
+  db$.set_update_error(TRUE)
+  testServer(mod_hierarchy_server,
+    args = list(db = db, cfg = .hierarchy_cfg()), {
+      session$setInputs(inline_edit = list(
+        id = 2, field = "organisatorisk_navn_langt",
+        oldValue = "Barn B", value = "Fejler", nonce = 1))
+      expect_length(db$.calls()$updates, 1)
+      expect_identical(nodes(), db$.nodes())
+      expect_match(warn_msg(), "gendannet", ignore.case = TRUE)
+    })
+})
+
 test_that("hierarki-tabel kan rendere et tomt traee", {
   db <- fake_hierarchy_db()
   d <- hierarchy_order(db$list_nodes()[FALSE, ], "id", "parent_id_raw",

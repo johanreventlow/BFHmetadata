@@ -186,6 +186,32 @@ mod_hierarchy_server <- function(id, db, cfg) {
           list(targets = 0:4, render = editor_value))))
     }, server = FALSE)
 
+    observeEvent(input$inline_edit, {
+      result <- .prepare_hierarchy_inline_update(
+        nodes(), niveauer(), cfg, input$inline_edit)
+      if (!isTRUE(result$ok)) {
+        warn_msg(result$error)
+        reload()
+        return()
+      }
+      if (isTRUE(result$unchanged)) {
+        reload()
+        return()
+      }
+
+      ok <- safe_operation("hierarki-inline-gem", {
+        db$update_node(result$id, result$values)
+        TRUE
+      }, fallback = FALSE)
+      reload()
+      if (isTRUE(ok)) {
+        status_msg("Gemt")
+        if (nzchar(result$warning)) warn_msg(result$warning)
+      } else {
+        warn_msg("Fejl ved gem; v\u00e6rdien er gendannet")
+      }
+    })
+
     .parent_choices <- function(exclude_subtree_of = NULL) {
       d <- tree()
       if (!is.null(exclude_subtree_of)) {
