@@ -178,13 +178,43 @@ test_that("tomt datapakke/datasæt-filter viser alle rækker", {
   })
 })
 
-test_that("filter_type input findes ikke længere og påvirker ikke filtered()", {
+test_that("sætning af (nu ukendt) filter_type-input påvirker ikke filtered()", {
   db <- fake_diagram_db()
   testServer(mod_diagram_server, args = list(db = db), {
     session$setInputs(filter_status = "alle")
     before <- nrow(filtered())
     session$setInputs(filter_type = "X")
     expect_equal(nrow(filtered()), before)
+  })
+})
+
+test_that("indikator uden hierarki (NA datasaet/datapakke) vises under 'Alle' men udelades ved konkret filter", {
+  # Test-lokal fixture-kopi (tredje række med NA-hierarki) frem for at ændre
+  # den delte fake_diagram_db(): flere eksisterende tests har hardkodede
+  # rækketal (nrow(admin())==2 osv.), som en delt tredje række ville bryde.
+  db <- fake_diagram_db()
+  admin_na <- db$list_diagrams_admin()
+  admin_na <- rbind(admin_na, data.frame(
+    diagram_id = 3L, indikator = 12L, organisatorisk_navn_teknisk = 22L,
+    diagram_type = 1L, periode_aggregering = NA_character_,
+    indgaar_i_aggregering = FALSE, diagram_aktivt = TRUE,
+    direktionens_tavle = FALSE, indikator_navn = "Uden hierarki",
+    org_navn = "Onkologi", type_navn = "Seriediagram",
+    datasaet = NA_character_, datapakke = NA_character_,
+    stringsAsFactors = FALSE))
+  db$list_diagrams_admin <- function() admin_na
+
+  testServer(mod_diagram_server, args = list(db = db), {
+    session$setInputs(filter_status = "alle")
+    expect_equal(nrow(filtered()), 3)
+    expect_true(3L %in% filtered()$diagram_id)   # NA-rækken er med under "Alle"
+
+    session$setInputs(filter_datapakke = "Kliniske indikatorer")
+    expect_false(3L %in% filtered()$diagram_id)  # udelades ved konkret datapakke-filter
+    session$setInputs(filter_datapakke = "")
+
+    session$setInputs(filter_datasaet = "Fald-datasæt")
+    expect_false(3L %in% filtered()$diagram_id)  # udelades ved konkret datasæt-filter
   })
 })
 
