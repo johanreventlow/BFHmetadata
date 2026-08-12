@@ -33,6 +33,9 @@ migration/introspection_log.txt
 .Ruserdata
 Rplots.pdf
 
+# Lokale Git-worktrees
+.worktrees/
+
 # OS
 .DS_Store
 Thumbs.db
