@@ -15,8 +15,8 @@
 #
 # @noRd
 .has_flagged_descendant <- function(org_id, indikator_id, org_struct,
-                                     agg_flags, max_depth,
-                                     .visited = integer(0)) {
+                                    agg_flags, max_depth,
+                                    .visited = integer(0)) {
   if (max_depth <= 0L || org_id %in% .visited) {
     return(FALSE)
   }
@@ -77,8 +77,8 @@
 # @return Integer-vektor af bidragende org-id'er.
 # @noRd
 find_aggregation_children <- function(center_org_id, indikator_id,
-                                       org_struct, agg_flags,
-                                       max_depth = 5L) {
+                                      org_struct, agg_flags,
+                                      max_depth = 5L) {
   # Strukturelle boern
   child_ids <- org_struct$id[
     !is.na(org_struct$parent_id) & org_struct$parent_id == center_org_id
@@ -177,9 +177,9 @@ aggregate_child_data <- function(child_data, center_enhed, date_col = "dato") {
 #   oprulles.
 # @noRd
 aggregate_slice_for_center <- function(full_slice, center_org_id, indikator_id,
-                                        center_enhed, org_struct, agg_flags,
-                                        variants_df, max_depth = 5L,
-                                        .visited = integer(0)) {
+                                       center_enhed, org_struct, agg_flags,
+                                       variants_df, max_depth = 5L,
+                                       .visited = integer(0)) {
   if (is.null(full_slice) || nrow(full_slice) == 0) {
     return(NULL)
   }
@@ -217,8 +217,11 @@ aggregate_slice_for_center <- function(full_slice, center_org_id, indikator_id,
     # undertrae (uanset om barnet var TRUE-flagget eller gennemfald;
     # kilden skelner ikke her, jf. data_loader.R:817-820).
     if ((is.null(res) || nrow(res) == 0) && max_depth > 1L) {
-      kid_enhed <- if (length(variants) > 0) variants[[1]] else
+      kid_enhed <- if (length(variants) > 0) {
+        variants[[1]]
+      } else {
         as.character(kid)
+      }
       res <- aggregate_slice_for_center(
         full_slice, kid, indikator_id, kid_enhed,
         org_struct, agg_flags, variants_df,

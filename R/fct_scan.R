@@ -83,7 +83,8 @@ scan_diagram <- function(row, base_path, medians_df, variants_df, window_n = NUL
           # kids tom, springes adapteren helt over (den ville blot returnere
           # NULL igen, men uden at spilde vaerdi-guard-arbejdet undervejs).
           agg_kids <- if (!is.null(org_struct) && !is.null(agg_flags)) {
-            find_aggregation_children(row$org_id, row$indikator_id,
+            find_aggregation_children(
+              row$org_id, row$indikator_id,
               org_struct, agg_flags
             )
           } else {
@@ -197,7 +198,7 @@ medians_by_diagram <- function(medians_df, diagram_ids) {
     )
   }
   if (is.null(medians_df) || !is.data.frame(medians_df) ||
-        nrow(medians_df) == 0 || !"diagram" %in% names(medians_df)) {
+    nrow(medians_df) == 0 || !"diagram" %in% names(medians_df)) {
     return(stats::setNames(rep(list(empty), length(ids)), ids))
   }
   parts <- split(medians_df, as.character(medians_df$diagram))

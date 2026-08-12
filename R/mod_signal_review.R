@@ -678,8 +678,10 @@ mod_signal_review_server <- function(id, db) {
       }
       div(
         class = "alert alert-info py-1 px-2 small mb-2",
-        sprintf("Aggregeret fra %d underliggende enheder",
-                sc$n_agg_units %||% 0L)
+        sprintf(
+          "Aggregeret fra %d underliggende enheder",
+          sc$n_agg_units %||% 0L
+        )
       )
     })
 

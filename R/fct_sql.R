@@ -8,22 +8,31 @@
 #' @noRd
 build_list_sql <- function() {
   base_cols <- vapply(INDIKATOR_FIELDS, function(f) sprintf('i."%s"', f$col), "")
-  joins <- character(0); labels <- character(0)
+  joins <- character(0)
+  labels <- character(0)
   for (f in .fk_fields()) {
     al <- paste0("p_", f$col)
-    labels <- c(labels, sprintf('(%s) AS "label_%s"',
-                  gsub("([a-zæøå_]+)", sprintf('%s.\\1', al), f$label, perl = TRUE), f$col))
-    joins  <- c(joins, sprintf('LEFT JOIN "%s" %s ON %s."Id" = i."%s"',
-                  f$parent, al, al, f$col))
+    labels <- c(labels, sprintf(
+      '(%s) AS "label_%s"',
+      gsub("([a-zæøå_]+)", sprintf("%s.\\1", al), f$label, perl = TRUE), f$col
+    ))
+    joins <- c(joins, sprintf(
+      'LEFT JOIN "%s" %s ON %s."Id" = i."%s"',
+      f$parent, al, al, f$col
+    ))
   }
   # Datapakke = forælder-hierarki til datasæt-hierarkiet (selv-join på parent_id).
   # Afhænger af alias p_indikator_hierarki fra loopet (FK-felt i v1).
-  joins  <- c(joins, paste0('LEFT JOIN "tblIndikatorHierarki" dp ',
-                'ON dp."Id" = p_indikator_hierarki."parent_id"'))
+  joins <- c(joins, paste0(
+    'LEFT JOIN "tblIndikatorHierarki" dp ',
+    'ON dp."Id" = p_indikator_hierarki."parent_id"'
+  ))
   labels <- c(labels, 'dp."hierarki_navn" AS "label_datapakke"')
-  sprintf('SELECT %s, %s FROM "tblIndikatorer" i %s ORDER BY i."id"',
-          paste(base_cols, collapse = ", "), paste(labels, collapse = ", "),
-          paste(joins, collapse = " "))
+  sprintf(
+    'SELECT %s, %s FROM "tblIndikatorer" i %s ORDER BY i."id"',
+    paste(base_cols, collapse = ", "), paste(labels, collapse = ", "),
+    paste(joins, collapse = " ")
+  )
 }
 
 #' id + label for FK-dropdown
@@ -36,8 +45,10 @@ build_fk_options_sql <- function(parent, label_expr) {
 #' @noRd
 build_update_sql <- function(cols) {
   sets <- vapply(seq_along(cols), function(i) sprintf('"%s" = $%d', cols[i], i), "")
-  sprintf('UPDATE "tblIndikatorer" SET %s WHERE "id" = $%d',
-          paste(sets, collapse = ", "), length(cols) + 1)
+  sprintf(
+    'UPDATE "tblIndikatorer" SET %s WHERE "id" = $%d',
+    paste(sets, collapse = ", "), length(cols) + 1
+  )
 }
 
 #' Parametriseret INSERT med RETURNING id
@@ -70,8 +81,10 @@ build_junction_delete_sql <- function(j) {
 #' @noRd
 build_junction_insert_sql <- function(j, n) {
   vals <- vapply(seq_len(n), function(i) sprintf("($1, $%d)", i + 1), "")
-  sprintf('INSERT INTO "%s" ("indikator_id", "%s") VALUES %s',
-          j$table, j$fk, paste(vals, collapse = ", "))
+  sprintf(
+    'INSERT INTO "%s" ("indikator_id", "%s") VALUES %s',
+    j$table, j$fk, paste(vals, collapse = ", ")
+  )
 }
 
 #' id + tekst-label for m2m-multiselect
@@ -79,8 +92,10 @@ build_junction_insert_sql <- function(j, n) {
 #' aldrig bruger-input. Interpoleres bevidst direkte (kan ej parametriseres).
 #' @noRd
 build_junction_options_sql <- function(j) {
-  sprintf('SELECT "%s" AS id, (%s) AS label FROM "%s" ORDER BY 2',
-          j$parent_pk, j$label, j$parent)
+  sprintf(
+    'SELECT "%s" AS id, (%s) AS label FROM "%s" ORDER BY 2',
+    j$parent_pk, j$label, j$parent
+  )
 }
 
 # --- Generiske byggere for simple opslagstabeller (inline-redigering) --------
@@ -126,25 +141,25 @@ build_lookup_refcount_sql <- function(child, col) {
 #' @noRd
 build_diagram_index_sql <- function() {
   paste0(
-    'WITH RECURSIVE anc AS (',
+    "WITH RECURSIVE anc AS (",
     ' SELECT "Id" AS start_id, "parent_Id", "organisatorisk_niveau", "organisatorisk_navn_langt"',
     ' FROM "tblOrganisationStruktur"',
-    ' UNION ALL',
+    " UNION ALL",
     ' SELECT a.start_id, p."parent_Id", p."organisatorisk_niveau", p."organisatorisk_navn_langt"',
     ' FROM anc a JOIN "tblOrganisationStruktur" p ON p."Id" = a."parent_Id"',
-    '), lvl AS (',
-    ' SELECT start_id,',
+    "), lvl AS (",
+    " SELECT start_id,",
     ' max("organisatorisk_navn_langt") FILTER (WHERE "organisatorisk_niveau" = 5) AS overafdeling,',
     ' max("organisatorisk_navn_langt") FILTER (WHERE "organisatorisk_niveau" = 6) AS afdeling,',
     ' max("organisatorisk_navn_langt") FILTER (WHERE "organisatorisk_niveau" = 7) AS afsnit',
-    ' FROM anc GROUP BY start_id',
-    ') ',
+    " FROM anc GROUP BY start_id",
+    ") ",
     'SELECT d."id" AS diagram_id, d."periode_aggregering", ',
     'i."id" AS indikator_id, i."indikator_navn", i."indikator_navn_teknisk", ',
     'h."hierarki_navn" AS datasaet, dp."hierarki_navn" AS datapakke, ',
     'o."Id" AS org_id, o."organisatorisk_navn_teknisk" AS org_teknisk, ',
     'o."organisatorisk_navn_langt" AS org_navn, o."organisatorisk_niveau" AS org_niveau, ',
-    'lvl.overafdeling, lvl.afdeling, lvl.afsnit ',
+    "lvl.overafdeling, lvl.afdeling, lvl.afsnit ",
     'FROM "tblDiagrammer" d ',
     'JOIN "tblIndikatorer" i ON i."id" = d."indikator" ',
     'LEFT JOIN "tblIndikatorHierarki" h ON h."Id" = i."indikator_hierarki" ',
@@ -152,7 +167,8 @@ build_diagram_index_sql <- function() {
     'LEFT JOIN "tblOrganisationStruktur" o ON o."Id" = d."organisatorisk_navn_teknisk" ',
     'LEFT JOIN lvl ON lvl.start_id = o."Id" ',
     'WHERE d."diagram_type" = 1 AND d."diagram_aktivt" ',
-    'ORDER BY i."indikator_navn", o."organisatorisk_navn_langt"')
+    'ORDER BY i."indikator_navn", o."organisatorisk_navn_langt"'
+  )
 }
 
 #' @noRd
@@ -169,8 +185,10 @@ build_median_list_sql <- function() {
 #' array literal: 1727", set i produktion; fallback reddede scannet).
 #' @noRd
 build_median_batch_sql <- function() {
-  paste0('SELECT * FROM "tblDiagrammerMedian" WHERE "diagram" = ANY($1::int[]) ',
-         'ORDER BY "diagram", "laas_median"')
+  paste0(
+    'SELECT * FROM "tblDiagrammerMedian" WHERE "diagram" = ANY($1::int[]) ',
+    'ORDER BY "diagram", "laas_median"'
+  )
 }
 
 #' Byg Postgres array-literal af heltal ("{1,2,3}"). Kun hele tal slipper
@@ -188,8 +206,10 @@ pg_int_array <- function(ids) {
 #' ved forskellig periode (og kan drifte flere uger) — se fct_period.R.
 #' @noRd
 build_median_insert_sql <- function() {
-  paste0('INSERT INTO "tblDiagrammerMedian" ("diagram", "laas_median", ',
-         '"aggregering") VALUES ($1, $2, $3) RETURNING "id"')
+  paste0(
+    'INSERT INTO "tblDiagrammerMedian" ("diagram", "laas_median", ',
+    '"aggregering") VALUES ($1, $2, $3) RETURNING "id"'
+  )
 }
 
 #' @noRd
@@ -199,9 +219,11 @@ build_median_delete_sql <- function() {
 
 # --- Diagram-CRUD (admin) ----------------------------------------------------
 # Kolonner der redigeres i diagram-formularen (rækkefølge = parameter-orden).
-DIAGRAM_COLS <- c("indikator", "organisatorisk_navn_teknisk", "diagram_type",
-                  "periode_aggregering", "indgaar_i_aggregering",
-                  "diagram_aktivt", "direktionens_tavle")
+DIAGRAM_COLS <- c(
+  "indikator", "organisatorisk_navn_teknisk", "diagram_type",
+  "periode_aggregering", "indgaar_i_aggregering",
+  "diagram_aktivt", "direktionens_tavle"
+)
 
 #' Alle diagrammer med resolvede labels — INGEN aktiv/type-filtre (admin).
 #' @noRd
@@ -213,30 +235,37 @@ build_diagram_admin_sql <- function() {
     'd."diagram_aktivt", d."direktionens_tavle", ',
     'i."indikator_navn", ',
     'COALESCE(o."organisatorisk_navn_langt", o."organisatorisk_navn_teknisk") ',
-    'AS org_navn, ',
+    "AS org_navn, ",
     't."diagram_type" AS type_navn ',
     'FROM "tblDiagrammer" d ',
     'LEFT JOIN "tblIndikatorer" i ON i."id" = d."indikator" ',
     'LEFT JOIN "tblOrganisationStruktur" o ',
     'ON o."Id" = d."organisatorisk_navn_teknisk" ',
     'LEFT JOIN "tblDiagramTyper" t ON t."Id" = d."diagram_type" ',
-    'ORDER BY i."indikator_navn", org_navn')
+    'ORDER BY i."indikator_navn", org_navn'
+  )
 }
 
 #' @noRd
 build_diagram_insert_sql <- function() {
   ph <- paste(sprintf("$%d", seq_along(DIAGRAM_COLS)), collapse = ", ")
   qcols <- paste(sprintf('"%s"', DIAGRAM_COLS), collapse = ", ")
-  sprintf('INSERT INTO "tblDiagrammer" (%s) VALUES (%s) RETURNING "id"',
-          qcols, ph)
+  sprintf(
+    'INSERT INTO "tblDiagrammer" (%s) VALUES (%s) RETURNING "id"',
+    qcols, ph
+  )
 }
 
 #' @noRd
 build_diagram_update_sql <- function() {
-  sets <- vapply(seq_along(DIAGRAM_COLS),
-                 function(i) sprintf('"%s" = $%d', DIAGRAM_COLS[i], i), "")
-  sprintf('UPDATE "tblDiagrammer" SET %s WHERE "id" = $%d',
-          paste(sets, collapse = ", "), length(DIAGRAM_COLS) + 1)
+  sets <- vapply(
+    seq_along(DIAGRAM_COLS),
+    function(i) sprintf('"%s" = $%d', DIAGRAM_COLS[i], i), ""
+  )
+  sprintf(
+    'UPDATE "tblDiagrammer" SET %s WHERE "id" = $%d',
+    paste(sets, collapse = ", "), length(DIAGRAM_COLS) + 1
+  )
 }
 
 #' @noRd
@@ -247,16 +276,20 @@ build_diagram_delete_sql <- function() {
 #' Blød duplikat-guard: findes (indikator, org, type) allerede (undtagen id)?
 #' @noRd
 build_diagram_duplicate_sql <- function() {
-  paste0('SELECT count(*) AS n FROM "tblDiagrammer" WHERE "indikator" = $1 ',
-         'AND "organisatorisk_navn_teknisk" = $2 AND "diagram_type" = $3 ',
-         'AND "id" <> $4')
+  paste0(
+    'SELECT count(*) AS n FROM "tblDiagrammer" WHERE "indikator" = $1 ',
+    'AND "organisatorisk_navn_teknisk" = $2 AND "diagram_type" = $3 ',
+    'AND "id" <> $4'
+  )
 }
 
 #' Distinkte periode-værdier (choices til select — robust ved nye værdier)
 #' @noRd
 build_diagram_periode_sql <- function() {
-  paste0('SELECT DISTINCT "periode_aggregering" FROM "tblDiagrammer" ',
-         'WHERE "periode_aggregering" IS NOT NULL ORDER BY 1')
+  paste0(
+    'SELECT DISTINCT "periode_aggregering" FROM "tblDiagrammer" ',
+    'WHERE "periode_aggregering" IS NOT NULL ORDER BY 1'
+  )
 }
 
 #' Antal median-knæk for ét diagram (pre-check før slet → venlig besked)
@@ -276,9 +309,11 @@ build_org_struct_sql <- function() {
 #' bidrage opad.
 #' @noRd
 build_aggregation_flags_sql <- function() {
-  paste0('SELECT "organisatorisk_navn_teknisk" AS org_id, ',
-         '"indikator" AS indikator_id, ',
-         '"indgaar_i_aggregering" AS indgaar FROM "tblDiagrammer"')
+  paste0(
+    'SELECT "organisatorisk_navn_teknisk" AS org_id, ',
+    '"indikator" AS indikator_id, ',
+    '"indgaar_i_aggregering" AS indgaar FROM "tblDiagrammer"'
+  )
 }
 
 #' Én række pr. (org, enhed-fra-data-variant). LEFT JOIN bevarer organisationer
@@ -293,5 +328,6 @@ build_org_enhed_variants_sql <- function() {
     'ov."organisatorisk_navn_fra_data" AS fra_data ',
     'FROM "tblOrganisationStruktur" o ',
     'LEFT JOIN "tblOrganisationOversaettelse" ov ',
-    'ON ov."organisatorisk_navn_teknisk" = o."Id"')
+    'ON ov."organisatorisk_navn_teknisk" = o."Id"'
+  )
 }

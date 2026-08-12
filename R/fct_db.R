@@ -17,8 +17,9 @@ write_enabled <- function() {
 assert_write_enabled <- function() {
   if (!write_enabled()) {
     stop("DB-skrivning er deaktiveret. Sæt BFHMETA_WRITE=1 eller ",
-         "options(bfhmeta.write_enabled=TRUE) efter at have bekræftet target.",
-         call. = FALSE)
+      "options(bfhmeta.write_enabled=TRUE) efter at have bekræftet target.",
+      call. = FALSE
+    )
   }
 }
 
@@ -28,13 +29,15 @@ db_connect <- function() {
   cfg <- db_config()
   pw <- Sys.getenv("SUPABASE_DB_PASSWORD")
   if (!nzchar(pw)) stop("SUPABASE_DB_PASSWORD mangler i .Renviron", call. = FALSE)
-  pool::dbPool(RPostgres::Postgres(), host = cfg$host, port = cfg$port,
+  pool::dbPool(RPostgres::Postgres(),
+    host = cfg$host, port = cfg$port,
     dbname = cfg$dbname, user = cfg$user, password = pw, sslmode = cfg$sslmode,
     # Supabase-pooleren lukker inaktive forbindelser server-side. Uden
     # validationInterval = 0 udleveres en checket-ud forbindelse ofte uden
     # validering (default 600s), hvilket gav "server closed the connection
     # unexpectedly" midt i en query efter en pause i app-brug.
-    validationInterval = 0, idleTimeout = 30, minSize = 1)
+    validationInterval = 0, idleTimeout = 30, minSize = 1
+  )
 }
 
 #' Byg db-accessor-liste bundet til pool (dependency injection til modul/test)
@@ -43,9 +46,12 @@ make_db <- function(pool) {
   list(
     list_indikatorer = function() DBI::dbGetQuery(pool, build_list_sql()),
     fk_options = function() {
-      stats::setNames(lapply(.fk_fields(), function(f)
-        DBI::dbGetQuery(pool, build_fk_options_sql(f$parent, f$label))),
-        vapply(.fk_fields(), function(f) f$col, ""))
+      stats::setNames(
+        lapply(.fk_fields(), function(f) {
+          DBI::dbGetQuery(pool, build_fk_options_sql(f$parent, f$label))
+        }),
+        vapply(.fk_fields(), function(f) f$col, "")
+      )
     },
     create_indikator = function(values) {
       assert_write_enabled()
@@ -64,7 +70,8 @@ make_db <- function(pool) {
     get_junction = function(indikator_id, key) {
       j <- INDIKATOR_JUNCTIONS[[key]]
       res <- DBI::dbGetQuery(pool, build_junction_select_sql(j),
-                             params = list(indikator_id))
+        params = list(indikator_id)
+      )
       res[[j$fk]]
     },
     junction_options = function(key) {
@@ -77,10 +84,12 @@ make_db <- function(pool) {
       parent_ids <- parent_ids[!is.na(parent_ids)]
       pool::poolWithTransaction(pool, function(conn) {
         DBI::dbExecute(conn, build_junction_delete_sql(j),
-                       params = list(indikator_id))
+          params = list(indikator_id)
+        )
         if (length(parent_ids)) {
           DBI::dbExecute(conn, build_junction_insert_sql(j, length(parent_ids)),
-                         params = c(list(indikator_id), as.list(parent_ids)))
+            params = c(list(indikator_id), as.list(parent_ids))
+          )
         }
       })
     },
@@ -92,14 +101,16 @@ make_db <- function(pool) {
       pool::poolWithTransaction(pool, function(conn) {
         cols <- names(values)
         DBI::dbExecute(conn, build_update_sql(cols),
-                       params = c(unname(values), list(id)))
+          params = c(unname(values), list(id))
+        )
         for (key in names(picks)) {
           j <- INDIKATOR_JUNCTIONS[[key]]
           ids <- picks[[key]][!is.na(picks[[key]])]
           DBI::dbExecute(conn, build_junction_delete_sql(j), params = list(id))
           if (length(ids)) {
             DBI::dbExecute(conn, build_junction_insert_sql(j, length(ids)),
-                           params = c(list(id), as.list(ids)))
+              params = c(list(id), as.list(ids))
+            )
           }
         }
       })
@@ -111,13 +122,15 @@ make_db <- function(pool) {
       pool::poolWithTransaction(pool, function(conn) {
         cols <- names(values)
         newid <- DBI::dbGetQuery(conn, build_insert_sql(cols),
-                                 params = unname(values))$id[1]
+          params = unname(values)
+        )$id[1]
         for (key in names(picks)) {
           j <- INDIKATOR_JUNCTIONS[[key]]
           ids <- picks[[key]][!is.na(picks[[key]])]
           if (length(ids)) {
             DBI::dbExecute(conn, build_junction_insert_sql(j, length(ids)),
-                           params = c(list(newid), as.list(ids)))
+              params = c(list(newid), as.list(ids))
+            )
           }
         }
         newid
@@ -138,11 +151,14 @@ make_db <- function(pool) {
       ids <- unique(as.integer(diagram_ids))
       ids <- ids[!is.na(ids)]
       if (length(ids) == 0) {
-        return(data.frame(id = integer(0), diagram = integer(0),
-                          laas_median = as.Date(character(0))))
+        return(data.frame(
+          id = integer(0), diagram = integer(0),
+          laas_median = as.Date(character(0))
+        ))
       }
       DBI::dbGetQuery(pool, build_median_batch_sql(),
-                      params = list(pg_int_array(ids)))
+        params = list(pg_int_array(ids))
+      )
     },
     # aggregering = diagrammets periode_aggregering PÅ SÆTTE-TIDSPUNKTET
     # (dansk værdi, fx "uge"/"maaned"). Gør knækket selvbeskrivende, så en
@@ -151,14 +167,17 @@ make_db <- function(pool) {
     add_median_break = function(diagram_id, dato, aggregering = NA_character_) {
       assert_write_enabled()
       agg <- if (is.null(aggregering) || length(aggregering) == 0L ||
-                 is.na(aggregering) || !nzchar(trimws(aggregering))) {
+        is.na(aggregering) || !nzchar(trimws(aggregering))) {
         NA_character_
       } else {
         trimws(as.character(aggregering))
       }
       DBI::dbGetQuery(pool, build_median_insert_sql(),
-                      params = list(diagram_id, as.character(as.Date(dato)),
-                                    agg))[[1]][1]
+        params = list(
+          diagram_id, as.character(as.Date(dato)),
+          agg
+        )
+      )[[1]][1]
     },
     delete_median_break = function(median_id) {
       assert_write_enabled()
@@ -188,31 +207,39 @@ make_db <- function(pool) {
       list(
         indikator = DBI::dbGetQuery(pool, paste0(
           'SELECT "id" AS id, "indikator_navn" AS label ',
-          'FROM "tblIndikatorer" ORDER BY 2')),
+          'FROM "tblIndikatorer" ORDER BY 2'
+        )),
         org = DBI::dbGetQuery(pool, build_fk_options_sql(
           "tblOrganisationStruktur",
-          'COALESCE("organisatorisk_navn_langt","organisatorisk_navn_teknisk")')),
+          'COALESCE("organisatorisk_navn_langt","organisatorisk_navn_teknisk")'
+        )),
         type = DBI::dbGetQuery(pool, build_fk_options_sql(
-          "tblDiagramTyper", '"diagram_type"')))
+          "tblDiagramTyper", '"diagram_type"'
+        ))
+      )
     },
     diagram_duplicate_count = function(indikator, org, type, exclude_id = -1L) {
       as.integer(DBI::dbGetQuery(pool, build_diagram_duplicate_sql(),
-        params = list(indikator, org, type, exclude_id))$n[1])
+        params = list(indikator, org, type, exclude_id)
+      )$n[1])
     },
     diagram_median_count = function(diagram_id) {
       as.integer(DBI::dbGetQuery(pool, build_median_count_sql(),
-        params = list(diagram_id))$n[1])
+        params = list(diagram_id)
+      )$n[1])
     },
     # values: named list med alle DIAGRAM_COLS (rækkefølge håndhæves her)
     create_diagram = function(values) {
       assert_write_enabled()
       DBI::dbGetQuery(pool, build_diagram_insert_sql(),
-        params = unname(values[DIAGRAM_COLS]))$id[1]
+        params = unname(values[DIAGRAM_COLS])
+      )$id[1]
     },
     update_diagram = function(id, values) {
       assert_write_enabled()
       DBI::dbExecute(pool, build_diagram_update_sql(),
-        params = c(unname(values[DIAGRAM_COLS]), list(id)))
+        params = c(unname(values[DIAGRAM_COLS]), list(id))
+      )
     },
     delete_diagram = function(id) {
       assert_write_enabled()
@@ -234,24 +261,31 @@ make_lookup_db <- function(pool, cfg) {
     update_cell = function(pk_val, col, value) {
       assert_write_enabled()
       DBI::dbExecute(pool, build_lookup_update_sql(cfg$table, cfg$pk, col),
-                     params = list(value, pk_val))
+        params = list(value, pk_val)
+      )
     },
     delete_row = function(pk_val) {
       assert_write_enabled()
       DBI::dbExecute(pool, build_lookup_delete_sql(cfg$table, cfg$pk),
-                     params = list(pk_val))
+        params = list(pk_val)
+      )
     },
     # 0 hvis ingen ref_check defineret; ellers antal child-rækker der peger hertil
     ref_count = function(pk_val) {
       rc <- cfg$ref_check
-      if (is.null(rc)) return(0L)
+      if (is.null(rc)) {
+        return(0L)
+      }
       as.integer(DBI::dbGetQuery(pool, build_lookup_refcount_sql(rc$child, rc$col),
-                                 params = list(pk_val))[[1]][1])
+        params = list(pk_val)
+      )[[1]][1])
     },
     # id+label for en FK-kolonnes dropdown (NULL hvis kolonnen ej er fk)
     fk_options = function(col) {
       fc <- Find(function(c) identical(c$type, "fk") && c$col == col, cfg$cols)
-      if (is.null(fc)) return(NULL)
+      if (is.null(fc)) {
+        return(NULL)
+      }
       DBI::dbGetQuery(pool, build_fk_options_sql(fc$parent, fc$label_expr))
     }
   )
