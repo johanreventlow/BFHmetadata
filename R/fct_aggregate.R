@@ -146,3 +146,80 @@ aggregate_child_data <- function(child_data, center_enhed, date_col = "dato") {
   keep <- c(date_col, "enhed", "taeller", if (har_naevner) "naevner")
   dplyr::select(aggregated, dplyr::all_of(keep))
 }
+
+# Rekursiv slice-adapter til center-oprulning
+#
+# Spejler BFHddl's data_aggregate_children_recursive (data_loader.R:781),
+# men erstatter fil-loaderen med in-memory filtrering af et allerede
+# indlaest indikator-slice (slice_filter_enhed). Boern uden egne raekker i
+# slicet - baade gennemfald-mellemniveauer OG TRUE-flaggede boern der
+# selv mangler data - oprulles rekursivt fra deres egne boern, praecis
+# som kilden goer det (kildens check paa linje 820 skelner IKKE mellem
+# de to tilfaelde: den forsoeger blot rekursion naar barnets egen
+# data-hentning gav 0 raekker).
+#
+# @param full_slice Data frame med hele indikatorens raa slice (alle
+#   enheder), mindst kolonnerne dato, enhed, taeller.
+# @param center_org_id Org-id for centret der oprulles til.
+# @param indikator_id Indikator-id.
+# @param center_enhed Navnet der saettes i enhed-kolonnen paa resultatet.
+# @param org_struct Data frame med id + parent_id (helt org-traeet).
+# @param agg_flags Data frame med org_id, indikator_id, indgaar.
+# @param variants_df org_enhed_variants()-lignende df brugt af
+#   enhed_variants_for() til at slaa et org_id's parquet-enhed-navne op.
+# @param max_depth Maks. rekursionsdybde. Default 5L.
+#
+# @return Data frame (se aggregate_child_data), eller NULL hvis intet kan
+#   oprulles.
+# @noRd
+aggregate_slice_for_center <- function(full_slice, center_org_id, indikator_id,
+                                        center_enhed, org_struct, agg_flags,
+                                        variants_df, max_depth = 5L) {
+  if (is.null(full_slice) || nrow(full_slice) == 0) {
+    return(NULL)
+  }
+  if (is.null(org_struct) || is.null(agg_flags)) {
+    return(NULL)
+  }
+  # Vaerdi-only slice (ingen taeller-kolonne, eller taeller 100% NA) kan
+  # ikke oprulles - sum-af-medianer/vaerdier er statistisk forkert
+  # (DATA_CONVENTIONS §5).
+  if (!"taeller" %in% names(full_slice) || all(is.na(full_slice$taeller))) {
+    return(NULL)
+  }
+
+  kids <- find_aggregation_children(
+    center_org_id, indikator_id, org_struct, agg_flags,
+    max_depth = max_depth
+  )
+  if (length(kids) == 0) {
+    return(NULL)
+  }
+
+  parts <- lapply(kids, function(kid) {
+    variants <- enhed_variants_for(variants_df, kid)
+    res <- slice_filter_enhed(full_slice, variants)
+
+    # Barnet mangler egne data - forsoeg rekursivt at aggregere dets
+    # undertrae (uanset om barnet var TRUE-flagget eller gennemfald;
+    # kilden skelner ikke her, jf. data_loader.R:817-820).
+    if ((is.null(res) || nrow(res) == 0) && max_depth > 1L) {
+      kid_variants <- enhed_variants_for(variants_df, kid)
+      kid_enhed <- if (length(kid_variants) > 0) kid_variants[[1]] else as.character(kid)
+      res <- aggregate_slice_for_center(
+        full_slice, kid, indikator_id, kid_enhed,
+        org_struct, agg_flags, variants_df,
+        max_depth = max_depth - 1L
+      )
+    }
+    res
+  })
+
+  parts <- Filter(function(p) !is.null(p) && nrow(p) > 0, parts)
+  if (length(parts) == 0) {
+    return(NULL)
+  }
+
+  combined <- dplyr::bind_rows(parts)
+  aggregate_child_data(combined, center_enhed = center_enhed)
+}

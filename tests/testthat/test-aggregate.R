@@ -80,3 +80,105 @@ test_that("aggregate_child_data: ikke-overlappende datoer = det ene barns vaerdi
   expect_equal(out$taeller[order(out$dato)], c(2, 7))
   expect_false("naevner" %in% names(out))      # ingen naevner-kolonne ind -> ingen ud
 })
+
+test_that("find_aggregation_children: indgaar=NA paa mellemniveau blokerer gennemfald", {
+  # Test-gap fra quality review: en eksplicit registreret raekke med NA
+  # (ikke kun FALSE) skal ogsaa ekskludere hele grenen - koden bruger
+  # `any(rows$indgaar %in% TRUE)` som er FALSE for NA, saa dette pinnes
+  # her som kontrakt.
+  os <- .os(2, 1,  4, 2)                       # 1 -> 2 -> 4
+  fl <- .fl(2, 9, NA,  4, 9, TRUE)
+  expect_length(find_aggregation_children(1L, 9L, os, fl), 0L)
+})
+
+# --- aggregate_slice_for_center ---------------------------------------
+
+.variants <- function(...) {
+  do.call(rbind, lapply(list(...), function(x) data.frame(
+    org_id = x[[1]], teknisk = x[[2]], kort = NA, langt = NA,
+    fra_data = if (length(x) > 2) x[[3]] else NA, stringsAsFactors = FALSE)))
+}
+
+test_that("aggregate_slice_for_center: fladt tilfaelde - to TRUE-boern med data", {
+  os <- .os(2, 1,  3, 1)
+  fl <- .fl(2, 9, TRUE,  3, 9, TRUE)
+  vr <- .variants(list(2L, "afsnit_a"), list(3L, "afsnit_b"))
+  slice <- data.frame(
+    dato = as.Date(c("2024-01-01", "2024-01-01", "2024-02-01", "2024-02-01")),
+    enhed = c("afsnit_a", "afsnit_b", "afsnit_a", "afsnit_b"),
+    taeller = c(1, 2, 3, 4), naevner = c(10, 10, 10, 10))
+  out <- aggregate_slice_for_center(slice, 1L, 9L, "center", os, fl, vr)
+  out <- out[order(out$dato), ]
+  expect_equal(out$taeller, c(3, 7))
+  expect_equal(out$naevner, c(20, 20))
+  expect_true(all(out$enhed == "center"))
+})
+
+test_that("aggregate_slice_for_center: rekursivt gennemfald - 1 -> 2 (ingen data) -> 4,5", {
+  os <- .os(2, 1,  4, 2,  5, 2)                # 1 -> 2 -> {4,5}; 2 har INGEN flag-raekke
+  fl <- .fl(4, 9, TRUE,  5, 9, TRUE)
+  vr <- .variants(list(2L, "overafd"), list(4L, "afsnit_4"), list(5L, "afsnit_5"))
+  slice <- data.frame(
+    dato = as.Date(c("2024-01-01", "2024-01-01")),
+    enhed = c("afsnit_4", "afsnit_5"),
+    taeller = c(3, 5))
+  out <- aggregate_slice_for_center(slice, 1L, 9L, "center", os, fl, vr)
+  expect_equal(out$taeller, 8)
+  expect_true(all(out$enhed == "center"))
+})
+
+test_that("aggregate_slice_for_center: TRUE-barn uden egne data men med flagede boernaeboern", {
+  # Kilde-semantik (data_aggregate_children_recursive linje 820): rekursion
+  # sker naar barnet mangler EGNE data, uanset OM barnet selv var TRUE-
+  # flagget eller et gennemfald-mellemniveau. 2 er TRUE men findes ikke i
+  # slicet -> koden forsoeger rekursivt at hente 2's boern (4).
+  os <- .os(2, 1,  4, 2)
+  fl <- .fl(2, 9, TRUE,  4, 9, TRUE)
+  vr <- .variants(list(2L, "overafd"), list(4L, "afsnit_4"))
+  slice <- data.frame(
+    dato = as.Date("2024-01-01"), enhed = "afsnit_4", taeller = 6)
+  out <- aggregate_slice_for_center(slice, 1L, 9L, "center", os, fl, vr)
+  expect_equal(out$taeller, 6)
+  expect_true(all(out$enhed == "center"))
+})
+
+test_that("aggregate_slice_for_center: NULL-tilfaelde", {
+  os <- .os(2, 1)
+  fl_false <- .fl(2, 9, FALSE)
+  vr <- .variants(list(2L, "afsnit_a"))
+  slice <- data.frame(dato = as.Date("2024-01-01"), enhed = "afsnit_a", taeller = 1)
+
+  # FALSE-flag -> ingen boern -> NULL
+  expect_null(aggregate_slice_for_center(slice, 1L, 9L, "center", os, fl_false, vr))
+
+  # bidragyder uden data i slicet og uden boern -> NULL
+  fl_true <- .fl(2, 9, TRUE)
+  tom_slice <- data.frame(dato = as.Date("2024-01-01"), enhed = "andet", taeller = 1)
+  expect_null(aggregate_slice_for_center(tom_slice, 1L, 9L, "center", os, fl_true, vr))
+
+  # vaerdi-only slice (ingen taeller-kolonne) -> NULL
+  vaerdi_slice <- data.frame(dato = as.Date("2024-01-01"), enhed = "afsnit_a", vaerdi = 1)
+  expect_null(aggregate_slice_for_center(vaerdi_slice, 1L, 9L, "center", os, fl_true, vr))
+
+  # taeller-kolonne findes men er 100% NA -> NULL
+  na_slice <- data.frame(dato = as.Date("2024-01-01"), enhed = "afsnit_a", taeller = NA_real_)
+  expect_null(aggregate_slice_for_center(na_slice, 1L, 9L, "center", os, fl_true, vr))
+
+  # NULL full_slice/org_struct/agg_flags -> NULL
+  expect_null(aggregate_slice_for_center(NULL, 1L, 9L, "center", os, fl_true, vr))
+  expect_null(aggregate_slice_for_center(slice, 1L, 9L, "center", NULL, fl_true, vr))
+  expect_null(aggregate_slice_for_center(slice, 1L, 9L, "center", os, NULL, vr))
+})
+
+test_that("aggregate_slice_for_center: max_depth begraenser rekursionen", {
+  os <- .os(2, 1,  3, 2,  4, 3)                # 1 -> 2 -> 3 -> 4 (kun 4 TRUE, data paa 4)
+  fl <- .fl(4, 9, TRUE)
+  vr <- .variants(list(2L, "niv2"), list(3L, "niv3"), list(4L, "niv4"))
+  slice <- data.frame(dato = as.Date("2024-01-01"), enhed = "niv4", taeller = 9)
+
+  expect_null(aggregate_slice_for_center(slice, 1L, 9L, "center", os, fl, vr, max_depth = 1L))
+
+  out <- aggregate_slice_for_center(slice, 1L, 9L, "center", os, fl, vr)
+  expect_equal(out$taeller, 9)
+  expect_true(all(out$enhed == "center"))
+})
