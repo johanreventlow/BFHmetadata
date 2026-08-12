@@ -20,6 +20,7 @@ fake_hierarchy_db <- function() {
                          stringsAsFactors = FALSE)
   calls <- list(created = NULL, updated = NULL, updates = list(), deleted = NULL)
   update_error <- FALSE
+  delete_error <- FALSE
   list(
     list_nodes = function() nodes,
     niveau_options = function() niveauer,
@@ -45,10 +46,18 @@ fake_hierarchy_db <- function() {
         niveauer$label[niveau_row]
       1L
     },
-    delete_node = function(id) { calls$deleted <<- id; 1L },
+    delete_node = function(id) {
+      calls$deleted <<- as.integer(id)
+      if (isTRUE(delete_error)) stop("foreign key constraint")
+      row <- match(as.integer(id), nodes$id)
+      if (is.na(row)) stop("Node ikke fundet")
+      nodes <<- nodes[-row, , drop = FALSE]
+      1L
+    },
     child_count = function(id) sum(nodes$parent_id_raw %in% id, na.rm = TRUE),
     .calls = function() calls,
     .nodes = function() nodes,
-    .set_update_error = function(value) update_error <<- isTRUE(value)
+    .set_update_error = function(value) update_error <<- isTRUE(value),
+    .set_delete_error = function(value) delete_error <<- isTRUE(value)
   )
 }

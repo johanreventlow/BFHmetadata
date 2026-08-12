@@ -10,3 +10,11 @@ test_that(".write_badge_ui viser status for skrive-guard", {
 test_that("app_ui konstruerer uden fejl", {
   expect_no_error(app_ui(NULL))
 })
+
+test_that("hierarki-UI har opret og slet men ingen aabn-knap", {
+  html <- as.character(mod_hierarchy_ui(
+    "org", HIERARCHY_TABLES$org_struktur))
+  expect_match(html, "org-new_node", fixed = TRUE)
+  expect_match(html, "org-delete_selected", fixed = TRUE)
+  expect_false(grepl("open_id", html, fixed = TRUE))
+})
