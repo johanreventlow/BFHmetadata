@@ -226,6 +226,8 @@ DIAGRAM_COLS <- c(
 )
 
 #' Alle diagrammer med resolvede labels — INGEN aktiv/type-filtre (admin).
+#' datasaet/datapakke resolves via samme hierarki-joins som
+#' build_diagram_index_sql (h → indikatorens hierarki, dp → dens forælder).
 #' @noRd
 build_diagram_admin_sql <- function() {
   paste0(
@@ -236,12 +238,15 @@ build_diagram_admin_sql <- function() {
     'i."indikator_navn", ',
     'COALESCE(o."organisatorisk_navn_langt", o."organisatorisk_navn_teknisk") ',
     "AS org_navn, ",
-    't."diagram_type" AS type_navn ',
+    't."diagram_type" AS type_navn, ',
+    'h."hierarki_navn" AS datasaet, dp."hierarki_navn" AS datapakke ',
     'FROM "tblDiagrammer" d ',
     'LEFT JOIN "tblIndikatorer" i ON i."id" = d."indikator" ',
     'LEFT JOIN "tblOrganisationStruktur" o ',
     'ON o."Id" = d."organisatorisk_navn_teknisk" ',
     'LEFT JOIN "tblDiagramTyper" t ON t."Id" = d."diagram_type" ',
+    'LEFT JOIN "tblIndikatorHierarki" h ON h."Id" = i."indikator_hierarki" ',
+    'LEFT JOIN "tblIndikatorHierarki" dp ON dp."Id" = h."parent_id" ',
     'ORDER BY i."indikator_navn", org_navn'
   )
 }

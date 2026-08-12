@@ -13,6 +13,8 @@ fake_diagram_db <- function(dup_count = 0L, median_count = 0L) {
     indikator_navn = c("Tryksår", "Fald"),
     org_navn = c("Kirurgi", "Medicin"),
     type_navn = c("Seriediagram", "Søjlediagram"),
+    datasaet = c("Tryksår-datasæt", "Fald-datasæt"),
+    datapakke = c("Kliniske indikatorer", "Kliniske indikatorer"),
     stringsAsFactors = FALSE)
   calls <- list(created = NULL, updated = NULL, deleted = NULL)
   list(
@@ -128,6 +130,61 @@ test_that("slet uden median-knæk sletter og genindlæser", {
     session$setInputs(d_delete = 1)
     expect_identical(db$.calls()$deleted, 1L)
     expect_match(status_msg(), "Slettet")
+  })
+})
+
+test_that("filter på datapakke reducerer til matchende rækker", {
+  db <- fake_diagram_db()
+  testServer(mod_diagram_server, args = list(db = db), {
+    session$setInputs(filter_status = "alle")
+    expect_equal(nrow(filtered()), 2)
+    session$setInputs(filter_datapakke = "Kliniske indikatorer")
+    expect_equal(nrow(filtered()), 2)
+    session$setInputs(filter_datapakke = "")
+    expect_equal(nrow(filtered()), 2)
+  })
+})
+
+test_that("filter på datasæt reducerer til matchende rækker", {
+  db <- fake_diagram_db()
+  testServer(mod_diagram_server, args = list(db = db), {
+    session$setInputs(filter_status = "alle")
+    session$setInputs(filter_datasaet = "Fald-datasæt")
+    expect_equal(nrow(filtered()), 1)
+    expect_equal(filtered()$diagram_id, 2L)
+  })
+})
+
+test_that("kombination af datapakke + datasæt + status virker sammen", {
+  db <- fake_diagram_db()
+  testServer(mod_diagram_server, args = list(db = db), {
+    session$setInputs(filter_status = "alle",
+                      filter_datapakke = "Kliniske indikatorer",
+                      filter_datasaet = "Tryksår-datasæt")
+    expect_equal(nrow(filtered()), 1)
+    expect_equal(filtered()$diagram_id, 1L)
+    # Status-filter lægges oveni: diagram 1 er aktivt, så "inaktive" giver 0
+    session$setInputs(filter_status = "inaktive")
+    expect_equal(nrow(filtered()), 0)
+  })
+})
+
+test_that("tomt datapakke/datasæt-filter viser alle rækker", {
+  db <- fake_diagram_db()
+  testServer(mod_diagram_server, args = list(db = db), {
+    session$setInputs(filter_status = "alle", filter_datapakke = "",
+                      filter_datasaet = "")
+    expect_equal(nrow(filtered()), 2)
+  })
+})
+
+test_that("filter_type input findes ikke længere og påvirker ikke filtered()", {
+  db <- fake_diagram_db()
+  testServer(mod_diagram_server, args = list(db = db), {
+    session$setInputs(filter_status = "alle")
+    before <- nrow(filtered())
+    session$setInputs(filter_type = "X")
+    expect_equal(nrow(filtered()), before)
   })
 })
 

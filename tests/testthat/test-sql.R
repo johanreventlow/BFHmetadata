@@ -188,6 +188,13 @@ test_that("build_diagram_admin_sql joiner labels og har intet aktiv-filter", {
   expect_no_match(sql, 'WHERE d\\."diagram_type"')
 })
 
+test_that("build_diagram_admin_sql joiner hierarki (datasaet/datapakke)", {
+  sql <- build_diagram_admin_sql()
+  expect_match(sql, "AS datasaet", fixed = TRUE)
+  expect_match(sql, "AS datapakke", fixed = TRUE)
+  expect_match(sql, '"tblIndikatorHierarki"', fixed = TRUE)
+})
+
 test_that("build_diagram_insert_sql parametriserer alle kolonner + RETURNING", {
   sql <- build_diagram_insert_sql()
   for (col in DIAGRAM_COLS) expect_match(sql, sprintf('"%s"', col), fixed = TRUE)
