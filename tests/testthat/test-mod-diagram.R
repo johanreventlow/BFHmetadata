@@ -57,9 +57,25 @@ diagram_form_html <- function(vals = NULL, lock_indikator = FALSE) {
     NS("diagram"), vals, large_diagram_form_options(), lock_indikator))$html
 }
 
-test_that("nyt diagram holder indikator-HTML bounded uden advarsel", {
-  expect_no_warning(html <- diagram_form_html())
-  expect_false(grepl("Indikator 2000", html, fixed = TRUE))
+diagram_selectize_options <- function(html) {
+  select <- regmatches(
+    html,
+    regexpr(
+      '<select[^>]*id="diagram-d_indikator"[^>]*>[\\s\\S]*?</select>',
+      html,
+      perl = TRUE))
+  regmatches(select, gregexpr('<option(?:\\s|>)[^>]*>.*?</option>', select, perl = TRUE))[[1]]
+}
+
+test_that("indikator-selectize starter med hoejst noedvendige options uden advarsel", {
+  expect_no_warning(new_html <- diagram_form_html())
+  new_options <- diagram_selectize_options(new_html)
+  expect_length(new_options, 1L)
+  expect_match(new_options[[1]], 'value=""', fixed = TRUE)
+
+  edit_options <- diagram_selectize_options(diagram_form_html(list(indikator = 2000L)))
+  expect_lte(length(edit_options), 2L)
+  expect_true(any(grepl('value="2000"', edit_options, fixed = TRUE)))
 })
 
 test_that("redigering bevarer den kendte valgte indikator", {
@@ -79,6 +95,17 @@ test_that("låst indikator bevarer skjult værdi og deaktiveret visning", {
   expect_match(html, 'value="9999"', fixed = TRUE)
   expect_match(html, "Ukendt indikator #9999", fixed = TRUE)
   expect_match(html, "disabled", fixed = TRUE)
+})
+
+test_that("laast indikator bevarer en valgt indikator med label vaelg", {
+  opts <- large_diagram_form_options()
+  opts$indikator$label[[2000L]] <- "(vælg)"
+  html <- htmltools::renderTags(.diagram_form_ui(
+    NS("diagram"), list(indikator = 2000L), opts, lock_indikator = TRUE))$html
+
+  expect_match(html, 'value="2000"', fixed = TRUE)
+  expect_match(html, 'value="(vælg)"', fixed = TRUE)
+  expect_length(diagram_selectize_options(html), 1L)
 })
 
 capture_diagram_indicator_updates <- function(code) {

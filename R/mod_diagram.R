@@ -29,7 +29,7 @@
 .update_diagram_indicator <- function(session, indicators, selected = "") {
   choices <- .diagram_indicator_choices(indicators)
   selected_choice <- .diagram_indicator_initial_choices(indicators, selected)
-  selected_choice <- selected_choice[names(selected_choice) != "(vælg)"]
+  selected_choice <- selected_choice[unname(selected_choice) != ""]
   if (length(selected_choice) > 0L &&
       !unname(selected_choice) %in% unname(choices)) {
     choices <- c(choices, selected_choice)
@@ -52,7 +52,7 @@
   if (lock_indikator) {
     # Låst: disabled inputs sender ikke værdi til Shiny → send via skjult
     # select og vis navnet i et disabled tekstfelt i stedet.
-    locked_choices <- ind_choices[names(ind_choices) != "(vælg)"]
+    locked_choices <- ind_choices[unname(ind_choices) != ""]
     ind_sel <- selectizeInput(ns("d_indikator"), "Indikator",
       choices = locked_choices, selected = ind_value %||% "")
     lbl <- if (length(locked_choices) == 0L) "" else names(locked_choices)[[1]]
