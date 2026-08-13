@@ -98,6 +98,25 @@ test_that("excel_payload_to_df: tomme strenge → NA; ugyldig payload → NULL",
   expect_equal(names(empty), c("Id", "navn"))
 })
 
+test_that("excel_selected_pk: læser pk fra fullData i grid'ets AKTUELLE orden", {
+  p <- list(forSelectedVals = TRUE,
+    selectedDataBoundary = list(borderTop = 0),
+    fullData = list(data = list(list(7, "x"), list(3, "y"))))
+  expect_identical(excel_selected_pk(p), "7")
+  # Klient-sorteret orden: samme position peger nu på pk 3 — pk følger med
+  p$fullData$data <- rev(p$fullData$data)
+  expect_identical(excel_selected_pk(p), "3")
+})
+
+test_that("excel_selected_pk: ude-af-range/manglende data → NULL", {
+  expect_null(excel_selected_pk(list(
+    selectedDataBoundary = list(borderTop = 5),
+    fullData = list(data = list(list(1))))))
+  expect_null(excel_selected_pk(list(
+    selectedDataBoundary = list(borderTop = 0))))
+  expect_null(excel_selected_pk(list(fullData = list(data = list(list(1))))))
+})
+
 test_that("excel_diff_cells: finder ændrede celler via pk-match, ignorerer pk-kolonnen", {
   old <- data.frame(Id = 1:2, navn = c("A", "B"), niveau = c(1L, 2L),
                     stringsAsFactors = FALSE)

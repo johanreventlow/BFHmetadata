@@ -458,7 +458,7 @@ mod_indikator_crud_server <- function(id, db) {
       d
     })
     tbl_refresh <- reactiveVal(0) # bump → snap-back efter fejlet gem
-    tbl_sel <- reactiveVal(NULL) # 1-baseret række fra seneste selektion
+    tbl_sel <- reactiveVal(NULL) # pk (chr) for senest valgte række
 
     output$tbl <- excelR::renderExcel({
       tbl_refresh()
@@ -470,9 +470,12 @@ mod_indikator_crud_server <- function(id, db) {
         # FALSE: ellers deaktiverer width:auto table-layout:fixed, og
         # celleindholdet vinder over de beregnede kolonnebredder
         autoWidth = FALSE,
+        # Kolonne-sortering TILLADT: diff og selektion er pk-baserede, så en
+        # klient-sorteret rækkefølge er ufarlig (ren visning, nulstilles ved
+        # re-render efter gem/filter).
         allowInsertRow = FALSE, allowInsertColumn = FALSE,
         allowDeleteRow = FALSE, allowDeleteColumn = FALSE,
-        allowRenameColumn = FALSE, columnSorting = FALSE,
+        allowRenameColumn = FALSE, columnSorting = TRUE,
         rowDrag = FALSE, columnDrag = FALSE,
         getSelectedData = TRUE
       )
@@ -507,8 +510,9 @@ mod_indikator_crud_server <- function(id, db) {
     selected_id <- reactive({
       sel <- tbl_sel()
       d <- tbl_rows()
-      if (is.null(sel) || is.na(sel) || sel < 1 || sel > nrow(d)) return(NULL)
-      d[["id"]][sel]
+      j <- if (is.null(sel)) NA_integer_ else match(sel, as.character(d[["id"]]))
+      if (is.na(j)) return(NULL) # pk væk fra den viste tabel → intet valg
+      d[["id"]][j]
     })
 
     observeEvent(input$soft_delete, {
@@ -529,8 +533,9 @@ mod_indikator_crud_server <- function(id, db) {
     observeEvent(input$tbl, {
       p <- input$tbl
       if (isTRUE(p$forSelectedVals)) {
-        top <- p$selectedDataBoundary$borderTop
-        tbl_sel(if (is.null(top)) NULL else as.integer(top) + 1L)
+        # pk læses fra payloadens fullData (grid'ets aktuelle — evt.
+        # klient-sorterede — rækkefølge), aldrig fra positionen alene
+        tbl_sel(excel_selected_pk(p))
         return()
       }
       d <- tbl_rows()

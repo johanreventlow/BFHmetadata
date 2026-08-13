@@ -31,11 +31,14 @@ change_payload <- function(rows, headers = c("Id", "navn", "niveau")) {
   list(colHeaders = as.list(headers), data = rows, forSelectedVals = FALSE)
 }
 
-# excelR onSelection-payload: borderTop er 0-baseret række
-select_payload <- function(row0) {
+# excelR onSelection-payload: borderTop er 0-baseret række; fullData bærer
+# grid'ets aktuelle rækkefølge (pk i første kolonne) — pks kan omordnes for
+# at simulere klient-side sortering
+select_payload <- function(row0, pks = c("1", "2")) {
   list(forSelectedVals = TRUE,
        selectedDataBoundary = list(borderTop = row0, borderBottom = row0,
-                                   borderLeft = 0, borderRight = 0))
+                                   borderLeft = 0, borderRight = 0),
+       fullData = list(data = lapply(pks, function(p) list(p))))
 }
 
 test_that("opslagsmodul indlæser data ved start", {
@@ -92,7 +95,7 @@ test_that("widgetten renderes som excelR-grid med skjult pk og faste bredder", {
     expect_true(is.numeric(cols[[2]]$width))   # fraktil-bredde sat
     expect_false(isTRUE(w$x$autoWidth))        # ellers ignoreres bredderne
     expect_false(isTRUE(w$x$allowInsertRow))
-    expect_false(isTRUE(w$x$columnSorting))
+    expect_true(isTRUE(w$x$columnSorting))     # klik-sortering på overskrifter
   })
 })
 
@@ -127,14 +130,24 @@ test_that("ny række kalder add_row", {
   })
 })
 
-test_that("slet bruger seneste celle-selektion (0-baseret → række)", {
+test_that("slet bruger seneste celle-selektion (pk fra fullData)", {
   db <- fake_lookup_db(ref = 0L)
   testServer(mod_lookup_table_server, args = list(db = db, cfg = cfg_test), {
     session$setInputs(tbl = select_payload(0))
-    expect_equal(sel_row(), 1L)
+    expect_equal(sel_pk(), "1")
     session$setInputs(delete = 1)
     expect_equal(db$.calls()$deleted, 1L)
-    expect_null(sel_row())                      # stale selektion ryddes
+    expect_null(sel_pk())                       # stale selektion ryddes
+  })
+})
+
+test_that("selektion overlever klient-side sortering (pk følger rækken)", {
+  db <- fake_lookup_db(ref = 0L)
+  testServer(mod_lookup_table_server, args = list(db = db, cfg = cfg_test), {
+    # Grid sorteret omvendt: position 0 er nu rækken med pk 2
+    session$setInputs(tbl = select_payload(0, pks = c("2", "1")))
+    session$setInputs(delete = 1)
+    expect_equal(db$.calls()$deleted, 2L)       # IKKE server-ordenens række 1
   })
 })
 

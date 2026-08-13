@@ -27,7 +27,7 @@ mod_lookup_table_server <- function(id, db, cfg) {
     rows <- reactiveVal(db$list_rows())
     refresh <- reactiveVal(0) # bump → re-render (ny/slet række + revert)
     status_msg <- reactiveVal("")
-    sel_row <- reactiveVal(NULL) # 1-baseret række fra seneste celle-selektion
+    sel_pk <- reactiveVal(NULL) # pk (chr) for senest valgte række
     fk_cols <- Filter(function(c) identical(c$type, "fk"), cfg$cols)
     col_meta <- stats::setNames(cfg$cols, vapply(cfg$cols, function(c) c$col, ""))
 
@@ -61,24 +61,25 @@ mod_lookup_table_server <- function(id, db, cfg) {
         # beregnede kolonnebredder. FALSE → colgroup-bredderne styrer, og
         # lange værdier ombrydes i cellen (se .jexcel_theme_css).
         autoWidth = FALSE,
-        # Række/kolonne-operationer styres af knapperne + DB — ikke af grid'et.
-        # Sortering/drag er slået fra så grid-rækkefølgen ALTID matcher rows()
-        # (sel_row er positionsbaseret).
+        # Række/kolonne-operationer styres af knapperne + DB — ikke af
+        # grid'et. Kolonne-sortering er TILLADT (klik på overskriften):
+        # diff og selektion er pk-baserede, så en klient-sorteret rækkefølge
+        # er ufarlig. Sorteringen er ren visning og nulstilles ved re-render.
         allowInsertRow = FALSE, allowInsertColumn = FALSE,
         allowDeleteRow = FALSE, allowDeleteColumn = FALSE,
-        allowRenameColumn = FALSE, columnSorting = FALSE,
+        allowRenameColumn = FALSE, columnSorting = TRUE,
         rowDrag = FALSE, columnDrag = FALSE,
         getSelectedData = TRUE
       )
     })
 
     # excelR sender BÅDE celle-ændringer og selektioner på input$tbl —
-    # forSelectedVals skelner. Selektion: gem 1-baseret række til Slet-knappen.
+    # forSelectedVals skelner. Selektion: gem pk'en (læses fra payloadens
+    # fullData, dvs. grid'ets aktuelle — evt. sorterede — rækkefølge).
     observeEvent(input$tbl, {
       p <- input$tbl
       if (isTRUE(p$forSelectedVals)) {
-        top <- p$selectedDataBoundary$borderTop
-        sel_row(if (is.null(top)) NULL else as.integer(top) + 1L)
+        sel_pk(excel_selected_pk(p))
         return()
       }
       new_df <- excel_payload_to_df(p)
@@ -134,13 +135,14 @@ mod_lookup_table_server <- function(id, db, cfg) {
     })
 
     observeEvent(input$delete, {
-      sel <- sel_row()
+      sel <- sel_pk()
       d <- rows()
-      if (is.null(sel) || is.na(sel) || sel < 1 || sel > nrow(d)) {
+      j <- if (is.null(sel)) NA_integer_ else match(sel, as.character(d[[cfg$pk]]))
+      if (is.na(j)) {
         status_msg("Vælg en række først")
         return()
       }
-      pk_val <- d[[cfg$pk]][sel]
+      pk_val <- d[[cfg$pk]][j]
       # App-niveau ref-tjek (kun hvor DB ej enforcer FK)
       if (db$ref_count(pk_val) > 0) {
         status_msg("Kan ikke slettes — posten er i brug")
@@ -161,12 +163,12 @@ mod_lookup_table_server <- function(id, db, cfg) {
         return()
       }
       rows(db$list_rows())
-      sel_row(NULL) # rækken findes ikke længere — stale selektion må ej genbruges
+      sel_pk(NULL) # rækken findes ikke længere — stale selektion må ej genbruges
       refresh(refresh() + 1)
       status_msg("Slettet")
     })
 
     # eksponér til test
-    list(rows = rows, status_msg = status_msg, sel_row = sel_row)
+    list(rows = rows, status_msg = status_msg, sel_pk = sel_pk)
   })
 }

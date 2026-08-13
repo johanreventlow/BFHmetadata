@@ -123,11 +123,13 @@ test_that("dynamiske oversigtsfiltre bevarer kun gyldige valg", {
   })
 })
 
-# excelR-selektion: borderTop er 0-baseret række i den viste tabel
-.tbl_select <- function(row0) {
+# excelR-selektion: borderTop er 0-baseret række; fullData bærer grid'ets
+# aktuelle rækkefølge (pk i første kolonne)
+.tbl_select <- function(row0, pks = "1") {
   list(forSelectedVals = TRUE,
        selectedDataBoundary = list(borderTop = row0, borderBottom = row0,
-                                   borderLeft = 0, borderRight = 0))
+                                   borderLeft = 0, borderRight = 0),
+       fullData = list(data = lapply(pks, function(p) list(p))))
 }
 
 # excelR onChange-payload: bygget fra den ægte grid-data-helper med én

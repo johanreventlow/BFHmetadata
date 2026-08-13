@@ -228,7 +228,7 @@ mod_diagram_server <- function(id, db) {
     opts$periode <- db$diagram_periode_choices()
     status_msg <- reactiveVal("")
     warn_msg <- reactiveVal("")
-    grid_sel <- reactiveVal(NULL) # 1-baseret række fra seneste celle-selektion
+    grid_sel <- reactiveVal(NULL) # pk (chr) for senest valgte række
     grid_refresh <- reactiveVal(0) # bump → snap-back efter afvist inline-edit
     reload <- function() admin(db$list_diagrams_admin())
 
@@ -307,9 +307,12 @@ mod_diagram_server <- function(id, db) {
         # FALSE: ellers deaktiverer width:auto table-layout:fixed, og
         # celleindholdet vinder over de beregnede kolonnebredder
         autoWidth = FALSE,
+        # Kolonne-sortering TILLADT: diff og selektion er pk-baserede, så en
+        # klient-sorteret rækkefølge er ufarlig (ren visning, nulstilles ved
+        # re-render efter gem/filter).
         allowInsertRow = FALSE, allowInsertColumn = FALSE,
         allowDeleteRow = FALSE, allowDeleteColumn = FALSE,
-        allowRenameColumn = FALSE, columnSorting = FALSE,
+        allowRenameColumn = FALSE, columnSorting = TRUE,
         rowDrag = FALSE, columnDrag = FALSE,
         getSelectedData = TRUE
       )
@@ -322,8 +325,8 @@ mod_diagram_server <- function(id, db) {
     observeEvent(input$tbl, {
       p <- input$tbl
       if (isTRUE(p$forSelectedVals)) {
-        top <- p$selectedDataBoundary$borderTop
-        grid_sel(if (is.null(top)) NULL else as.integer(top) + 1L)
+        # pk fra payloadens fullData — robust under klient-side sortering
+        grid_sel(excel_selected_pk(p))
         return()
       }
       d <- filtered()
@@ -388,11 +391,12 @@ mod_diagram_server <- function(id, db) {
     observeEvent(input$delete_row, {
       sel <- grid_sel()
       d <- filtered()
-      if (is.null(sel) || is.na(sel) || sel < 1 || sel > nrow(d)) {
+      j <- if (is.null(sel)) NA_integer_ else match(sel, as.character(d$diagram_id))
+      if (is.na(j)) {
         status_msg("Vælg en række først")
         return()
       }
-      rid <- d$diagram_id[sel]
+      rid <- d$diagram_id[j]
       # Pre-check: median-knæk gør sletning destruktiv → venlig blokering
       n <- db$diagram_median_count(rid)
       if (n > 0) {

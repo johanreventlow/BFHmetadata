@@ -148,9 +148,10 @@ mod_hierarchy_server <- function(id, db, cfg) {
         # FALSE: ellers deaktiverer width:auto table-layout:fixed, og
         # celleindholdet vinder over de beregnede kolonnebredder
         autoWidth = FALSE,
-        # R\u00e6kke/kolonne-operationer styres af knapperne + DB. Sortering/drag
-        # er sl\u00e5et fra s\u00e5 grid-r\u00e6kkef\u00f8lgen ALTID matcher tree() (trae-orden;
-        # selektion mappes positionsbaseret til node-id).
+        # R\u00e6kke/kolonne-operationer styres af knapperne + DB. Sortering er
+        # BEVIDST sl\u00e5et fra her (modsat de flade grids): depth-first-ordenen
+        # med indrykning ER visningen \u2014 en alfabetisk sortering ville g\u00f8re
+        # Struktur-kolonnen meningsl\u00f8s.
         allowInsertRow = FALSE, allowInsertColumn = FALSE,
         allowDeleteRow = FALSE, allowDeleteColumn = FALSE,
         allowRenameColumn = FALSE, columnSorting = FALSE,
@@ -195,13 +196,9 @@ mod_hierarchy_server <- function(id, db, cfg) {
       p <- input$tbl
       d <- tree()
       if (isTRUE(p$forSelectedVals)) {
-        top <- p$selectedDataBoundary$borderTop
-        pos <- if (is.null(top)) NA_integer_ else as.integer(top) + 1L
-        selected_id(if (is.na(pos) || pos < 1 || pos > nrow(d)) {
-          NULL
-        } else {
-          d$id[pos]
-        })
+        # pk fra payloadens fullData (samme mønster som de flade grids)
+        pk <- excel_selected_pk(p)
+        selected_id(if (is.null(pk)) NULL else as.integer(pk))
         return()
       }
       grid <- hierarchy_excel_data(d, cfg)

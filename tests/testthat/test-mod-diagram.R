@@ -165,10 +165,11 @@ diagram_grid_edit <- function(d, id, column, value) {
     forSelectedVals = FALSE)
 }
 
-diagram_grid_select <- function(row0) {
+diagram_grid_select <- function(row0, pks = c("1", "2")) {
   list(forSelectedVals = TRUE,
        selectedDataBoundary = list(borderTop = row0, borderBottom = row0,
-                                   borderLeft = 0, borderRight = 0))
+                                   borderLeft = 0, borderRight = 0),
+       fullData = list(data = lapply(pks, function(p) list(p))))
 }
 
 test_that("admin-liste indlæses og status-filter default 'aktive' reducerer", {
@@ -199,7 +200,7 @@ test_that("diagram-grid: skjult pk, dropdowns med autocomplete, checkbokse", {
                            function(c) isTRUE(c$readOnly), logical(1))))
     expect_false(isTRUE(w$x$autoWidth))
     expect_false(isTRUE(w$x$allowInsertRow))
-    expect_false(isTRUE(w$x$columnSorting))
+    expect_true(isTRUE(w$x$columnSorting))     # klik-sortering på overskrifter
   })
 })
 
@@ -373,7 +374,7 @@ test_that("slet uden median-knæk sletter via række-selektion", {
   testServer(mod_diagram_server, args = list(db = db), {
     session$setInputs(filter_status = "alle")
     session$setInputs(tbl = diagram_grid_select(0))   # diagram 1
-    expect_identical(grid_sel(), 1L)
+    expect_identical(grid_sel(), "1")
     session$setInputs(delete_row = 1)
     expect_identical(db$.calls()$deleted, 1L)
     expect_match(status_msg(), "Slettet")

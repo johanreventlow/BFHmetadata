@@ -184,6 +184,30 @@ excel_payload_to_df <- function(payload) {
   df
 }
 
+#' pk-værdien for den valgte række i et excelR onSelection-payload.
+#'
+#' Læses fra payloadens fullData — grid'ets AKTUELLE rækkefølge — og IKKE
+#' fra række-positionen alene: med kolonne-sortering slået til er den
+#' visuelle rækkefølge klient-styret, og et positions-opslag i serverens
+#' df ville ramme en anden række. Forudsætter at pk er FØRSTE kolonne i
+#' grid-data (konvention i alle vores grids; skjult via type "hidden" —
+#' skjulte kolonner er stadig med i payload-data).
+#' @return pk som character, eller NULL (ingen/ugyldig selektion)
+#' @noRd
+excel_selected_pk <- function(p) {
+  top <- p$selectedDataBoundary$borderTop
+  rows <- p$fullData$data
+  if (is.null(top) || is.null(rows)) {
+    return(NULL)
+  }
+  i <- suppressWarnings(as.integer(top)) + 1L
+  if (is.na(i) || i < 1 || i > length(rows)) {
+    return(NULL)
+  }
+  v <- rows[[i]][[1]]
+  if (is.null(v) || length(v) == 0 || is.na(v)) NULL else as.character(v)
+}
+
 #' Ændrede celler mellem gammel df (typet) og ny character-df fra payload.
 #'
 #' Rækker matches på pk (som character) — rækkeorden er ikke garanteret

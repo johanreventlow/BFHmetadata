@@ -19,11 +19,13 @@
     forSelectedVals = FALSE)
 }
 
-# excelR onSelection-payload: borderTop er 0-baseret række i trae-orden
-.hierarchy_grid_select <- function(row0) {
+# excelR onSelection-payload: borderTop er 0-baseret række i trae-orden;
+# fullData bærer grid'ets rækkefølge (pk i første kolonne)
+.hierarchy_grid_select <- function(row0, pks = c("1", "2", "3", "4")) {
   list(forSelectedVals = TRUE,
        selectedDataBoundary = list(borderTop = row0, borderBottom = row0,
-                                   borderLeft = 0, borderRight = 0))
+                                   borderLeft = 0, borderRight = 0),
+       fullData = list(data = lapply(pks, function(p) list(p))))
 }
 
 fake_hierarchy_db <- function() {
