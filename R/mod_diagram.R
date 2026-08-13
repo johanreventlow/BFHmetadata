@@ -21,6 +21,18 @@
 }
 
 #' @noRd
+.diagram_indicator_choices <- function(indicators) {
+  stats::setNames(as.character(indicators$id), as.character(indicators$label))
+}
+
+#' @noRd
+.update_diagram_indicator <- function(session, indicators, selected = "") {
+  updateSelectizeInput(session, "d_indikator",
+    choices = .diagram_indicator_choices(indicators), selected = selected,
+    server = TRUE)
+}
+
+#' @noRd
 .diagram_form_ui <- function(ns, vals = NULL, opts, lock_indikator = FALSE) {
   is_new <- is.null(vals)
   v <- function(col, default = NULL) if (is_new) default else vals[[col]]
@@ -198,6 +210,10 @@ mod_diagram_server <- function(id, db) {
           div(class = "d-flex gap-2",
             modalButton("Annullér"),
             actionButton(ns("d_save"), "Gem", class = "btn-primary")))))
+      session$onFlushed(function() {
+        .update_diagram_indicator(session, opts$indikator,
+                                  if (is_new) "" else vals$indikator)
+      }, once = TRUE)
     }
 
     observeEvent(input$open_id, {

@@ -20,7 +20,10 @@ fake_diagram_db <- function(dup_count = 0L, median_count = 0L) {
   list(
     list_diagrams_admin = function() admin,
     diagram_form_options = function() list(
-      indikator = data.frame(id = c(10L, 11L), label = c("Tryksår", "Fald")),
+      indikator = data.frame(
+        id = c(10L, 11L),
+        label = c("Tryksår", "Inaktiv indikator"),
+        aktiv_indikator = c(TRUE, FALSE)),
       org = data.frame(id = c(20L, 21L), label = c("Kirurgi", "Medicin")),
       type = data.frame(id = c(1L, 2L),
                         label = c("Seriediagram", "Søjlediagram"))),
@@ -76,6 +79,53 @@ test_that("låst indikator bevarer skjult værdi og deaktiveret visning", {
   expect_match(html, 'value="9999"', fixed = TRUE)
   expect_match(html, "Ukendt indikator #9999", fixed = TRUE)
   expect_match(html, "disabled", fixed = TRUE)
+})
+
+capture_diagram_indicator_updates <- function(code) {
+  updates <- list()
+  testthat::local_mocked_bindings(
+    updateSelectizeInput = function(session, inputId, choices = NULL,
+                                    selected = NULL, server = FALSE, ...) {
+      updates[[length(updates) + 1L]] <<- list(
+        inputId = inputId, choices = choices, selected = selected, server = server)
+    },
+    .package = "BFHmetadata")
+  force(code)
+  updates
+}
+
+test_that("nyt diagram registrerer alle indikatorer til server-side soegning", {
+  updates <- capture_diagram_indicator_updates({
+    db <- fake_diagram_db()
+    testServer(mod_diagram_server, args = list(db = db), {
+      session$setInputs(new_diagram = 1)
+      session$flushReact()
+    })
+  })
+
+  expect_length(updates, 1L)
+  expect_identical(updates[[1]]$inputId, "d_indikator")
+  expect_identical(updates[[1]]$choices,
+                   c("Tryksår" = "10", "Inaktiv indikator" = "11"))
+  expect_identical(updates[[1]]$selected, "")
+  expect_true(updates[[1]]$server)
+})
+
+test_that("redigering registrerer indikatorer med den eksisterende selection", {
+  updates <- capture_diagram_indicator_updates({
+    db <- fake_diagram_db()
+    testServer(mod_diagram_server, args = list(db = db), {
+      session$setInputs(open_id = 1)
+      session$flushReact()
+    })
+  })
+
+  expect_length(updates, 1L)
+  expect_identical(updates[[1]]$inputId, "d_indikator")
+  expect_identical(updates[[1]]$choices,
+                   c("Tryksår" = "10", "Inaktiv indikator" = "11"))
+  expect_identical(updates[[1]]$selected, 10L)
+  expect_true(updates[[1]]$server)
 })
 
 test_that("admin-liste indlæses og status-filter default 'aktive' reducerer", {
