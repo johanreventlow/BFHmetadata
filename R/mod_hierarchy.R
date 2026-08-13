@@ -237,9 +237,10 @@ mod_hierarchy_server <- function(id, db, cfg) {
         selection = list(mode = "single", selected = selected_row),
         callback = .hierarchy_dt_callback(session$ns, parent_choices,
                                           level_choices),
-        options = list(stateSave = TRUE, stateDuration = -1,
-                       pageLength = 25, columnDefs = list(
-          list(targets = 0:4, render = editor_value))))
+        options = .dt_session_state_options(session$ns("tbl"), list(
+          pageLength = 25,
+          columnDefs = list(list(targets = 0:4, render = editor_value))
+        )))
     }, server = FALSE)
 
     observeEvent(input$inline_edit, {

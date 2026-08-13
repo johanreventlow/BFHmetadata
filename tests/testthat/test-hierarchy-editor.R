@@ -23,11 +23,14 @@ test_that("inline-opdatering bygger en komplet vaerdiliste", {
 test_that("organisationshierarkiet bevarer DT-tilstand i browser-sessionen", {
   db <- fake_hierarchy_db()
   testServer(mod_hierarchy_server,
-    args = list(db = db, cfg = .hierarchy_cfg()), {
+    args = list(id = "org_struktur", db = db, cfg = .hierarchy_cfg()), {
       widget <- jsonlite::fromJSON(output$tbl, simplifyVector = FALSE)
 
-      expect_true(widget$x$options$stateSave)
-      expect_identical(widget$x$options$stateDuration, -1L)
+      expect_session_dt_state(widget, session$ns("tbl"))
+      expect_identical(widget$x$options$pageLength, 25L)
+      expect_true(any(vapply(widget$x$options$columnDefs, function(def) {
+        !is.null(def$render) && identical(unlist(def$targets), 0:4)
+      }, logical(1))))
     })
 })
 

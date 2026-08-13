@@ -196,11 +196,22 @@ test_that("admin-liste indlæses og status-filter default 'aktive' reducerer", {
 
 test_that("diagramoversigten bevarer DT-tilstand i browser-sessionen", {
   db <- fake_diagram_db()
-  testServer(mod_diagram_server, args = list(db = db), {
-    widget <- jsonlite::fromJSON(output$tbl, simplifyVector = FALSE)
+  testServer(mod_diagram_server, args = list(id = "diagram", db = db), {
+    first_widget <- jsonlite::fromJSON(output$tbl, simplifyVector = FALSE)
+    first_state <- expect_session_dt_state(first_widget, session$ns("tbl"))
 
-    expect_true(widget$x$options$stateSave)
-    expect_identical(widget$x$options$stateDuration, -1L)
+    expect_identical(first_widget$x$options$pageLength, 15L)
+    expect_true(any(vapply(first_widget$x$options$columnDefs, function(def) {
+      identical(def$orderable, FALSE) && identical(def$targets, 0L)
+    }, logical(1))))
+
+    reload()
+    session$flushReact()
+    rerendered_widget <- jsonlite::fromJSON(output$tbl, simplifyVector = FALSE)
+    rerendered_state <- expect_session_dt_state(
+      rerendered_widget, session$ns("tbl"))
+
+    expect_identical(rerendered_state, first_state)
   })
 })
 

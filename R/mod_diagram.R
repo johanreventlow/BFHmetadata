@@ -202,9 +202,10 @@ mod_diagram_server <- function(id, db) {
       # Knap/flag-kolonner indeholder bevidst HTML; escape tekstkolonner (XSS)
       esc <- which(names(out) %in% c("Indikator", "Enhed", "Type", "Periode"))
       DT::datatable(out, escape = esc, rownames = FALSE, selection = "none",
-        options = list(stateSave = TRUE, stateDuration = -1,
-                       pageLength = 15, columnDefs = list(
-          list(orderable = FALSE, targets = 0))))
+        options = .dt_session_state_options(session$ns("tbl"), list(
+          pageLength = 15,
+          columnDefs = list(list(orderable = FALSE, targets = 0))
+        )))
     })
 
     .show_form_modal <- function(vals = NULL) {

@@ -41,6 +41,8 @@ test_that("opslagstabellen gemmer ikke DT-tilstand uden brugerfiltrering", {
     widget <- jsonlite::fromJSON(output$tbl, simplifyVector = FALSE)
 
     expect_null(widget$x$options$stateSave)
+    expect_null(widget$x$options$stateSaveCallback)
+    expect_null(widget$x$options$stateLoadCallback)
   })
 })
 

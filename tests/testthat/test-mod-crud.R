@@ -74,14 +74,23 @@ test_that("indikator-tabeller bevarer DT-tilstand i browser-sessionen", {
     label_datapakke = "Pakke A", label_indikator_hierarki = "Datasæt A",
     stringsAsFactors = FALSE)
   db$list_indikatorer <- function() overview_rows
-  testServer(mod_indikator_crud_server, args = list(db = db), {
+  testServer(mod_indikator_crud_server,
+    args = list(id = "indik", db = db), {
     inline_widget <- jsonlite::fromJSON(output$tbl, simplifyVector = FALSE)
     overview_widget <- jsonlite::fromJSON(output$oversigt, simplifyVector = FALSE)
 
-    expect_true(inline_widget$x$options$stateSave)
-    expect_identical(inline_widget$x$options$stateDuration, -1L)
-    expect_true(overview_widget$x$options$stateSave)
-    expect_identical(overview_widget$x$options$stateDuration, -1L)
+    inline_state <- expect_session_dt_state(inline_widget, session$ns("tbl"))
+    overview_state <- expect_session_dt_state(
+      overview_widget, session$ns("oversigt"))
+
+    expect_false(identical(inline_state$key, overview_state$key))
+    expect_false(identical(
+      inline_state$save_callback, overview_state$save_callback))
+    expect_identical(overview_widget$x$options$pageLength, 10L)
+    expect_true(any(vapply(overview_widget$x$options$columnDefs, function(def) {
+      identical(def$orderable, FALSE) && identical(def$targets, 0L)
+    }, logical(1))))
+    expect_false(is.null(inline_widget$x$editable))
   })
 })
 

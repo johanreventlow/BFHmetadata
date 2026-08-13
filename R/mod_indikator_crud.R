@@ -377,7 +377,7 @@ mod_indikator_crud_server <- function(id, db) {
         d <- d[d$aktiv_indikator %in% TRUE, , drop = FALSE]
       editable_cols <- which(names(d) %in% INLINE_EDITABLE) - 1
       DT::datatable(d, selection = "single", rownames = FALSE,
-        options = list(stateSave = TRUE, stateDuration = -1),
+        options = .dt_session_state_options(session$ns("tbl")),
         editable = list(target = "cell", disable = list(columns = setdiff(seq_len(ncol(d))-1, editable_cols))))
     })
 
@@ -452,9 +452,10 @@ mod_indikator_crud_server <- function(id, db) {
       # Knap/Aktiv/Id indeholder bevidst HTML; escape kun rene tekstkolonner (XSS)
       esc <- which(names(out) %in% c("Datapakke", "Datasæt", "Navn"))
       DT::datatable(out, escape = esc, rownames = FALSE, selection = "single",
-        options = list(stateSave = TRUE, stateDuration = -1,
-                       pageLength = 10, columnDefs = list(
-          list(orderable = FALSE, targets = 0))))
+        options = .dt_session_state_options(session$ns("oversigt"), list(
+          pageLength = 10,
+          columnDefs = list(list(orderable = FALSE, targets = 0))
+        )))
     })
 
     # Hel-række-klik åbner modal (design: hele rækken er klikbar)
