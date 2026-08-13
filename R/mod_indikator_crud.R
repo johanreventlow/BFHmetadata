@@ -45,7 +45,8 @@ INDIKATOR_MODAL_COLS <- c(
   "ønsket_tendens", "mål", "output_enhed", "sp_rapport_id", "direkte_link",
   "definition_kort", "definition_dataportal", "tæller_beskrivelse",
   "nævner_beskrivelse", "indikator_ukompatibel_med", "antal_observationer",
-  "periode_fra", "aktiv_indikator", "nøgleindikator", "tillad_auto_opdatering")
+  "periode_fra", "aktiv_indikator", "nøgleindikator",
+  "nulfyld_tomme_perioder", "tillad_auto_opdatering")
 
 # Danske felt-labels i modalen (col → vist tekst)
 INDIKATOR_MODAL_LABELS <- c(
@@ -59,6 +60,7 @@ INDIKATOR_MODAL_LABELS <- c(
   indikator_ukompatibel_med = "Kommentarer vedr. anvendelse",
   antal_observationer = "Antal observationer", periode_fra = "Periode fra",
   aktiv_indikator = "Aktiv indikator", nøgleindikator = "Nøgleindikator",
+  nulfyld_tomme_perioder = "Nulfyld tomme perioder",
   tillad_auto_opdatering = "Auto-opdatér rosa felter")
 
 #' @noRd
@@ -114,6 +116,7 @@ mod_indikator_crud_ui <- function(id) {
 # redigeres fortsat i modalen ("Åbn valgte").
 .INDIKATOR_GRID_FIELDS <- c(
   "Aktiv" = "aktiv_indikator", "Nøgle" = "nøgleindikator",
+  "Nulfyld" = "nulfyld_tomme_perioder",
   "Datasæt" = "indikator_hierarki", "Navn" = "indikator_navn",
   "Mål" = "mål", "Output-enhed" = "output_enhed",
   "Ønsket tendens" = "ønsket_tendens", "Direkte link" = "direkte_link",
@@ -130,6 +133,7 @@ indikator_excel_data <- function(d) {
   out <- data.frame(id = d$id, stringsAsFactors = FALSE, check.names = FALSE)
   out[["Aktiv"]] <- col_of("aktiv_indikator") %in% TRUE
   out[["Nøgle"]] <- col_of("nøgleindikator") %in% TRUE
+  out[["Nulfyld"]] <- col_of("nulfyld_tomme_perioder") %in% TRUE
   out[["Datapakke"]] <- chr_or_empty(col_of("label_datapakke"))
   out[["Datasæt"]] <- chr_or_empty(col_of("indikator_hierarki"))
   out[["Indikator-id"]] <- chr_or_empty(col_of("indikator_navn_teknisk"))
@@ -171,14 +175,14 @@ indikator_excel_columns <- function(d, fk) {
     id = c("", OUTPUT_ENHED_CHOICES, oe_used),
     name = c("(ingen)", OUTPUT_ENHED_CHOICES, oe_used),
     stringsAsFactors = FALSE)
-  titles <- c("id", "Aktiv", "Nøgle", "Datapakke", "Datasæt", "Indikator-id",
-              "Navn", "Mål", "Output-enhed", "Ønsket tendens", "Direkte link",
-              "Kontaktperson", "Datakilde")
+  titles <- c("id", "Aktiv", "Nøgle", "Nulfyld", "Datapakke", "Datasæt",
+              "Indikator-id", "Navn", "Mål", "Output-enhed", "Ønsket tendens",
+              "Direkte link", "Kontaktperson", "Datakilde")
   dropdown_titles <- c("Datasæt", "Output-enhed", "Kontaktperson", "Datakilde")
   out <- data.frame(
     title = titles,
     type = ifelse(titles == "id", "hidden",
-      ifelse(titles %in% c("Aktiv", "Nøgle"), "checkbox",
+      ifelse(titles %in% c("Aktiv", "Nøgle", "Nulfyld"), "checkbox",
         ifelse(titles %in% dropdown_titles, "dropdown", "text"))),
     readOnly = titles %in% c("id", "Datapakke", "Indikator-id"),
     align = "left",
@@ -304,7 +308,8 @@ mod_indikator_crud_server <- function(id, db) {
         sect("Datagrundlag & status"),
         two_up(fin("antal_observationer"), fin("periode_fra")),
         div(class = "d-flex flex-wrap gap-4 pt-1",
-          fin("aktiv_indikator"), fin("nøgleindikator"), fin("tillad_auto_opdatering")))
+          fin("aktiv_indikator"), fin("nøgleindikator"),
+          fin("nulfyld_tomme_perioder"), fin("tillad_auto_opdatering")))
 
       modalDialog(title = if (is_new) "Ny indikator" else "Redigér indikator",
         size = "xl", easyClose = FALSE,
@@ -571,7 +576,8 @@ mod_indikator_crud_server <- function(id, db) {
     # readOnly-kolonner kan ikke redigeres i grid'et, men diffen guarder
     # alligevel (klient-manipulation).
     .IND_FK_FIELDS <- c("indikator_hierarki", "kontaktperson", "datakilde")
-    .IND_BOOL_FIELDS <- c("aktiv_indikator", "nøgleindikator")
+    .IND_BOOL_FIELDS <- c("aktiv_indikator", "nøgleindikator",
+                          "nulfyld_tomme_perioder")
     observeEvent(input$tbl, {
       p <- input$tbl
       if (isTRUE(p$forSelectedVals)) {

@@ -99,6 +99,10 @@ INDIKATOR_FIELDS <- list(
   list(col="tillad_auto_opdatering",   kind="bool"),
   list(col="aktiv_indikator",          kind="bool"),
   list(col="nøgleindikator",           kind="bool"),
+  # Opt-in: nulfyld tomme perioder i hændelsestællinger (BFHddl
+  # fill_empty_periods, DATA_CONVENTIONS §3b). Kræver migration
+  # 04_add_nulfyld_tomme_perioder.sql i Supabase.
+  list(col="nulfyld_tomme_perioder",   kind="bool"),
   list(col="definition_kort",          kind="textarea"),
   list(col="definition_dataportal",    kind="textarea"),
   list(col="tæller_beskrivelse",       kind="textarea"),

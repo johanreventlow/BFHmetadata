@@ -9,6 +9,7 @@ fake_db <- function() {
   store <- data.frame(id = 1L, indikator_navn = "A",
                       indikator_navn_teknisk = "a",
                       aktiv_indikator = TRUE, nøgleindikator = FALSE,
+                      nulfyld_tomme_perioder = FALSE,
                       indikator_hierarki = 1L, kontaktperson = 1L, datakilde = 1L,
                       mål = NA_character_, ønsket_tendens = NA_character_,
                       direkte_link = NA_character_,
@@ -83,6 +84,7 @@ test_that("indikator-grid: skjult pk, checkbokse, FK-dropdowns, låst kontekst",
     expect_equal(types[titles == "id"], "hidden")        # pk aldrig synlig
     expect_equal(types[titles == "Aktiv"], "checkbox")
     expect_equal(types[titles == "Nøgle"], "checkbox")
+    expect_equal(types[titles == "Nulfyld"], "checkbox") # BFHddl-opt-in-flag
     expect_equal(types[titles == "Datasæt"], "dropdown")
     expect_true(isTRUE(cols[[which(titles == "Datasæt")]]$autocomplete))
     expect_equal(types[titles == "Kontaktperson"], "dropdown")
@@ -182,6 +184,8 @@ test_that("inline checkbox-ændring gemmer logical", {
     session$setInputs(tbl = .ind_grid_edit(isolate(rows()), 1L, "Nøgle", "TRUE"))
     u <- db$.calls()$updated
     expect_equal(u[[2]], list(nøgleindikator = TRUE))
+    session$setInputs(tbl = .ind_grid_edit(isolate(rows()), 1L, "Nulfyld", "TRUE"))
+    expect_equal(db$.calls()$updated[[2]], list(nulfyld_tomme_perioder = TRUE))
   })
 })
 
