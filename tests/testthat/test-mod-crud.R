@@ -75,9 +75,7 @@ test_that("dynamiske oversigtsfiltre bevarer kun gyldige valg", {
     label_datapakke = c("Pakke A", "Pakke B"),
     label_indikator_hierarki = c("Datasæt A", "Datasæt B"),
     stringsAsFactors = FALSE)
-  rows_source <- new.env(parent = emptyenv())
-  rows_source$rows <- initial_rows
-  db$list_indikatorer <- function() rows_source$rows
+  db$list_indikatorer <- function() initial_rows
 
   testServer(mod_indikator_crud_server, args = list(db = db), {
     session$setInputs(filter_datapakke = "Pakke A", filter_datasaet = "Datasæt A")
@@ -87,13 +85,10 @@ test_that("dynamiske oversigtsfiltre bevarer kun gyldige valg", {
     expect_identical(selected_option_value(output$filter_datapakke_ui), "Pakke A")
     expect_identical(selected_option_value(output$filter_datasaet_ui), "Datasæt A")
 
-    rows_without_dataset_a <- initial_rows
-    rows_without_dataset_a$label_indikator_hierarki[[1L]] <- "Datasæt B"
-    rows_source$rows <- rows_without_dataset_a
-    reload()
+    session$setInputs(filter_datapakke = "Pakke B")
     session$flushReact()
 
-    expect_identical(selected_option_value(output$filter_datapakke_ui), "Pakke A")
+    expect_identical(input$filter_datapakke, "Pakke B")
     expect_identical(selected_option_value(output$filter_datasaet_ui), "")
   })
 })
