@@ -6,19 +6,37 @@
 #' list(indikator=df, org=df, type=df, periode=chr). Returnerer tagList —
 #' kalderen wrapper i modalDialog.
 #' @noRd
+.diagram_indicator_initial_choices <- function(indicators, selected = NULL) {
+  selected <- suppressWarnings(as.integer(selected))
+  empty <- c("(vælg)" = "")
+  if (length(selected) != 1L || is.na(selected)) return(empty)
+
+  idx <- match(selected, indicators$id)
+  label <- if (is.na(idx)) {
+    sprintf("Ukendt indikator #%d", selected)
+  } else {
+    as.character(indicators$label[[idx]])
+  }
+  c(empty, stats::setNames(as.character(selected), label))
+}
+
+#' @noRd
 .diagram_form_ui <- function(ns, vals = NULL, opts, lock_indikator = FALSE) {
   is_new <- is.null(vals)
   v <- function(col, default = NULL) if (is_new) default else vals[[col]]
   ch <- function(d) stats::setNames(d$id, d$label)
 
-  ind_sel <- selectInput(ns("d_indikator"), "Indikator",
-    choices = c("(vælg)" = "", ch(opts$indikator)),
-    selected = v("indikator") %||% "")
+  ind_value <- v("indikator")
+  ind_choices <- .diagram_indicator_initial_choices(opts$indikator, ind_value)
+  ind_sel <- selectizeInput(ns("d_indikator"), "Indikator",
+    choices = ind_choices, selected = ind_value %||% "")
   if (lock_indikator) {
     # Låst: disabled inputs sender ikke værdi til Shiny → send via skjult
     # select og vis navnet i et disabled tekstfelt i stedet.
-    idx <- match(as.integer(v("indikator") %||% NA_integer_), opts$indikator$id)
-    lbl <- if (is.na(idx)) "" else opts$indikator$label[idx]
+    locked_choices <- ind_choices[names(ind_choices) != "(vælg)"]
+    ind_sel <- selectizeInput(ns("d_indikator"), "Indikator",
+      choices = locked_choices, selected = ind_value %||% "")
+    lbl <- if (length(locked_choices) == 0L) "" else names(locked_choices)[[1]]
     vis <- textInput(ns("d_indikator_vis"), "Indikator", value = lbl)
     vis <- htmltools::tagQuery(vis)$find("input")$addAttrs(disabled = NA)$allTags()
     ind_sel <- tagList(div(style = "display:none", ind_sel), vis)

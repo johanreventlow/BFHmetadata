@@ -38,6 +38,46 @@ fake_diagram_db <- function(dup_count = 0L, median_count = 0L) {
   )
 }
 
+large_diagram_form_options <- function() {
+  list(
+    indikator = data.frame(
+      id = seq_len(2000L),
+      label = paste("Indikator", seq_len(2000L)),
+      stringsAsFactors = FALSE),
+    org = data.frame(id = 20L, label = "Kirurgi"),
+    type = data.frame(id = 1L, label = "Seriediagram"),
+    periode = "måned")
+}
+
+diagram_form_html <- function(vals = NULL, lock_indikator = FALSE) {
+  htmltools::renderTags(.diagram_form_ui(
+    NS("diagram"), vals, large_diagram_form_options(), lock_indikator))$html
+}
+
+test_that("nyt diagram holder indikator-HTML bounded uden advarsel", {
+  expect_no_warning(html <- diagram_form_html())
+  expect_false(grepl("Indikator 2000", html, fixed = TRUE))
+})
+
+test_that("redigering bevarer den kendte valgte indikator", {
+  html <- diagram_form_html(list(indikator = 2000L))
+  expect_match(html, "Indikator 2000", fixed = TRUE)
+  expect_match(html, 'value="2000"', fixed = TRUE)
+})
+
+test_that("redigering viser fallback for ukendt valgt indikator", {
+  html <- diagram_form_html(list(indikator = 9999L))
+  expect_match(html, "Ukendt indikator #9999", fixed = TRUE)
+  expect_match(html, 'value="9999"', fixed = TRUE)
+})
+
+test_that("låst indikator bevarer skjult værdi og deaktiveret visning", {
+  html <- diagram_form_html(list(indikator = 9999L), lock_indikator = TRUE)
+  expect_match(html, 'value="9999"', fixed = TRUE)
+  expect_match(html, "Ukendt indikator #9999", fixed = TRUE)
+  expect_match(html, "disabled", fixed = TRUE)
+})
+
 test_that("admin-liste indlæses og status-filter default 'aktive' reducerer", {
   db <- fake_diagram_db()
   testServer(mod_diagram_server, args = list(db = db), {
