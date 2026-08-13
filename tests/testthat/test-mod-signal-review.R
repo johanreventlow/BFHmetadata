@@ -1263,3 +1263,64 @@ test_that("knæk-gem på aggregat-diagram bevarer oprulningen (.refresh_diagram-
     expect_equal(calls$n, 1L)
   })
 })
+
+test_that("show_breaks viser diagrammer uden signal men med median-knæk", {
+  skip_if_not_installed("arrow")
+  base <- build_fixture()
+  idx <- data.frame(diagram_id = c(1L, 2L), indikator_id = c(1L, 2L),
+    indikator_navn = c("Sig", "Flad"),
+    indikator_navn_teknisk = c("ind_sig", "ind_flat"),
+    datasaet = "d", datapakke = "p", org_id = 5L, org_teknisk = "E",
+    org_navn = "E", org_niveau = 5L, overafdeling = "OA", afdeling = NA,
+    afsnit = NA, stringsAsFactors = FALSE)
+  db <- make_fake_signal_db(base, idx)
+  # Kun det FLADE diagram (uden signal) har et eksisterende knæk
+  meds <- data.frame(id = 1L, diagram = 2L,
+                     laas_median = as.Date("2020-07-28"))
+  db$diagram_medians_batch <- function(diagram_ids) meds
+  db$diagram_medians <- function(diagram_id)
+    meds[meds$diagram == diagram_id, , drop = FALSE]
+  shiny::testServer(mod_signal_review_server, args = list(db = db), {
+    session$setInputs(parquet_dir = base, window_mode = "all", window_n = 24,
+      f_overafdeling = "", f_afsnit = "", f_datapakke = "", f_datasaet = "",
+      f_indikator_navn = "", scan = 1)
+    drain_scan()
+    expect_equal(view_list()$diagram_id, 1L)             # default: kun signal
+    session$setInputs(show_breaks = TRUE)
+    expect_setequal(view_list()$diagram_id, c(1L, 2L))   # + knæk-diagram
+    session$setInputs(show_breaks = FALSE)
+    expect_equal(view_list()$diagram_id, 1L)
+  })
+})
+
+test_that("sort_by_type sorterer visningen efter signal-type", {
+  skip_if_not_installed("arrow")
+  base <- withr::local_tempdir()
+  # a: kryds-signal (blokke af 6); b: serie-signal (langt løb)
+  arrow::write_parquet(data.frame(dato = as.Date("2020-01-01") + 0:23 * 30,
+    vaerdi = rep(c(rep(10, 6), rep(2, 6)), 2), taeller = NA_real_,
+    naevner = NA_real_, enhed = "e"),
+    { dir.create(file.path(base, "a")); file.path(base, "a", "p.parquet") })
+  arrow::write_parquet(data.frame(dato = as.Date("2020-01-01") + 0:23 * 30,
+    vaerdi = c(rep(10, 12), rep(2, 12)), taeller = NA_real_,
+    naevner = NA_real_, enhed = "e"),
+    { dir.create(file.path(base, "b")); file.path(base, "b", "p.parquet") })
+  idx <- data.frame(diagram_id = c(10L, 20L), indikator_id = 1:2,
+    indikator_navn = c("Kryds", "Serie"), indikator_navn_teknisk = c("a", "b"),
+    datasaet = "d", datapakke = "p", org_id = 5L, org_teknisk = "E",
+    org_navn = "E", org_niveau = 5L, overafdeling = "OA", afdeling = NA,
+    afsnit = NA, stringsAsFactors = FALSE)
+  db <- make_fake_signal_db(base, idx)
+  shiny::testServer(mod_signal_review_server, args = list(db = db), {
+    session$setInputs(parquet_dir = base, window_mode = "all", window_n = 24,
+      f_overafdeling = "", f_afsnit = "", f_datapakke = "", f_datasaet = "",
+      f_indikator_navn = "", scan = 1)
+    drain_scan()
+    expect_equal(view_list()$diagram_id, c(10L, 20L))    # scan-rækkefølge
+    session$setInputs(sort_by_type = TRUE)
+    # b (12 høje + 12 lave) udløser BÅDE langt løb og få kryds → "begge",
+    # som sorterer før "kryds"
+    expect_equal(view_list()$diagram_id, c(20L, 10L))
+    expect_equal(view_list()$signal_type, c("begge", "kryds"))
+  })
+})

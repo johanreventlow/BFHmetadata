@@ -252,6 +252,27 @@ test_that("apply_index_filters: AND på tværs af dimensioner; tom filter = alt"
   expect_equal(nrow(apply_index_filters(idx, list(overafdeling = ""))), 4)
 })
 
+test_that("apply_index_filters: flere værdier pr. dimension = OR (multi-select)", {
+  idx <- data.frame(
+    diagram_id = 1:4,
+    overafdeling = c("A", "A", "B", NA),
+    afsnit = NA_character_,
+    datapakke = c("P", "Q", "P", "P"),
+    datasaet = c("d1", "d1", "d1", "d2"),
+    indikator_navn = c("i1", "i1", "i1", "i1"),
+    stringsAsFactors = FALSE)
+  # OR inden for dimension: A eller B → rækker 1-3 (NA matcher aldrig)
+  r <- apply_index_filters(idx, list(overafdeling = c("A", "B")))
+  expect_equal(r$diagram_id, 1:3)
+  # AND på tværs af dimensioner bevares med multi-værdier
+  r <- apply_index_filters(idx, list(overafdeling = c("A", "B"), datapakke = "P"))
+  expect_equal(r$diagram_id, c(1L, 3L))
+  # character(0) (multi-select ryddet) og tomme strenge i vektoren ignoreres
+  expect_equal(nrow(apply_index_filters(idx, list(overafdeling = character(0)))), 4)
+  r <- apply_index_filters(idx, list(overafdeling = c("", "B")))
+  expect_equal(r$diagram_id, 3L)
+})
+
 # --- Periode-aggregering i scan_diagram -------------------------------------
 # Signalet SKAL beregnes på samme serie som BFHddl tegner. Se fct_period.R.
 
@@ -367,6 +388,38 @@ test_that("scan_diagram: vaerdi-kolonne + aggregering → fejl (ej tavs no-op)",
   res <- scan_diagram(.scan_row("vaerdi_ind"), base, NULL, .scan_vdf(),
                       period = "week")
   expect_equal(res$status, "fejl")   # safe_operation fanger → synlig fejl
+})
+
+test_that("scan_view_filter: show_breaks medtager knæk-diagrammer uden signal", {
+  sl <- data.frame(
+    diagram_id = 1:4,
+    signal = c(TRUE, FALSE, FALSE, NA),
+    has_breaks = c(FALSE, TRUE, FALSE, TRUE))
+  # kun signal (default)
+  expect_equal(scan_view_filter(sl, FALSE)$diagram_id, 1L)
+  # signal ELLER eksisterende knæk
+  expect_equal(scan_view_filter(sl, FALSE, show_breaks = TRUE)$diagram_id,
+               c(1L, 2L, 4L))
+  # show_all vinder over show_breaks
+  expect_equal(scan_view_filter(sl, TRUE, show_breaks = TRUE)$diagram_id, 1:4)
+  # manglende has_breaks-kolonne (ældre kaldere) → degrader til kun-signal
+  expect_equal(
+    scan_view_filter(sl[, c("diagram_id", "signal")], FALSE, show_breaks = TRUE)$diagram_id,
+    1L)
+})
+
+test_that("scan_view_sort: grupperer efter signal-type, stabil inden for grupper", {
+  sv <- data.frame(
+    diagram_id = 1:6,
+    signal = c(FALSE, TRUE, TRUE, FALSE, TRUE, TRUE),
+    has_breaks = c(TRUE, FALSE, FALSE, FALSE, FALSE, FALSE),
+    signal_type = c(NA, "kryds", "serie", NA, "begge", "kryds"))
+  # begge > serie > kryds (stabil: 2 før 6) > knæk-uden-signal > øvrige
+  expect_equal(scan_view_sort(sv, by_type = TRUE)$diagram_id,
+               c(5L, 3L, 2L, 6L, 1L, 4L))
+  # by_type = FALSE → uændret rækkefølge; NULL ind → NULL ud
+  expect_equal(scan_view_sort(sv, by_type = FALSE)$diagram_id, 1:6)
+  expect_null(scan_view_sort(NULL, by_type = TRUE))
 })
 
 test_that("scan_view_filter: NULL forbliver NULL; show_all styrer signal-filter", {

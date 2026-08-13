@@ -12,7 +12,7 @@ mod_signal_review_ui <- function(id) {
         class = "d-flex gap-2 align-items-end",
         radioButtons(ns("window_mode"), "Datavindue",
           c("Alle data" = "all", "Seneste N" = "latest"),
-          inline = TRUE
+          selected = "latest", inline = TRUE
         ),
         # N tæller PERIODER (uger/måneder), ej dage — 36 matcher BFHddl's
         # effektive default (antal_observationer er NULL for ~alle indikatorer).
@@ -20,11 +20,23 @@ mod_signal_review_ui <- function(id) {
       ),
       uiOutput(ns("window_hint")),
       hr(),
-      selectizeInput(ns("f_overafdeling"), "Overafdeling", NULL, multiple = FALSE),
-      selectizeInput(ns("f_afsnit"), "Afsnit", NULL, multiple = FALSE),
-      selectizeInput(ns("f_datapakke"), "Datapakke", NULL, multiple = FALSE),
-      selectizeInput(ns("f_datasaet"), "Datasæt", NULL, multiple = FALSE),
-      selectizeInput(ns("f_indikator_navn"), "Indikator", NULL, multiple = FALSE),
+      # Multi-select pr. dimension: flere valg = OR inden for dimensionen,
+      # AND på tværs (se apply_index_filters). Tomt felt = alle.
+      selectizeInput(ns("f_overafdeling"), "Overafdeling", NULL,
+        multiple = TRUE, options = list(placeholder = "(alle)", plugins = list("remove_button"))
+      ),
+      selectizeInput(ns("f_afsnit"), "Afsnit", NULL,
+        multiple = TRUE, options = list(placeholder = "(alle)", plugins = list("remove_button"))
+      ),
+      selectizeInput(ns("f_datapakke"), "Datapakke", NULL,
+        multiple = TRUE, options = list(placeholder = "(alle)", plugins = list("remove_button"))
+      ),
+      selectizeInput(ns("f_datasaet"), "Datasæt", NULL,
+        multiple = TRUE, options = list(placeholder = "(alle)", plugins = list("remove_button"))
+      ),
+      selectizeInput(ns("f_indikator_navn"), "Indikator", NULL,
+        multiple = TRUE, options = list(placeholder = "(alle)", plugins = list("remove_button"))
+      ),
       checkboxInput(ns("force_refresh"), "Ignorér dags-cache (genindlæs data)",
         value = FALSE
       ),
@@ -35,6 +47,14 @@ mod_signal_review_ui <- function(id) {
       uiOutput(ns("scan_summary")),
       hr(),
       checkboxInput(ns("show_no_signal"), "Vis også diagrammer uden signal",
+        value = FALSE
+      ),
+      checkboxInput(ns("show_breaks"),
+        "Vis også uden signal, men med median-knæk",
+        value = FALSE
+      ),
+      checkboxInput(ns("sort_by_type"),
+        "Sortér efter signal-type (serie/kryds)",
         value = FALSE
       ),
       bslib::accordion(
@@ -79,10 +99,17 @@ mod_signal_review_server <- function(id, db) {
     variants <- reactiveVal(db$org_enhed_variants())
     cache <- reactiveVal(list()) # nøgle "<diagram_id>|<window>" → scan-res
     scanned_list <- reactiveVal(NULL) # df: ALLE ok-scannede (+ signal/status)
-    show_all <- reactiveVal(FALSE) # checkbox-tilstand (styret via observer,
-    # så cursor kan remappes deterministisk)
-    # Visningen der bladres i: checkbox fra -> kun signal; til -> alle ok-scannede
-    view_list <- reactive(scan_view_filter(scanned_list(), show_all()))
+    # Visnings-tilstand (styret via observers, så cursor kan remappes
+    # deterministisk ved hvert skifte): all = alle ok-scannede, breaks =
+    # medtag knæk-diagrammer uden signal, by_type = sortér efter signal-type.
+    view_state <- reactiveVal(list(all = FALSE, breaks = FALSE, by_type = FALSE))
+    .view_of <- function(sl, st) {
+      scan_view_sort(
+        scan_view_filter(sl, show_all = st$all, show_breaks = st$breaks),
+        by_type = st$by_type
+      )
+    }
+    view_list <- reactive(.view_of(scanned_list(), view_state()))
     # Bagudkompat (tests + evt. eksterne læsere): kun signal-diagrammer
     signal_list <- reactive(scan_view_filter(scanned_list(), FALSE))
     cursor <- reactiveVal(1L)
@@ -98,35 +125,44 @@ mod_signal_review_server <- function(id, db) {
     # så et valg fra ET diagram aldrig læses som gyldigt på et ANDET (Task 7-guard).
     observeEvent(input$chart_selected, selected_cursor(cursor()))
 
-    # Checkbox-toggle: bevar det aktuelle diagram i visningen hvis muligt.
-    # show_all opdateres HER (ikke direkte fra input) så gammel/ny visning kan
-    # beregnes side om side - en reaktiv afledning ville miste den gamle
-    # position før remap.
+    # Visnings-skifte (checkbox/sortering): bevar det aktuelle diagram i
+    # visningen hvis muligt. view_state opdateres HER (ikke direkte fra
+    # input) så gammel/ny visning kan beregnes side om side - en reaktiv
+    # afledning ville miste den gamle position før remap.
+    .apply_view_change <- function(patch) {
+      sl <- scanned_list()
+      old_view <- .view_of(sl, view_state())
+      old_id <- if (!is.null(old_view) && nrow(old_view) > 0) {
+        old_view$diagram_id[min(cursor(), nrow(old_view))]
+      } else {
+        NULL
+      }
+      view_state(utils::modifyList(view_state(), patch))
+      new_view <- .view_of(sl, view_state())
+      pos <- if (!is.null(old_id) && !is.null(new_view)) {
+        match(old_id, new_view$diagram_id)
+      } else {
+        NA_integer_
+      }
+      cursor(if (is.na(pos)) 1L else as.integer(pos))
+      # Fallback (diagrammet forsvandt) kan flytte cursoren til et ANDET
+      # diagram på SAMME numeriske position (Task 7-guard: valid_selected_date
+      # sammenligner kun cursor-tal, ikke diagram-id). Et klik-stempel fra FØR
+      # skiftet må derfor aldrig overleve - ellers kan "Gem faseskift" skrive
+      # på det forkerte diagram.
+      selected_cursor(NULL)
+      preview_parts(NULL)
+    }
     observeEvent(input$show_no_signal,
-      {
-        sl <- scanned_list()
-        old_view <- scan_view_filter(sl, show_all())
-        old_id <- if (!is.null(old_view) && nrow(old_view) > 0) {
-          old_view$diagram_id[min(cursor(), nrow(old_view))]
-        } else {
-          NULL
-        }
-        show_all(isTRUE(input$show_no_signal))
-        new_view <- scan_view_filter(sl, show_all())
-        pos <- if (!is.null(old_id) && !is.null(new_view)) {
-          match(old_id, new_view$diagram_id)
-        } else {
-          NA_integer_
-        }
-        cursor(if (is.na(pos)) 1L else as.integer(pos))
-        # Fallback (diagrammet forsvandt) kan flytte cursoren til et ANDET
-        # diagram på SAMME numeriske position (Task 7-guard: valid_selected_date
-        # sammenligner kun cursor-tal, ikke diagram-id). Et klik-stempel fra FØR
-        # togglet må derfor aldrig overleve - ellers kan "Gem faseskift" skrive
-        # på det forkerte diagram.
-        selected_cursor(NULL)
-        preview_parts(NULL)
-      },
+      .apply_view_change(list(all = isTRUE(input$show_no_signal))),
+      ignoreInit = TRUE
+    )
+    observeEvent(input$show_breaks,
+      .apply_view_change(list(breaks = isTRUE(input$show_breaks))),
+      ignoreInit = TRUE
+    )
+    observeEvent(input$sort_by_type,
+      .apply_view_change(list(by_type = isTRUE(input$sort_by_type))),
       ignoreInit = TRUE
     )
 
@@ -159,6 +195,23 @@ mod_signal_review_server <- function(id, db) {
         class = "list-group list-group-flush small",
         lapply(seq_len(nrow(vl)), function(i) {
           icon <- if (isTRUE(vl$signal[i])) "⚠" else "✓"
+          # Mærkning: hvilken regel udløste signalet — eller "(knæk)" for
+          # diagrammer der kun vises pga. eksisterende median-knæk
+          suffix <- if (isTRUE(vl$signal[i])) {
+            st <- if ("signal_type" %in% names(vl)) vl$signal_type[i] else NA
+            if (is.na(st)) {
+              ""
+            } else {
+              switch(st,
+                serie = " (serie)", kryds = " (kryds)",
+                begge = " (serie+kryds)", ""
+              )
+            }
+          } else if ("has_breaks" %in% names(vl) && isTRUE(vl$has_breaks[i])) {
+            " (knæk)"
+          } else {
+            ""
+          }
           tags$a(
             href = "#",
             class = paste(
@@ -169,7 +222,7 @@ mod_signal_review_server <- function(id, db) {
               "Shiny.setInputValue('%s', %s, {priority: 'event'}); return false;",
               session$ns("goto_diagram"), vl$diagram_id[i]
             ),
-            sprintf("%s %s · %s", icon, vl$indikator_navn[i], vl$org_navn[i])
+            sprintf("%s %s · %s%s", icon, vl$indikator_navn[i], vl$org_navn[i], suffix)
           )
         })
       )
@@ -180,8 +233,10 @@ mod_signal_review_server <- function(id, db) {
       {
         ch <- index_filter_choices(index())
         for (dim in names(ch)) {
+          # Ingen ""-sentinel ved multiple=TRUE: tomt felt = alle (placeholder
+          # viser "(alle)"), og en tom choice ville optræde som blank chip.
           updateSelectizeInput(session, paste0("f_", dim),
-            choices = c("(alle)" = "", ch[[dim]]), server = FALSE
+            choices = ch[[dim]], server = FALSE
           )
         }
       },
@@ -297,6 +352,8 @@ mod_signal_review_server <- function(id, db) {
         }
         ctx$sig[i] <- isTRUE(res$signal)
         ctx$status[i] <- res$status %||% NA_character_
+        ctx$stype[i] <- res$signal_type %||% NA_character_
+        ctx$brk[i] <- (res$n_breaks %||% 0L) > 0L
       }
       cache(cc)
       ctx$gi <- ctx$gi + 1L
@@ -309,6 +366,8 @@ mod_signal_review_server <- function(id, db) {
       sl <- ctx$cand[ok_idx, , drop = FALSE]
       sl$signal <- ctx$sig[ok_idx] %in% TRUE
       sl$status <- ctx$status[ok_idx]
+      sl$signal_type <- ctx$stype[ok_idx]
+      sl$has_breaks <- ctx$brk[ok_idx] %in% TRUE
       scanned_list(sl)
       scan_progress(list(
         done = ctx$gi - 1L, total = length(ctx$groups),
@@ -380,13 +439,17 @@ mod_signal_review_server <- function(id, db) {
           ),
           agg_os = agg_os, agg_fl = agg_fl,
           sig = rep(NA, nrow(cand)),
-          status = rep(NA_character_, nrow(cand))
+          status = rep(NA_character_, nrow(cand)),
+          stype = rep(NA_character_, nrow(cand)),
+          brk = rep(FALSE, nrow(cand))
         ),
         envir = new.env(parent = emptyenv())
       )
       empty <- cand[0, , drop = FALSE]
       empty$signal <- logical(0)
       empty$status <- character(0)
+      empty$signal_type <- character(0)
+      empty$has_breaks <- logical(0)
       scanned_list(empty)
       scanned_n(wn) # vindue låst til denne scan (bruges af .scan_of_current/Task 7)
       cursor(1L)
@@ -596,6 +659,15 @@ mod_signal_review_server <- function(id, db) {
       if (!is.null(sl) && length(i) == 1L) {
         sl$signal[i] <- isTRUE(res$signal)
         sl$status[i] <- res$status %||% sl$status[i]
+        # Signal-type + knæk-flag følger med: et gemt/fjernet knæk kan ændre
+        # begge (fx sidste knæk fjernet → has_breaks FALSE → diagrammet skal
+        # ud af knæk-visningen)
+        if ("signal_type" %in% names(sl)) {
+          sl$signal_type[i] <- res$signal_type %||% NA_character_
+        }
+        if ("has_breaks" %in% names(sl)) {
+          sl$has_breaks[i] <- (res$n_breaks %||% 0L) > 0L
+        }
         scanned_list(sl)
       }
       # Visningens sammensætning kan være ændret → et klik-stempel fra før

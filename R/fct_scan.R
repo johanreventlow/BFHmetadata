@@ -138,6 +138,10 @@ scan_diagram <- function(row, base_path, medians_df, variants_df, window_n = NUL
             n_agg_units <- if (aggregated) length(agg_kids) else 0L
             list(
               diagram_id = row$diagram_id, status = "ok", signal = isTRUE(sig$signal),
+              signal_type = sig$signal_type %||% NA_character_,
+              # Eksisterende knæk i DB (uanset aggregering) — driver
+              # "vis også diagrammer med knæk"-visningen i gennemgangen
+              n_breaks = if (is.data.frame(medians_df)) nrow(medians_df) else 0L,
               n_obs = length(unique(as.Date(slice$dato))), slice = slice,
               qic_result = sig$qic_result, summary = sig$summary_all,
               n_ignored_breaks = as.integer(n_ignored),
@@ -167,15 +171,20 @@ index_filter_choices <- function(index) {
   }), .SIGNAL_FILTER_DIMS)
 }
 
-#' Subset diagram-indeks på et named filter (AND). Tomme/NULL-værdier ignoreres.
+#' Subset diagram-indeks på et named filter (AND på tværs af dimensioner).
+#' Hver dimension kan have flere værdier (multi-select) = OR inden for
+#' dimensionen. Tomme/NULL-værdier ignoreres.
 #' @noRd
 apply_index_filters <- function(index, filters) {
   keep <- rep(TRUE, nrow(index))
   for (col in names(filters)) {
     val <- filters[[col]]
-    # length-0-guard FØR nzchar: tom character(0) (fx multi-select) → spring over
-    if (is.null(val) || length(val) == 0L || !nzchar(val) || !col %in% names(index)) next
-    keep <- keep & !is.na(index[[col]]) & index[[col]] == val
+    if (is.null(val) || !col %in% names(index)) next
+    # Multi-select kan indeholde tomme strenge/NA — drop dem før match;
+    # helt tom vektor (ryddet felt) = intet filter for dimensionen.
+    val <- val[!is.na(val) & nzchar(val)]
+    if (length(val) == 0L) next
+    keep <- keep & index[[col]] %in% val # NA i index matcher aldrig
   }
   index[keep, , drop = FALSE]
 }
@@ -221,16 +230,46 @@ preview_break_parts <- function(diagram_id, base_meds, extra_date, x_dates) {
 #' Filtrér den scannede liste til visning. show_all = FALSE → kun diagrammer
 #' med signal; TRUE → alle rækker (scanned indeholder kun ok-scannede —
 #' ingen_data/fejl optages aldrig, de har ingen tegnbar graf).
+#' show_breaks = TRUE medtager desuden diagrammer UDEN signal der har
+#' eksisterende median-knæk (has_breaks-kolonnen); mangler kolonnen
+#' (ældre kaldere) degraderes til kun-signal.
 #' NULL ind → NULL ud (skelner "ej scannet endnu" fra "tom visning").
 #' @noRd
-scan_view_filter <- function(scanned, show_all = FALSE) {
+scan_view_filter <- function(scanned, show_all = FALSE, show_breaks = FALSE) {
   if (is.null(scanned)) {
     return(NULL)
   }
   if (isTRUE(show_all)) {
     return(scanned)
   }
-  scanned[scanned$signal %in% TRUE, , drop = FALSE]
+  keep <- scanned$signal %in% TRUE
+  if (isTRUE(show_breaks) && "has_breaks" %in% names(scanned)) {
+    keep <- keep | scanned$has_breaks %in% TRUE
+  }
+  scanned[keep, , drop = FALSE]
+}
+
+#' Sortér visningen efter signal-type: begge → serie → kryds → (andet) →
+#' knæk-uden-signal → øvrige. Stabil inden for grupper (scan-rækkefølge
+#' bevares). by_type = FALSE el. NULL ind → uændret retur.
+#' @noRd
+scan_view_sort <- function(scanned, by_type = FALSE) {
+  if (is.null(scanned) || !isTRUE(by_type) || nrow(scanned) == 0) {
+    return(scanned)
+  }
+  st <- if ("signal_type" %in% names(scanned)) {
+    as.character(scanned$signal_type)
+  } else {
+    rep(NA_character_, nrow(scanned))
+  }
+  hb <- if ("has_breaks" %in% names(scanned)) {
+    scanned$has_breaks %in% TRUE
+  } else {
+    rep(FALSE, nrow(scanned))
+  }
+  rank <- match(st, c("begge", "serie", "kryds", "andet"))
+  rank[is.na(rank)] <- ifelse(hb[is.na(rank)], 5L, 6L)
+  scanned[order(rank, seq_len(nrow(scanned))), , drop = FALSE]
 }
 
 #' Fase-statistik-df til visning under grafen. Spejler PDF-rapporternes

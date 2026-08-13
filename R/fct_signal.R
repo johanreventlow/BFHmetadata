@@ -58,8 +58,27 @@ compute_signal <- function(slice, parts = NULL) {
   }
   s <- res$summary
   latest <- s[s$fase == max(s$fase), , drop = FALSE]
+  sig <- isTRUE(latest$anhoej_signal[1])
+  # Hvilken Anhøj-regel udløste signalet (seneste fase): usædvanligt langt
+  # løb (serie) og/eller for få median-kryds (kryds). Bruges til sortering/
+  # mærkning i signal-gennemgangen. "andet" er defensivt: anhoej_signal uden
+  # at nogen af de to regler kan genfindes i summary-tallene.
+  serie <- isTRUE(latest$laengste_loeb[1] > latest$laengste_loeb_max[1])
+  kryds <- isTRUE(latest$antal_kryds[1] < latest$antal_kryds_min[1])
+  signal_type <- if (!sig) {
+    NA_character_
+  } else if (serie && kryds) {
+    "begge"
+  } else if (serie) {
+    "serie"
+  } else if (kryds) {
+    "kryds"
+  } else {
+    "andet"
+  }
   list(
-    signal = isTRUE(latest$anhoej_signal[1]),
+    signal = sig,
+    signal_type = signal_type,
     latest = latest,
     summary_all = s,
     qic_result = res

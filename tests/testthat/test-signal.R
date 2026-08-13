@@ -97,3 +97,31 @@ test_that("compute_signal: kun seneste fase afgør (tidligt løb ignoreres)", {
   expect_equal(max(r$summary_all$fase), 2)
   expect_false(r$signal)
 })
+
+# --- signal_type: hvilken Anhøj-regel udløste signalet ----------------------
+
+test_that("compute_signal: langt løb klassificeres som serie-signal", {
+  d <- data.frame(dato = as.Date("2020-01-01") + 0:23 * 30,
+                  vaerdi = c(rep(10, 12), rep(2, 12)), naevner = NA_real_)
+  r <- compute_signal(d)
+  expect_true(r$signal)
+  expect_true(r$signal_type %in% c("serie", "begge"))
+})
+
+test_that("compute_signal: få kryds uden langt løb klassificeres som kryds-signal", {
+  # Blokke af 6: længste løb 6 (under maks ~8 for 24 obs), men kun 3 kryds
+  # (under min ~8) → kryds-signal alene
+  d <- data.frame(dato = as.Date("2020-01-01") + 0:23 * 30,
+                  vaerdi = rep(c(rep(10, 6), rep(2, 6)), 2), naevner = NA_real_)
+  r <- compute_signal(d)
+  expect_true(r$signal)
+  expect_identical(r$signal_type, "kryds")
+})
+
+test_that("compute_signal: intet signal → signal_type er NA", {
+  d <- data.frame(dato = as.Date("2020-01-01") + 0:23 * 30,
+                  vaerdi = rep(c(4, 6), 12), naevner = NA_real_)
+  r <- compute_signal(d)
+  expect_false(r$signal)
+  expect_identical(r$signal_type, NA_character_)
+})
