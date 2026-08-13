@@ -22,6 +22,7 @@ Imports:
     later,
     jsonlite,
     BFHcharts,
+    excelR (>= 0.4.0),
     ggplot2,
     ggiraph
 Suggests:

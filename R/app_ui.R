@@ -2,6 +2,7 @@
 #' @noRd
 app_ui <- function(request) {
   bslib::page_navbar(id = "nav", title = "BFH Metadata",
+    header = .jexcel_theme_css(),
     bslib::nav_panel("Start", value = "start", .landing_ui()),
     bslib::nav_panel("Indikatorer", value = "indikatorer",
       mod_indikator_crud_ui("indik")),

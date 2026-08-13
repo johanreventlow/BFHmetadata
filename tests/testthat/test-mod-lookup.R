@@ -1,3 +1,7 @@
+# testServer-tests for mod_lookup_table (excelR/jspreadsheet-grid) med fake-db.
+# Redigeringer simuleres som excelR's onChange-payload: HELE tabellen (data +
+# colHeaders); modulet diffar mod rows() og skriver ændrede celler enkeltvis.
+
 cfg_test <- list(id = "t", table = "tblTest", pk = "Id", label = "Test",
   ref_check = list(child = "tblBruger", col = "test_id"),
   cols = list(list(col = "navn", type = "text", label = "Navn"),
@@ -6,16 +10,32 @@ cfg_test <- list(id = "t", table = "tblTest", pk = "Id", label = "Test",
 fake_lookup_db <- function(ref = 0L) {
   store <- data.frame(Id = 1:2, navn = c("A", "B"), niveau = c(1L, 2L),
                       stringsAsFactors = FALSE)
-  calls <- list(updated = NULL, added = FALSE, deleted = NULL)
+  calls <- list(updated = NULL, all_updates = list(), added = FALSE,
+                deleted = NULL)
   list(
     list_rows = function() store,
     add_row = function() { calls$added <<- TRUE; 3L },
     update_cell = function(pk_val, col, value) {
-      calls$updated <<- list(pk = pk_val, col = col, value = value); 1L },
+      u <- list(pk = pk_val, col = col, value = value)
+      calls$updated <<- u
+      calls$all_updates <<- c(calls$all_updates, list(u))
+      1L },
     delete_row = function(pk_val) { calls$deleted <<- pk_val; 1L },
     ref_count = function(pk_val) ref,
     .calls = function() calls
   )
+}
+
+# excelR onChange-payload: rækker som liste-af-lister i grid-rækkefølge
+change_payload <- function(rows, headers = c("Id", "navn", "niveau")) {
+  list(colHeaders = as.list(headers), data = rows, forSelectedVals = FALSE)
+}
+
+# excelR onSelection-payload: borderTop er 0-baseret række
+select_payload <- function(row0) {
+  list(forSelectedVals = TRUE,
+       selectedDataBoundary = list(borderTop = row0, borderBottom = row0,
+                                   borderLeft = 0, borderRight = 0))
 }
 
 test_that("opslagsmodul indlæser data ved start", {
@@ -25,42 +45,75 @@ test_that("opslagsmodul indlæser data ved start", {
   })
 })
 
-test_that("inline-edit på tekstcelle kalder update_cell", {
+test_that("celle-redigering diffes mod rows() og kalder update_cell", {
   db <- fake_lookup_db()
   testServer(mod_lookup_table_server, args = list(db = db, cfg = cfg_test), {
-    # col 1 (0-baseret) = navn; row 1 → pk 1
-    session$setInputs(tbl_cell_edit = list(row = 1, col = 1, value = "Nyt navn"))
+    session$setInputs(tbl = change_payload(list(
+      list(1, "Nyt navn", 1), list(2, "B", 2))))
     u <- db$.calls()$updated
-    expect_equal(u$col, "navn"); expect_equal(u$value, "Nyt navn"); expect_equal(u$pk, 1L)
+    expect_equal(u$col, "navn")
+    expect_equal(u$value, "Nyt navn")
+    expect_equal(u$pk, 1L)
+    expect_equal(rows()$navn[1], "Nyt navn")   # lokal tilstand fulgte med
   })
 })
 
-test_that("opslagstabellen gemmer ikke DT-tilstand uden brugerfiltrering", {
+test_that("flere celler ændret i samme payload gemmes enkeltvis", {
   db <- fake_lookup_db()
   testServer(mod_lookup_table_server, args = list(db = db, cfg = cfg_test), {
-    widget <- jsonlite::fromJSON(output$tbl, simplifyVector = FALSE)
-
-    expect_null(widget$x$options$stateSave)
-    expect_null(widget$x$options$stateSaveCallback)
-    expect_null(widget$x$options$stateLoadCallback)
+    session$setInputs(tbl = change_payload(list(
+      list(1, "A2", 1), list(2, "B", 9))))
+    ups <- db$.calls()$all_updates
+    expect_length(ups, 2L)
+    expect_setequal(vapply(ups, function(u) u$col, ""), c("navn", "niveau"))
+    expect_equal(rows()$niveau[2], 9L)
   })
 })
 
-test_that("int-celle med ikke-tal afvises uden update", {
+test_that("tømt celle gemmes som NA", {
   db <- fake_lookup_db()
   testServer(mod_lookup_table_server, args = list(db = db, cfg = cfg_test), {
-    session$setInputs(tbl_cell_edit = list(row = 1, col = 2, value = "abc"))
+    session$setInputs(tbl = change_payload(list(
+      list(1, "", 1), list(2, "B", 2))))
+    u <- db$.calls()$updated
+    expect_equal(u$col, "navn")
+    expect_true(is.na(u$value))
+  })
+})
+
+test_that("widgetten renderes som excelR-grid med låst pk og uden grid-operationer", {
+  db <- fake_lookup_db()
+  testServer(mod_lookup_table_server, args = list(db = db, cfg = cfg_test), {
+    w <- jsonlite::fromJSON(output$tbl, simplifyVector = FALSE)
+    cols <- w$x$columns
+    expect_equal(cols[[1]]$title, "Id")
+    expect_true(cols[[1]]$readOnly)
+    expect_equal(cols[[3]]$type, "numeric")
+    expect_false(isTRUE(w$x$allowInsertRow))
+    expect_false(isTRUE(w$x$columnSorting))
+  })
+})
+
+test_that("int-celle med ikke-tal afvises uden update og snapper tilbage", {
+  db <- fake_lookup_db()
+  testServer(mod_lookup_table_server, args = list(db = db, cfg = cfg_test), {
+    session$setInputs(tbl = change_payload(list(
+      list(1, "A", "abc"), list(2, "B", 2))))
     expect_match(status_msg(), "heltal")
     expect_null(db$.calls()$updated)
+    expect_equal(rows()$niveau[1], 1L)          # uændret lokal tilstand
   })
 })
 
 test_that("int-celle med tal coerces til integer", {
   db <- fake_lookup_db()
   testServer(mod_lookup_table_server, args = list(db = db, cfg = cfg_test), {
-    session$setInputs(tbl_cell_edit = list(row = 2, col = 2, value = "7"))
+    session$setInputs(tbl = change_payload(list(
+      list(1, "A", 1), list(2, "B", "7"))))
     u <- db$.calls()$updated
-    expect_identical(u$value, 7L); expect_equal(u$col, "niveau"); expect_equal(u$pk, 2L)
+    expect_identical(u$value, 7L)
+    expect_equal(u$col, "niveau")
+    expect_equal(u$pk, 2L)
   })
 })
 
@@ -72,18 +125,21 @@ test_that("ny række kalder add_row", {
   })
 })
 
-test_that("slet valgte række kalder delete_row", {
+test_that("slet bruger seneste celle-selektion (0-baseret → række)", {
   db <- fake_lookup_db(ref = 0L)
   testServer(mod_lookup_table_server, args = list(db = db, cfg = cfg_test), {
-    session$setInputs(tbl_rows_selected = 1, delete = 1)
+    session$setInputs(tbl = select_payload(0))
+    expect_equal(sel_row(), 1L)
+    session$setInputs(delete = 1)
     expect_equal(db$.calls()$deleted, 1L)
+    expect_null(sel_row())                      # stale selektion ryddes
   })
 })
 
 test_that("slet blokeres når posten er i brug (ref_count > 0)", {
   db <- fake_lookup_db(ref = 5L)
   testServer(mod_lookup_table_server, args = list(db = db, cfg = cfg_test), {
-    session$setInputs(tbl_rows_selected = 1, delete = 1)
+    session$setInputs(tbl = select_payload(0), delete = 1)
     expect_match(status_msg(), "i brug")
     expect_null(db$.calls()$deleted)
   })
@@ -122,21 +178,27 @@ fake_fk_db <- function() {
   )
 }
 
-test_that("fk_edit opdaterer relation med integer parent-id", {
+test_that("fk-dropdown-ændring gemmer integer parent-id", {
   db <- fake_fk_db()
   testServer(mod_lookup_table_server, args = list(db = db, cfg = cfg_fk), {
-    session$setInputs(fk_edit = list(id = 1, col = "enhed", value = "30"))
+    session$setInputs(tbl = list(
+      colHeaders = list("Id", "navn", "enhed"),
+      data = list(list(1, "A", "30"), list(2, "B", 20)),
+      forSelectedVals = FALSE))
     u <- db$.calls()$updated
     expect_identical(u$value, 30L)
-    expect_equal(u$col, "enhed"); expect_equal(u$pk, 1)
+    expect_equal(u$col, "enhed")
+    expect_equal(u$pk, 1L)
   })
 })
 
-test_that(".fk_select_html bygger select med valgt option + onchange", {
-  opts <- data.frame(id = c(10L, 20L), label = c("E10", "E20"))
-  html <- .fk_select_html(function(x) paste0("ns-", x), 5, "enhed", 20L, opts)
-  expect_match(html, "<select")
-  expect_match(html, 'value="20" selected')
-  expect_match(html, "ns-fk_edit")
-  expect_match(html, "Shiny.setInputValue")
+test_that("fk-kolonne renderes som dropdown med {id, name}-source", {
+  db <- fake_fk_db()
+  testServer(mod_lookup_table_server, args = list(db = db, cfg = cfg_fk), {
+    w <- jsonlite::fromJSON(output$tbl, simplifyVector = FALSE)
+    fk_col <- w$x$columns[[3]]
+    expect_equal(fk_col$type, "dropdown")
+    expect_equal(fk_col$source[[3]]$id, 30L)
+    expect_equal(fk_col$source[[3]]$name, "E30")
+  })
 })

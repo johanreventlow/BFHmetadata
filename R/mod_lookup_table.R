@@ -1,20 +1,10 @@
 # Generisk modul til inline-redigering af én opslags-/stamtabel.
-# Drevet af et LOOKUP_TABLES-cfg-element. Bruger DT editable celler (konsistent
-# med indikator-oversigten). FK-kolonner (type="fk") renderes som <select>-celler
-# med onchange → Shiny-input. Genbruger safe_operation() fra mod_indikator_crud.R.
-
-#' Bygger HTML <select> til en FK-celle (label fra opts, rå id som value).
-#' onchange sætter fk_edit-input med {id (pk), col, value (parent-id)}.
-#' @noRd
-.fk_select_html <- function(ns, pk_val, col, current, opts) {
-  o <- paste0(sprintf('<option value="%s"%s>%s</option>',
-    opts$id, ifelse(opts$id %in% current, " selected", ""),
-    htmltools::htmlEscape(opts$label)), collapse = "")
-  sprintf(paste0('<select class="form-select form-select-sm" ',
-    'onchange="Shiny.setInputValue(\'%s\', {id:%s, col:\'%s\', value:this.value}, ',
-    '{priority:\'event\'})">%s</select>'),
-    ns("fk_edit"), pk_val, col, o)
-}
+# Drevet af et LOOKUP_TABLES-cfg-element. Redigering i et jspreadsheet-grid
+# (excelR) — samme editor som biSPCharts: tekst/tal-celler redigeres direkte,
+# FK-kolonner er native dropdowns ({id, name}-source: label vises, id gemmes).
+# Ændringer ankommer som HELE tabellen; excel_diff_cells finder de redigerede
+# celler via pk-match og skriver dem enkeltvis (db$update_cell). Genbruger
+# safe_operation() fra mod_indikator_crud.R.
 
 #' @noRd
 mod_lookup_table_ui <- function(id, cfg) {
@@ -26,8 +16,8 @@ mod_lookup_table_ui <- function(id, cfg) {
         actionButton(ns("add_row"), "Ny række", class = "btn-success btn-sm"),
         actionButton(ns("delete"), "Slet valgte række", class = "btn-outline-danger btn-sm"))),
     p(class = "text-muted small",
-      "Dobbeltklik en celle for at redigere. Vælg en række og tryk Slet. Id er låst."),
-    DT::DTOutput(ns("tbl"))
+      "Dobbeltklik en celle for at redigere. Klik en række og tryk Slet. Id er låst."),
+    excelR::excelOutput(ns("tbl"), width = "100%", height = "auto")
   )
 }
 
@@ -35,95 +25,143 @@ mod_lookup_table_ui <- function(id, cfg) {
 mod_lookup_table_server <- function(id, db, cfg) {
   moduleServer(id, function(input, output, session) {
     rows <- reactiveVal(db$list_rows())
-    refresh <- reactiveVal(0)        # bump → re-render (ny/slet række + revert)
+    refresh <- reactiveVal(0) # bump → re-render (ny/slet række + revert)
     status_msg <- reactiveVal("")
+    sel_row <- reactiveVal(NULL) # 1-baseret række fra seneste celle-selektion
     fk_cols <- Filter(function(c) identical(c$type, "fk"), cfg$cols)
-    fk_names <- vapply(fk_cols, function(c) c$col, "")
-    # Tekst/int-kolonner der redigeres via DT (fk redigeres via <select>)
-    text_editable <- setdiff(vapply(cfg$cols, function(c) c$col, ""), fk_names)
+    col_meta <- stats::setNames(cfg$cols, vapply(cfg$cols, function(c) c$col, ""))
 
     # Status som flydende notifikation (samme mønster som indikator-modulet)
     observeEvent(status_msg(), {
-      m <- status_msg(); if (nzchar(m)) showNotification(m, duration = 3)
+      m <- status_msg()
+      if (nzchar(m)) showNotification(m, duration = 3)
     }, ignoreInit = TRUE)
 
-    output$tbl <- DT::renderDT({
+    # FK-sources til dropdown-kolonner. NULL ved fejl → kolonnen låses som
+    # readOnly text (se lookup_excel_columns) frem for en tom dropdown.
+    .fk_sources <- function() {
+      out <- lapply(fk_cols, function(fc) {
+        safe_operation(paste0("hent fk-options (", fc$col, ")"),
+          db$fk_options(fc$col),
+          fallback = NULL
+        )
+      })
+      stats::setNames(out, vapply(fk_cols, function(fc) fc$col, ""))
+    }
+
+    output$tbl <- excelR::renderExcel({
       refresh()
       d <- isolate(rows())
-      disp <- d
-      # FK-kolonner → <select>-celler (label fra parent, rå id pre-valgt)
-      for (fc in fk_cols) {
-        opts <- db$fk_options(fc$col)
-        disp[[fc$col]] <- vapply(seq_len(nrow(d)), function(i)
-          .fk_select_html(session$ns, d[[cfg$pk]][i], fc$col, d[[fc$col]][i], opts), "")
+      excelR::excelTable(
+        data = d,
+        columns = lookup_excel_columns(cfg, names(d), .fk_sources()),
+        autoColTypes = FALSE,
+        # Række/kolonne-operationer styres af knapperne + DB — ikke af grid'et.
+        # Sortering/drag er slået fra så grid-rækkefølgen ALTID matcher rows()
+        # (sel_row er positionsbaseret).
+        allowInsertRow = FALSE, allowInsertColumn = FALSE,
+        allowDeleteRow = FALSE, allowDeleteColumn = FALSE,
+        allowRenameColumn = FALSE, columnSorting = FALSE,
+        rowDrag = FALSE, columnDrag = FALSE,
+        getSelectedData = TRUE
+      )
+    })
+
+    # excelR sender BÅDE celle-ændringer og selektioner på input$tbl —
+    # forSelectedVals skelner. Selektion: gem 1-baseret række til Slet-knappen.
+    observeEvent(input$tbl, {
+      p <- input$tbl
+      if (isTRUE(p$forSelectedVals)) {
+        top <- p$selectedDataBoundary$borderTop
+        sel_row(if (is.null(top)) NULL else as.integer(top) + 1L)
+        return()
       }
-      # Lås pk + fk + ikke-editerbare; escape alt undtagen fk-select-kolonner
-      disable <- which(!(names(disp) %in% text_editable)) - 1
-      esc <- which(!(names(disp) %in% fk_names))
-      DT::datatable(disp, rownames = FALSE, selection = "single", escape = esc,
-        editable = list(target = "cell", disable = list(columns = disable)),
-        options = list(dom = "t", paging = FALSE, scrollY = "420px",
-                       scrollCollapse = TRUE))
-    })
-
-    # FK-celle ændret via dropdown → opdatér (value = parent-id)
-    observeEvent(input$fk_edit, {
-      e <- input$fk_edit
-      val <- suppressWarnings(as.integer(e$value))
-      safe_operation("opdatér relation", {
-        db$update_cell(e$id, e$col, val); status_msg("Gemt")
-      }, fallback = status_msg("Fejl ved gem (se log)"))
-    })
-
-    observeEvent(input$tbl_cell_edit, {
-      info <- input$tbl_cell_edit
+      new_df <- excel_payload_to_df(p)
       d <- rows()
-      col <- names(d)[info$col + 1]
-      pk_val <- d[[cfg$pk]][info$row]
-      meta <- Find(function(c) c$col == col, cfg$cols)
-      val <- info$value
-      # Type-coercion: int-kolonne skal være et tal, ellers afvis + snap tilbage
-      if (!is.null(meta) && identical(meta$type, "int")) {
-        val <- suppressWarnings(as.integer(val))
-        if (is.na(val) && nzchar(info$value)) {
-          status_msg("Forventet et heltal"); refresh(refresh() + 1); return()
+      changes <- excel_diff_cells(d, new_df, cfg$pk)
+      if (nrow(changes) == 0) {
+        return()
+      }
+      revert <- FALSE
+      for (k in seq_len(nrow(changes))) {
+        col <- changes$col[k]
+        val <- changes$value[k]
+        j <- match(changes$pk[k], as.character(d[[cfg$pk]]))
+        pk_val <- d[[cfg$pk]][j]
+        meta <- col_meta[[col]]
+        # Type-koercion: int- og fk-kolonner skal være tal (fk-værdier er
+        # parent-ids fra dropdown-sourcen). Ugyldigt tal → afvis + snap
+        # tilbage til DB-tilstanden.
+        if (!is.null(meta) && meta$type %in% c("int", "fk")) {
+          coerced <- suppressWarnings(as.integer(val))
+          if (!is.na(val) && is.na(coerced)) {
+            status_msg("Forventet et heltal")
+            revert <- TRUE
+            next
+          }
+          val <- coerced
+        }
+        ok <- safe_operation("opdatér celle", {
+          db$update_cell(pk_val, col, val)
+          TRUE
+        }, fallback = FALSE)
+        if (isTRUE(ok)) {
+          d[j, col] <- val
+          status_msg("Gemt")
+        } else {
+          status_msg("Fejl ved gem (se log)")
+          revert <- TRUE
         }
       }
-      if (identical(val, "")) val <- NA
-      safe_operation("opdatér celle", {
-        db$update_cell(pk_val, col, val)
-        d[info$row, col] <- if (length(val) && is.na(val)) NA else val
-        rows(d); status_msg("Gemt")
-      }, fallback = { status_msg("Fejl ved gem (se log)"); refresh(refresh() + 1) })
+      rows(d)
+      # Én samlet re-render efter afviste celler: grid'et snapper tilbage til
+      # den gemte tilstand (accepterede celler beholdes — de er i rows()).
+      if (revert) refresh(refresh() + 1)
     })
 
     observeEvent(input$add_row, {
       safe_operation("ny række", {
-        db$add_row(); rows(db$list_rows()); refresh(refresh() + 1)
+        db$add_row()
+        rows(db$list_rows())
+        refresh(refresh() + 1)
         status_msg("Ny række tilføjet — udfyld felterne")
       }, fallback = status_msg("Fejl ved oprettelse (se log)"))
     })
 
     observeEvent(input$delete, {
-      sel <- input$tbl_rows_selected
-      if (is.null(sel) || length(sel) == 0) { status_msg("Vælg en række først"); return() }
-      pk_val <- rows()[[cfg$pk]][sel]
-      # App-niveau ref-tjek (kun hvor DB ej enforcer FK)
-      if (db$ref_count(pk_val) > 0) {
-        status_msg("Kan ikke slettes — posten er i brug"); return()
-      }
-      # Ellers forsøg slet; DB-RESTRICT (FK) fanges og rapporteres pænt
-      res <- tryCatch({ db$delete_row(pk_val); "ok" }, error = function(e) e)
-      if (inherits(res, "error")) {
-        msg <- conditionMessage(res)
-        status_msg(if (grepl("foreign key|23503|violates", msg, ignore.case = TRUE))
-          "Kan ikke slettes — posten er i brug" else "Fejl ved sletning (se log)")
+      sel <- sel_row()
+      d <- rows()
+      if (is.null(sel) || is.na(sel) || sel < 1 || sel > nrow(d)) {
+        status_msg("Vælg en række først")
         return()
       }
-      rows(db$list_rows()); refresh(refresh() + 1); status_msg("Slettet")
+      pk_val <- d[[cfg$pk]][sel]
+      # App-niveau ref-tjek (kun hvor DB ej enforcer FK)
+      if (db$ref_count(pk_val) > 0) {
+        status_msg("Kan ikke slettes — posten er i brug")
+        return()
+      }
+      # Ellers forsøg slet; DB-RESTRICT (FK) fanges og rapporteres pænt
+      res <- tryCatch({
+        db$delete_row(pk_val)
+        "ok"
+      }, error = function(e) e)
+      if (inherits(res, "error")) {
+        msg <- conditionMessage(res)
+        status_msg(if (grepl("foreign key|23503|violates", msg, ignore.case = TRUE)) {
+          "Kan ikke slettes — posten er i brug"
+        } else {
+          "Fejl ved sletning (se log)"
+        })
+        return()
+      }
+      rows(db$list_rows())
+      sel_row(NULL) # rækken findes ikke længere — stale selektion må ej genbruges
+      refresh(refresh() + 1)
+      status_msg("Slettet")
     })
 
     # eksponér til test
-    list(rows = rows, status_msg = status_msg)
+    list(rows = rows, status_msg = status_msg, sel_row = sel_row)
   })
 }
