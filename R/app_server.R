@@ -40,8 +40,12 @@ app_server <- function(input, output, session) {
   for (cfg in LOOKUP_TABLES) local({
     cc <- cfg
     lazy_module(cc$id, selected_tab, function() {
+      # key_prefix: alle opslagstabellers list_rows/fk_options hedder det
+      # samme — uden instans-præfiks i det delte lager fik tabel B serveret
+      # tabel A's cachede rækker efter faneskift.
       mod_lookup_table_server(cc$id, make_db_cached(make_lookup_db(pool, cc),
-                                                    store = store), cc)
+                                                    store = store,
+                                                    key_prefix = cc$id), cc)
     }, session = session, loading = paste0("Henter ", cc$label, "…"))
   })
 

@@ -63,13 +63,19 @@ cached_accessor <- function(fn, store = new_cache_store(), name = NULL) {
 #' Læse-accessors i .CACHED_READERS memoiseres; skrive-accessors i
 #' .WRITE_ACCESSORS rydder cachen efter kald. Alt andet videreføres uændret,
 #' så nye accessors (fx en senere fase) virker uden at skulle registreres.
+#'
+#' `key_prefix` SKAL angives når flere db-instanser med ens accessor-navne
+#' deler ét lager (opslagstabellernes list_rows/fk_options hedder det samme
+#' på tværs af tabeller) — uden præfiks får instans B instans A's cachede
+#' data. Skrive-invalidering rydder stadig HELE det delte lager.
 #' @noRd
-make_db_cached <- function(db, store = new_cache_store()) {
+make_db_cached <- function(db, store = new_cache_store(), key_prefix = NULL) {
   stats::setNames(lapply(names(db), function(nm) {
     fn <- db[[nm]]
     if (!is.function(fn)) return(fn)
     if (nm %in% .CACHED_READERS) {
-      cached_accessor(fn, store = store, name = nm)
+      cached_accessor(fn, store = store,
+        name = paste(c(key_prefix, nm), collapse = ":"))
     } else if (nm %in% .WRITE_ACCESSORS) {
       function(...) {
         res <- fn(...)

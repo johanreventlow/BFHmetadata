@@ -38,6 +38,37 @@ test_that("make_db_cached: to argumentløse accessors deler ALDRIG cache-nøgle"
   expect_equal(db$list_indikatorer(), "indikatorer")
 })
 
+test_that("make_db_cached: key_prefix adskiller ens accessor-navne på tværs af db-instanser", {
+  # Regression: alle opslagstabellers list_rows() hed det samme (0 args) i det
+  # DELTE lager → tabel B fik tabel A's rækker efter faneskift (samme indhold
+  # under skiftende overskrifter). key_prefix gør nøglen instans-unik.
+  store <- new_cache_store()
+  db_a <- make_db_cached(list(list_rows = function() "rækker-A"),
+    store = store, key_prefix = "tabel_a")
+  db_b <- make_db_cached(list(list_rows = function() "rækker-B"),
+    store = store, key_prefix = "tabel_b")
+  expect_equal(db_a$list_rows(), "rækker-A")
+  expect_equal(db_b$list_rows(), "rækker-B")   # IKKE A's cachede rækker
+  expect_equal(db_a$list_rows(), "rækker-A")   # hit-stien rammer egen nøgle
+})
+
+test_that("make_db_cached: key_prefix bevarer delt invalidering ved skrivninger", {
+  # Lageret er stadig DELT: en skrivning i én tabel skal rydde alle
+  # instansers læse-cache (fx fk_options der peger på den ændrede tabel).
+  calls <- new.env(); calls$a <- 0L
+  store <- new_cache_store()
+  db_a <- make_db_cached(list(
+    list_rows = function() { calls$a <- calls$a + 1L; "A" }),
+    store = store, key_prefix = "tabel_a")
+  db_b <- make_db_cached(list(update_cell = function(pk, col, val) 1L),
+    store = store, key_prefix = "tabel_b")
+  db_a$list_rows(); db_a$list_rows()
+  expect_equal(calls$a, 1L)                    # cachet
+  db_b$update_cell(1L, "navn", "x")            # skrivning i ANDEN instans
+  db_a$list_rows()
+  expect_equal(calls$a, 2L)                    # frisk læsning efter skriv
+})
+
 test_that("cached_accessor: NULL-resultat caches ikke (fejl må ej fastfryses)", {
   calls <- 0L
   f <- function() { calls <<- calls + 1L; NULL }
