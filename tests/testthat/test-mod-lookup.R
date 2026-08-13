@@ -35,6 +35,15 @@ test_that("inline-edit på tekstcelle kalder update_cell", {
   })
 })
 
+test_that("opslagstabellen gemmer ikke DT-tilstand uden brugerfiltrering", {
+  db <- fake_lookup_db()
+  testServer(mod_lookup_table_server, args = list(db = db, cfg = cfg_test), {
+    widget <- jsonlite::fromJSON(output$tbl, simplifyVector = FALSE)
+
+    expect_null(widget$x$options$stateSave)
+  })
+})
+
 test_that("int-celle med ikke-tal afvises uden update", {
   db <- fake_lookup_db()
   testServer(mod_lookup_table_server, args = list(db = db, cfg = cfg_test), {

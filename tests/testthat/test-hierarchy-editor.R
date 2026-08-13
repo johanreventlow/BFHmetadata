@@ -20,6 +20,17 @@ test_that("inline-opdatering bygger en komplet vaerdiliste", {
   expect_identical(names(result$values), hierarchy_edit_cols(.hierarchy_cfg()))
 })
 
+test_that("organisationshierarkiet bevarer DT-tilstand i browser-sessionen", {
+  db <- fake_hierarchy_db()
+  testServer(mod_hierarchy_server,
+    args = list(db = db, cfg = .hierarchy_cfg()), {
+      widget <- jsonlite::fromJSON(output$tbl, simplifyVector = FALSE)
+
+      expect_true(widget$x$options$stateSave)
+      expect_identical(widget$x$options$stateDuration, -1L)
+    })
+})
+
 test_that("tom tekst og tom foraelder normaliseres til korrekt NA-type", {
   db <- fake_hierarchy_db()
   text <- .prepare_hierarchy_inline_update(

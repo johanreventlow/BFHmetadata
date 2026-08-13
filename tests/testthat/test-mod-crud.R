@@ -65,6 +65,26 @@ test_that("modul indlæser data ved start", {
   })
 })
 
+test_that("indikator-tabeller bevarer DT-tilstand i browser-sessionen", {
+  db <- fake_db()
+  overview_rows <- data.frame(
+    id = 1L, indikator_navn = "A", indikator_navn_teknisk = "a",
+    aktiv_indikator = TRUE, nøgleindikator = FALSE,
+    indikator_hierarki = 1L, kontaktperson = 1L, datakilde = 1L,
+    label_datapakke = "Pakke A", label_indikator_hierarki = "Datasæt A",
+    stringsAsFactors = FALSE)
+  db$list_indikatorer <- function() overview_rows
+  testServer(mod_indikator_crud_server, args = list(db = db), {
+    inline_widget <- jsonlite::fromJSON(output$tbl, simplifyVector = FALSE)
+    overview_widget <- jsonlite::fromJSON(output$oversigt, simplifyVector = FALSE)
+
+    expect_true(inline_widget$x$options$stateSave)
+    expect_identical(inline_widget$x$options$stateDuration, -1L)
+    expect_true(overview_widget$x$options$stateSave)
+    expect_identical(overview_widget$x$options$stateDuration, -1L)
+  })
+})
+
 test_that("dynamiske oversigtsfiltre bevarer kun gyldige valg", {
   db <- fake_db()
   initial_rows <- data.frame(

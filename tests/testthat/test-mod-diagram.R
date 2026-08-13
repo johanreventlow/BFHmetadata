@@ -194,6 +194,16 @@ test_that("admin-liste indlæses og status-filter default 'aktive' reducerer", {
   })
 })
 
+test_that("diagramoversigten bevarer DT-tilstand i browser-sessionen", {
+  db <- fake_diagram_db()
+  testServer(mod_diagram_server, args = list(db = db), {
+    widget <- jsonlite::fromJSON(output$tbl, simplifyVector = FALSE)
+
+    expect_true(widget$x$options$stateSave)
+    expect_identical(widget$x$options$stateDuration, -1L)
+  })
+})
+
 test_that("dynamiske diagramfiltre bevarer gyldige valg efter reload", {
   db <- fake_diagram_db()
   admin_source <- new.env(parent = emptyenv())
