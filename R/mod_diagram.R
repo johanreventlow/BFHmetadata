@@ -27,8 +27,15 @@
 
 #' @noRd
 .update_diagram_indicator <- function(session, indicators, selected = "") {
+  choices <- .diagram_indicator_choices(indicators)
+  selected_choice <- .diagram_indicator_initial_choices(indicators, selected)
+  selected_choice <- selected_choice[names(selected_choice) != "(vælg)"]
+  if (length(selected_choice) > 0L &&
+      !unname(selected_choice) %in% unname(choices)) {
+    choices <- c(choices, selected_choice)
+  }
   updateSelectizeInput(session, "d_indikator",
-    choices = .diagram_indicator_choices(indicators), selected = selected,
+    choices = choices, selected = selected,
     server = TRUE)
 }
 

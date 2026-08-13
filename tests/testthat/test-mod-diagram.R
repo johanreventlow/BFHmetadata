@@ -128,6 +128,25 @@ test_that("redigering registrerer indikatorer med den eksisterende selection", {
   expect_true(updates[[1]]$server)
 })
 
+test_that("redigering bevarer en ukendt indikator i server-side choices", {
+  updates <- capture_diagram_indicator_updates({
+    db <- fake_diagram_db()
+    admin <- db$list_diagrams_admin()
+    admin$indikator[admin$diagram_id == 1L] <- 9999L
+    db$list_diagrams_admin <- function() admin
+    testServer(mod_diagram_server, args = list(db = db), {
+      session$setInputs(open_id = 1)
+      session$flushReact()
+    })
+  })
+
+  expect_length(updates, 1L)
+  expect_identical(updates[[1]]$choices,
+                   c("Tryksår" = "10", "Inaktiv indikator" = "11",
+                     "Ukendt indikator #9999" = "9999"))
+  expect_identical(updates[[1]]$selected, 9999L)
+})
+
 test_that("admin-liste indlæses og status-filter default 'aktive' reducerer", {
   db <- fake_diagram_db()
   testServer(mod_diagram_server, args = list(db = db), {
