@@ -101,12 +101,110 @@
     direktionens_tavle = isTRUE(gv("direktionens_tavle")))
 }
 
+# Grid-titler → tblDiagrammer-kolonner for inline-redigering (excelR)
+.DIAGRAM_GRID_FIELDS <- c(
+  Indikator = "indikator", Enhed = "organisatorisk_navn_teknisk",
+  Type = "diagram_type", Periode = "periode_aggregering",
+  Aggregering = "indgaar_i_aggregering", Aktiv = "diagram_aktivt",
+  Tavle = "direktionens_tavle"
+)
+
+#' Fuld DIAGRAM_COLS-værdiliste fra en admin-række. Autoritativ basis for
+#' inline-patch: én celle ændres, resten bevares som de ER i DB — så en
+#' update aldrig kan nulstille felter brugeren ikke rørte.
+#' @noRd
+.diagram_row_values <- function(row) {
+  int_or_na <- function(x) {
+    if (is.null(x) || is.na(x)) NA_integer_ else as.integer(x)
+  }
+  list(
+    indikator = int_or_na(row$indikator),
+    organisatorisk_navn_teknisk = int_or_na(row$organisatorisk_navn_teknisk),
+    diagram_type = int_or_na(row$diagram_type),
+    periode_aggregering = if (is.na(row$periode_aggregering)) {
+      NA_character_
+    } else {
+      as.character(row$periode_aggregering)
+    },
+    indgaar_i_aggregering = isTRUE(row$indgaar_i_aggregering),
+    diagram_aktivt = isTRUE(row$diagram_aktivt),
+    direktionens_tavle = isTRUE(row$direktionens_tavle)
+  )
+}
+
+#' Grid-data til excelR: pk (hidden) + kontekst (Datapakke/Datasæt,
+#' readOnly) + redigerbare felter. FK-felter som character-id'er (matcher
+#' dropdown-sourcens id-format); flag som logicals (checkbox-celler).
+#' @noRd
+diagram_excel_data <- function(d) {
+  chr_or_empty <- function(x) ifelse(is.na(x), "", as.character(x))
+  out <- data.frame(diagram_id = d$diagram_id, stringsAsFactors = FALSE,
+                    check.names = FALSE)
+  out[["Datapakke"]] <- chr_or_empty(d$datapakke)
+  out[["Datasæt"]] <- chr_or_empty(d$datasaet)
+  out[["Indikator"]] <- chr_or_empty(d$indikator)
+  out[["Enhed"]] <- chr_or_empty(d$organisatorisk_navn_teknisk)
+  out[["Type"]] <- chr_or_empty(d$diagram_type)
+  out[["Periode"]] <- chr_or_empty(d$periode_aggregering)
+  out[["Aggregering"]] <- d$indgaar_i_aggregering %in% TRUE
+  out[["Aktiv"]] <- d$diagram_aktivt %in% TRUE
+  out[["Tavle"]] <- d$direktionens_tavle %in% TRUE
+  out
+}
+
+#' Kolonne-spec til diagram-grid'et: FK-felter som dropdowns med {id, name}-
+#' source (Indikator/Enhed med autocomplete — listerne er lange), Periode
+#' med "(ingen)"-tomvalg, flag som checkbokse. Ukendte eksisterende id'er
+#' tilføjes sourcen ("Ukendt … #id") så de hverken vises blankt eller tabes.
+#' @noRd
+diagram_excel_columns <- function(d, opts, periode) {
+  src_of <- function(df, used, prefix) {
+    s <- data.frame(id = as.character(df$id), name = as.character(df$label),
+                    stringsAsFactors = FALSE)
+    unknown <- setdiff(stats::na.omit(as.character(used)), s$id)
+    if (length(unknown) > 0) {
+      s <- rbind(s, data.frame(id = unknown,
+        name = sprintf("%s #%s", prefix, unknown), stringsAsFactors = FALSE))
+    }
+    s
+  }
+  ind_src <- src_of(opts$indikator, d$indikator, "Ukendt indikator")
+  org_src <- src_of(opts$org, d$organisatorisk_navn_teknisk, "Ukendt enhed")
+  type_src <- src_of(opts$type, d$diagram_type, "Ukendt type")
+  per_vals <- unique(c(as.character(periode),
+    stats::na.omit(as.character(d$periode_aggregering))))
+  per_src <- data.frame(id = c("", per_vals), name = c("(ingen)", per_vals),
+                        stringsAsFactors = FALSE)
+  titles <- c("diagram_id", "Datapakke", "Datasæt", names(.DIAGRAM_GRID_FIELDS))
+  out <- data.frame(
+    title = titles,
+    type = c("hidden", "text", "text", rep("dropdown", 4),
+             rep("checkbox", 3)),
+    readOnly = c(TRUE, TRUE, TRUE, rep(FALSE, 7)),
+    align = "left",
+    autocomplete = titles %in% c("Indikator", "Enhed"),
+    stringsAsFactors = FALSE)
+  out$source <- c(rep(list(NA), 3),
+                  list(ind_src), list(org_src), list(type_src), list(per_src),
+                  rep(list(NA), 3))
+  # Fraktil-bredder målt på VISTE labels (ikke id'erne)
+  disp <- diagram_excel_data(d)
+  disp[["Indikator"]] <- .excel_dropdown_display(disp[["Indikator"]], ind_src)
+  disp[["Enhed"]] <- .excel_dropdown_display(disp[["Enhed"]], org_src)
+  disp[["Type"]] <- .excel_dropdown_display(disp[["Type"]], type_src)
+  disp[["Periode"]] <- .excel_dropdown_display(disp[["Periode"]], per_src)
+  out$width <- unname(excel_col_widths(disp)[titles])
+  out
+}
+
 #' @noRd
 mod_diagram_ui <- function(id) {
   ns <- NS(id)
   div(class = "mt-2",
-    div(class = "d-flex justify-content-end mb-2",
-      actionButton(ns("new_diagram"), "Nyt diagram", class = "btn-success")),
+    div(class = "d-flex justify-content-end gap-2 mb-2",
+      actionButton(ns("new_diagram"), "Nyt diagram", class = "btn-success"),
+      actionButton(ns("delete_row"), "Slet valgte række",
+                   class = "btn-outline-danger")),
     bslib::layout_columns(
       col_widths = c(2, 2, 3, 3, 2),
       uiOutput(ns("filter_datapakke_ui")),
@@ -117,7 +215,9 @@ mod_diagram_ui <- function(id) {
         choices = c("Kun aktive" = "aktive", "Alle" = "alle",
                     "Kun inaktive" = "inaktive"),
         selected = "aktive")),
-    DT::DTOutput(ns("tbl")))
+    p(class = "text-muted small",
+      "Dobbeltklik en celle for at redigere. Klik en række og tryk Slet."),
+    excelR::excelOutput(ns("tbl"), width = "100%", height = "auto"))
 }
 
 #' @noRd
@@ -128,7 +228,8 @@ mod_diagram_server <- function(id, db) {
     opts$periode <- db$diagram_periode_choices()
     status_msg <- reactiveVal("")
     warn_msg <- reactiveVal("")
-    editing_id <- reactiveVal(NULL)
+    grid_sel <- reactiveVal(NULL) # 1-baseret række fra seneste celle-selektion
+    grid_refresh <- reactiveVal(0) # bump → snap-back efter afvist inline-edit
     reload <- function() admin(db$list_diagrams_admin())
 
     # Flydende notifikationer (synlige over modal, jf. mod_indikator_crud)
@@ -196,95 +297,102 @@ mod_diagram_server <- function(id, db) {
       d
     })
 
-    output$tbl <- DT::renderDT({
+    output$tbl <- excelR::renderExcel({
+      grid_refresh()
       d <- filtered()
-      ns <- session$ns
-      flag <- function(x) ifelse(x %in% TRUE,
-        '<span style="color:#198754;font-weight:700;">&#10003;</span>',
-        '<span style="color:#adb5bd;">&mdash;</span>')
-      btn <- sprintf(paste0(
-        '<button class="btn btn-outline-secondary btn-sm" ',
-        'onclick="Shiny.setInputValue(\'%s\', %d, {priority: \'event\'})">',
-        'Åbn &rsaquo;</button>'), ns("open_id"), d$diagram_id)
-      out <- data.frame(
-        ` ` = btn,
-        Indikator = d$indikator_navn,
-        Enhed = d$org_navn,
-        Type = d$type_navn,
-        Periode = d$periode_aggregering,
-        Aggregering = flag(d$indgaar_i_aggregering),
-        Aktiv = flag(d$diagram_aktivt),
-        Tavle = flag(d$direktionens_tavle),
-        check.names = FALSE, stringsAsFactors = FALSE)
-      # Knap/flag-kolonner indeholder bevidst HTML; escape tekstkolonner (XSS)
-      esc <- which(names(out) %in% c("Indikator", "Enhed", "Type", "Periode"))
-      DT::datatable(out, escape = esc, rownames = FALSE, selection = "none",
-        options = .dt_session_state_options(session$ns("tbl"), list(
-          pageLength = 15,
-          columnDefs = list(list(orderable = FALSE, targets = 0))
-        )))
+      excelR::excelTable(
+        data = diagram_excel_data(d),
+        columns = diagram_excel_columns(d, opts, opts$periode),
+        autoColTypes = FALSE,
+        # FALSE: ellers deaktiverer width:auto table-layout:fixed, og
+        # celleindholdet vinder over de beregnede kolonnebredder
+        autoWidth = FALSE,
+        allowInsertRow = FALSE, allowInsertColumn = FALSE,
+        allowDeleteRow = FALSE, allowDeleteColumn = FALSE,
+        allowRenameColumn = FALSE, columnSorting = FALSE,
+        rowDrag = FALSE, columnDrag = FALSE,
+        getSelectedData = TRUE
+      )
     })
 
-    .show_form_modal <- function(vals = NULL) {
-      ns <- session$ns
-      is_new <- is.null(vals)
-      showModal(modalDialog(
-        title = if (is_new) "Nyt diagram" else "Redigér diagram",
-        size = "m", easyClose = FALSE,
-        .diagram_form_ui(ns, vals, opts),
-        footer = div(class = "d-flex justify-content-between w-100",
-          if (is_new) span() else
-            actionButton(ns("d_delete"), "Slet", class = "btn-outline-danger"),
-          div(class = "d-flex gap-2",
-            modalButton("Annullér"),
-            actionButton(ns("d_save"), "Gem", class = "btn-primary")))))
-      session$onFlushed(function() {
-        .update_diagram_indicator(session, opts$indikator,
-                                  if (is_new) "" else vals$indikator)
-      }, once = TRUE)
-    }
-
-    observeEvent(input$open_id, {
-      rid <- as.integer(input$open_id)
-      row <- admin()[admin()$diagram_id == rid, , drop = FALSE]
-      if (nrow(row) == 0) { status_msg("Diagram ikke fundet"); return() }
-      editing_id(rid)
-      .show_form_modal(as.list(row[1, , drop = FALSE]))
-    })
-
-    observeEvent(input$new_diagram, {
-      editing_id(NULL)
-      .show_form_modal(NULL)
-    })
-
-    observeEvent(input$d_save, {
-      vals <- .collect_diagram_form(input)
-      errs <- validate_diagram(vals)
-      if (length(errs) > 0) { status_msg(paste(errs, collapse = "; ")); return() }
-      rid <- editing_id()
-      # Blød duplikat-guard: advar men blokér ikke (bevidste dubletter findes)
-      dup <- db$diagram_duplicate_count(vals$indikator,
-        vals$organisatorisk_navn_teknisk, vals$diagram_type,
-        exclude_id = rid %||% -1L)
-      if (dup > 0) {
-        warn_msg(paste("Findes allerede: samme indikator/enhed/type har",
-                       "et diagram i forvejen."))
+    # excelR sender BÅDE celle-ændringer og selektioner på input$tbl.
+    # Ændringer diffes mod den VISTE (filtrerede) tabel via pk; hver ændret
+    # celle patches ind i den fulde DB-række (.diagram_row_values), valideres
+    # og gemmes — så en inline-edit aldrig nulstiller urørte felter.
+    observeEvent(input$tbl, {
+      p <- input$tbl
+      if (isTRUE(p$forSelectedVals)) {
+        top <- p$selectedDataBoundary$borderTop
+        grid_sel(if (is.null(top)) NULL else as.integer(top) + 1L)
+        return()
       }
-      safe_operation("diagram-gem", {
-        if (is.null(rid)) {
-          newid <- db$create_diagram(vals)
-          status_msg(paste("Oprettet diagram", newid))
+      d <- filtered()
+      changes <- excel_diff_cells(diagram_excel_data(d),
+                                  excel_payload_to_df(p), "diagram_id")
+      changes <- changes[changes$col %in% names(.DIAGRAM_GRID_FIELDS), ,
+                         drop = FALSE]
+      if (nrow(changes) == 0) {
+        return()
+      }
+      revert <- FALSE
+      for (k in seq_len(nrow(changes))) {
+        rid <- as.integer(changes$pk[k])
+        row <- admin()[admin()$diagram_id == rid, , drop = FALSE]
+        if (nrow(row) == 0) next
+        vals <- .diagram_row_values(row[1, ])
+        field <- .DIAGRAM_GRID_FIELDS[[changes$col[k]]]
+        val <- changes$value[k]
+        if (field %in% c("indikator", "organisatorisk_navn_teknisk",
+                         "diagram_type")) {
+          iv <- suppressWarnings(as.integer(val))
+          if (is.na(iv)) { # tømt/ugyldig FK-celle → afvis + snap tilbage
+            status_msg("Vælg en værdi fra listen")
+            revert <- TRUE
+            next
+          }
+          vals[[field]] <- iv
+        } else if (identical(field, "periode_aggregering")) {
+          vals[[field]] <- if (is.na(val)) NA_character_ else val
         } else {
-          db$update_diagram(rid, vals)
-          status_msg(paste("Gemt diagram", rid))
+          vals[[field]] <- identical(val, "TRUE")
         }
-        removeModal(); reload()
-      }, fallback = status_msg("Fejl ved gem af diagram (se log)"))
+        errs <- validate_diagram(vals)
+        if (length(errs) > 0) {
+          status_msg(paste(errs, collapse = "; "))
+          revert <- TRUE
+          next
+        }
+        # Blød duplikat-guard som i modal-gem: advar men blokér ikke
+        dup <- db$diagram_duplicate_count(vals$indikator,
+          vals$organisatorisk_navn_teknisk, vals$diagram_type,
+          exclude_id = rid)
+        if (dup > 0) {
+          warn_msg(paste("Findes allerede: samme indikator/enhed/type har",
+                         "et diagram i forvejen."))
+        }
+        ok <- safe_operation("diagram-inline-gem", {
+          db$update_diagram(rid, vals)
+          TRUE
+        }, fallback = FALSE)
+        if (isTRUE(ok)) {
+          status_msg(paste("Gemt diagram", rid))
+        } else {
+          status_msg("Fejl ved gem af diagram (se log)")
+          revert <- TRUE
+        }
+      }
+      reload() # genindlæs fra DB → grid viser den gemte tilstand
+      if (revert) grid_refresh(grid_refresh() + 1)
     })
 
-    observeEvent(input$d_delete, {
-      rid <- editing_id()
-      if (is.null(rid)) return()
+    observeEvent(input$delete_row, {
+      sel <- grid_sel()
+      d <- filtered()
+      if (is.null(sel) || is.na(sel) || sel < 1 || sel > nrow(d)) {
+        status_msg("Vælg en række først")
+        return()
+      }
+      rid <- d$diagram_id[sel]
       # Pre-check: median-knæk gør sletning destruktiv → venlig blokering
       n <- db$diagram_median_count(rid)
       if (n > 0) {
@@ -295,12 +403,48 @@ mod_diagram_server <- function(id, db) {
       safe_operation("diagram-slet", {
         db$delete_diagram(rid)
         status_msg(paste("Slettet diagram", rid))
-        removeModal(); editing_id(NULL); reload()
+        grid_sel(NULL) # rækken findes ikke længere — ryd stale selektion
+        reload()
       }, fallback = status_msg("Fejl ved sletning (se log)"))
+    })
+
+    # "Nyt diagram"-modal: oprettelse kræver mange felter på én gang —
+    # formular-modal er bedre end en tom grid-række (redigering ER inline).
+    observeEvent(input$new_diagram, {
+      ns <- session$ns
+      showModal(modalDialog(
+        title = "Nyt diagram",
+        size = "m", easyClose = FALSE,
+        .diagram_form_ui(ns, NULL, opts),
+        footer = div(class = "d-flex justify-content-end gap-2 w-100",
+          modalButton("Annullér"),
+          actionButton(ns("d_save"), "Gem", class = "btn-primary"))))
+      session$onFlushed(function() {
+        .update_diagram_indicator(session, opts$indikator, "")
+      }, once = TRUE)
+    })
+
+    observeEvent(input$d_save, {
+      vals <- .collect_diagram_form(input)
+      errs <- validate_diagram(vals)
+      if (length(errs) > 0) { status_msg(paste(errs, collapse = "; ")); return() }
+      # Blød duplikat-guard: advar men blokér ikke (bevidste dubletter findes)
+      dup <- db$diagram_duplicate_count(vals$indikator,
+        vals$organisatorisk_navn_teknisk, vals$diagram_type,
+        exclude_id = -1L)
+      if (dup > 0) {
+        warn_msg(paste("Findes allerede: samme indikator/enhed/type har",
+                       "et diagram i forvejen."))
+      }
+      safe_operation("diagram-gem", {
+        newid <- db$create_diagram(vals)
+        status_msg(paste("Oprettet diagram", newid))
+        removeModal(); reload()
+      }, fallback = status_msg("Fejl ved gem af diagram (se log)"))
     })
 
     # eksponér til test
     list(admin = admin, filtered = filtered, status_msg = status_msg,
-         warn_msg = warn_msg, editing_id = editing_id)
+         warn_msg = warn_msg, grid_sel = grid_sel)
   })
 }

@@ -151,41 +151,25 @@ test_that("nyt diagram registrerer alle indikatorer til server-side soegning", {
   expect_true(updates[[1]]$server)
 })
 
-test_that("redigering registrerer indikatorer med den eksisterende selection", {
-  updates <- capture_diagram_indicator_updates({
-    db <- fake_diagram_db()
-    testServer(mod_diagram_server, args = list(db = db), {
-      session$setInputs(open_id = 1)
-      session$flushReact()
-    })
-  })
+# excelR-payload-helpers til diagram-grid'et (samme mønster som hierarki)
+diagram_grid_edit <- function(d, id, column, value) {
+  g <- diagram_excel_data(d)
+  g[[column]][g$diagram_id == id] <- if (is.null(value)) NA else value
+  list(
+    colHeaders = as.list(names(g)),
+    data = lapply(seq_len(nrow(g)), function(i) {
+      lapply(g[i, ], function(v) {
+        if (length(v) == 1 && is.na(v)) NULL else if (is.logical(v)) v else as.character(v)
+      })
+    }),
+    forSelectedVals = FALSE)
+}
 
-  expect_length(updates, 1L)
-  expect_identical(updates[[1]]$inputId, "d_indikator")
-  expect_identical(updates[[1]]$choices,
-                   c("Tryksår" = "10", "Inaktiv indikator" = "11"))
-  expect_identical(updates[[1]]$selected, 10L)
-  expect_true(updates[[1]]$server)
-})
-
-test_that("redigering bevarer en ukendt indikator i server-side choices", {
-  updates <- capture_diagram_indicator_updates({
-    db <- fake_diagram_db()
-    admin <- db$list_diagrams_admin()
-    admin$indikator[admin$diagram_id == 1L] <- 9999L
-    db$list_diagrams_admin <- function() admin
-    testServer(mod_diagram_server, args = list(db = db), {
-      session$setInputs(open_id = 1)
-      session$flushReact()
-    })
-  })
-
-  expect_length(updates, 1L)
-  expect_identical(updates[[1]]$choices,
-                   c("Tryksår" = "10", "Inaktiv indikator" = "11",
-                     "Ukendt indikator #9999" = "9999"))
-  expect_identical(updates[[1]]$selected, 9999L)
-})
+diagram_grid_select <- function(row0) {
+  list(forSelectedVals = TRUE,
+       selectedDataBoundary = list(borderTop = row0, borderBottom = row0,
+                                   borderLeft = 0, borderRight = 0))
+}
 
 test_that("admin-liste indlæses og status-filter default 'aktive' reducerer", {
   db <- fake_diagram_db()
@@ -200,24 +184,75 @@ test_that("admin-liste indlæses og status-filter default 'aktive' reducerer", {
   })
 })
 
-test_that("diagramoversigten bevarer DT-tilstand i browser-sessionen", {
+test_that("diagram-grid: skjult pk, dropdowns med autocomplete, checkbokse", {
   db <- fake_diagram_db()
   testServer(mod_diagram_server, args = list(id = "diagram", db = db), {
-    first_widget <- jsonlite::fromJSON(output$tbl, simplifyVector = FALSE)
-    first_state <- expect_session_dt_state(first_widget, session$ns("tbl"))
+    w <- jsonlite::fromJSON(output$tbl, simplifyVector = FALSE)
+    cols <- w$x$columns
+    titles <- vapply(cols, function(c) c$title, "")
+    types <- vapply(cols, function(c) c$type, "")
+    expect_identical(types[titles == "diagram_id"], "hidden")
+    expect_identical(types[titles == "Indikator"], "dropdown")
+    expect_true(isTRUE(cols[[which(titles == "Indikator")]]$autocomplete))
+    expect_identical(types[titles == "Aktiv"], "checkbox")
+    expect_true(all(vapply(cols[titles %in% c("Datapakke", "Datasæt")],
+                           function(c) isTRUE(c$readOnly), logical(1))))
+    expect_false(isTRUE(w$x$autoWidth))
+    expect_false(isTRUE(w$x$allowInsertRow))
+    expect_false(isTRUE(w$x$columnSorting))
+  })
+})
 
-    expect_identical(first_widget$x$options$pageLength, 15L)
-    expect_true(any(vapply(first_widget$x$options$columnDefs, function(def) {
-      identical(def$orderable, FALSE) && identical(def$targets, 0L)
-    }, logical(1))))
+test_that("inline dropdown-ændring patcher fuld række og kalder update_diagram", {
+  db <- fake_diagram_db()
+  testServer(mod_diagram_server, args = list(db = db), {
+    session$setInputs(filter_status = "alle")
+    session$setInputs(tbl = diagram_grid_edit(
+      isolate(filtered()), 1L, "Type", "2"))
+    upd <- db$.calls()$updated
+    expect_false(is.null(upd))
+    expect_identical(upd$id, 1L)
+    expect_identical(upd$values$diagram_type, 2L)
+    # urørte felter bevaret som i DB-rækken
+    expect_identical(upd$values$indikator, 10L)
+    expect_identical(upd$values$periode_aggregering, "måned")
+    expect_true(upd$values$indgaar_i_aggregering)
+    expect_match(status_msg(), "Gemt diagram 1")
+  })
+})
 
-    reload()
-    session$flushReact()
-    rerendered_widget <- jsonlite::fromJSON(output$tbl, simplifyVector = FALSE)
-    rerendered_state <- expect_session_dt_state(
-      rerendered_widget, session$ns("tbl"))
+test_that("inline checkbox-ændring gemmer logical", {
+  db <- fake_diagram_db()
+  testServer(mod_diagram_server, args = list(db = db), {
+    session$setInputs(filter_status = "alle")
+    session$setInputs(tbl = diagram_grid_edit(
+      isolate(filtered()), 2L, "Aktiv", "TRUE"))
+    upd <- db$.calls()$updated
+    expect_identical(upd$id, 2L)
+    expect_true(upd$values$diagram_aktivt)
+  })
+})
 
-    expect_identical(rerendered_state, first_state)
+test_that("inline Periode ryddet gemmes som NA", {
+  db <- fake_diagram_db()
+  testServer(mod_diagram_server, args = list(db = db), {
+    session$setInputs(filter_status = "alle")
+    session$setInputs(tbl = diagram_grid_edit(
+      isolate(filtered()), 1L, "Periode", NULL))
+    upd <- db$.calls()$updated
+    expect_identical(upd$id, 1L)
+    expect_true(is.na(upd$values$periode_aggregering))
+  })
+})
+
+test_that("inline duplikat giver blød advarsel men gemmer", {
+  db <- fake_diagram_db(dup_count = 1L)
+  testServer(mod_diagram_server, args = list(db = db), {
+    session$setInputs(filter_status = "alle")
+    session$setInputs(tbl = diagram_grid_edit(
+      isolate(filtered()), 1L, "Type", "2"))
+    expect_match(warn_msg(), "Findes allerede")
+    expect_false(is.null(db$.calls()$updated))
   })
 })
 
@@ -322,39 +357,36 @@ test_that("duplikat giver advarsel men gem gennemføres", {
   })
 })
 
-test_that("redigér eksisterende kalder update_diagram med id", {
-  db <- fake_diagram_db()
-  testServer(mod_diagram_server, args = list(db = db), {
-    session$setInputs(open_id = 1)
-    expect_equal(editing_id(), 1L)
-    session$setInputs(d_indikator = "10", d_organisatorisk_navn_teknisk = "20",
-                      d_diagram_type = "1", d_periode_aggregering = "måned",
-                      d_indgaar_i_aggregering = TRUE, d_diagram_aktivt = TRUE,
-                      d_direktionens_tavle = FALSE, d_save = 1)
-    upd <- db$.calls()$updated
-    expect_false(is.null(upd))
-    expect_identical(upd$id, 1L)
-    expect_null(db$.calls()$created)
-  })
-})
-
 test_that("slet med median-knæk blokeres (delete_diagram IKKE kaldt)", {
   db <- fake_diagram_db(median_count = 3L)
   testServer(mod_diagram_server, args = list(db = db), {
-    session$setInputs(open_id = 1)
-    session$setInputs(d_delete = 1)
+    session$setInputs(filter_status = "alle")
+    session$setInputs(tbl = diagram_grid_select(0))   # diagram 1
+    session$setInputs(delete_row = 1)
     expect_null(db$.calls()$deleted)
     expect_match(warn_msg(), "median-knæk")
   })
 })
 
-test_that("slet uden median-knæk sletter og genindlæser", {
+test_that("slet uden median-knæk sletter via række-selektion", {
   db <- fake_diagram_db(median_count = 0L)
   testServer(mod_diagram_server, args = list(db = db), {
-    session$setInputs(open_id = 1)
-    session$setInputs(d_delete = 1)
+    session$setInputs(filter_status = "alle")
+    session$setInputs(tbl = diagram_grid_select(0))   # diagram 1
+    expect_identical(grid_sel(), 1L)
+    session$setInputs(delete_row = 1)
     expect_identical(db$.calls()$deleted, 1L)
     expect_match(status_msg(), "Slettet")
+    expect_null(grid_sel())                           # stale selektion ryddes
+  })
+})
+
+test_that("slet uden valgt række beder om valg", {
+  db <- fake_diagram_db()
+  testServer(mod_diagram_server, args = list(db = db), {
+    session$setInputs(delete_row = 1)
+    expect_match(status_msg(), "Vælg en række")
+    expect_null(db$.calls()$deleted)
   })
 })
 

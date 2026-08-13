@@ -48,7 +48,7 @@
 
 #' Kolonnebredder fra indholdets længde-fordeling.
 #'
-#' Bredden dækker q-fraktilen (default 90 %) af værdilængderne — enkelte
+#' Bredden dækker q-fraktilen (default 95 %) af værdilængderne — enkelte
 #' ekstremt lange værdier trækker altså IKKE hele kolonnen bred; de
 #' ombrydes i cellen i stedet (autoWidth sætter white-space: normal).
 #' Kolonnetitlen skal altid kunne læses, og alt clampes til [min_px,
@@ -57,7 +57,7 @@
 #' @param data df med DISPLAY-værdier — dropdown-kolonner skal være mappet
 #'   til labels før kald (id-længder siger intet om visningsbredden)
 #' @noRd
-excel_col_widths <- function(data, q = 0.9, min_px = 70, max_px = 320,
+excel_col_widths <- function(data, q = 0.95, min_px = 70, max_px = 320,
                              px_per_char = 8, padding_px = 24) {
   vapply(names(data), function(nm) {
     v <- as.character(data[[nm]])
