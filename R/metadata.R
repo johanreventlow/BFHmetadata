@@ -105,10 +105,6 @@ INDIKATOR_FIELDS <- list(
   list(col="output_enhed",             kind="text")
 )
 
-# Felter sikre til inline-redigering (simple tekst/tal — ej FK/bool/date)
-INLINE_EDITABLE <- c("indikator_navn", "mål", "output_enhed",
-                     "direkte_link", "ønsket_tendens")
-
 # Kanoniske output_enhed-værdier. SKAL matche BFHddl::map_output_enhed
 # (target_parsing.R) — værdier udenfor sættet ignoreres af diagram-
 # pipelinen (y-akse falder tilbage til default). Derfor dropdown, ej fritekst.

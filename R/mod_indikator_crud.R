@@ -45,47 +45,29 @@ INDIKATOR_MODAL_LABELS <- c(
 #' @noRd
 mod_indikator_crud_ui <- function(id) {
   ns <- NS(id)
-  bslib::navset_tab(
-    bslib::nav_panel("Oversigt",
-      tags$style(HTML(paste0(
-        "#", ns("oversigt"), " table.dataTable tbody tr{cursor:pointer;}",
-        "#", ns("oversigt"), " table.dataTable tbody tr:hover{background-color:#e9f2ff;}"))),
-      div(class = "mt-2",
-        div(class = "d-flex justify-content-end mb-2",
-          actionButton(ns("new_modal"), "Ny indikator", class = "btn-success")),
-        bslib::layout_columns(
-          col_widths = c(4, 4, 4),
-          uiOutput(ns("filter_datapakke_ui")),
-          uiOutput(ns("filter_datasaet_ui")),
-          selectInput(ns("filter_status"), "Status",
-            choices = c("Alle" = "alle", "Kun aktive" = "aktiv",
-                        "Kun inaktive" = "inaktiv",
-                        "Nøgleindikatorer" = "noegle"),
-            selected = "alle")
-        ),
-        DT::DTOutput(ns("oversigt")),
-        verbatimTextOutput(ns("status"))
-      )
+  div(class = "mt-2",
+    div(class = "d-flex justify-content-end gap-2 mb-2",
+      actionButton(ns("new_modal"), "Ny indikator", class = "btn-success"),
+      actionButton(ns("open_selected"), "Åbn valgte",
+                   class = "btn-outline-primary"),
+      actionButton(ns("soft_delete"), "Deaktivér valgte",
+                   class = "btn-warning")),
+    bslib::layout_columns(
+      col_widths = c(4, 4, 4),
+      uiOutput(ns("filter_datapakke_ui")),
+      uiOutput(ns("filter_datasaet_ui")),
+      selectInput(ns("filter_status"), "Status",
+        choices = c("Alle" = "alle", "Kun aktive" = "aktiv",
+                    "Kun inaktive" = "inaktiv",
+                    "Nøgleindikatorer" = "noegle"),
+        selected = "alle")
     ),
-    bslib::nav_panel("Inline-redigering",
-      bslib::layout_sidebar(
-        sidebar = bslib::sidebar(
-          width = 420, position = "right", open = TRUE,
-          h5("Redigér / opret"),
-          uiOutput(ns("form")),
-          div(class = "d-flex gap-2 mt-2",
-            actionButton(ns("new"), "Ny", class = "btn-secondary"),
-            actionButton(ns("save"), "Gem", class = "btn-primary"),
-            actionButton(ns("soft_delete"), "Deaktivér", class = "btn-warning")
-          )
-        ),
-        div(
-          checkboxInput(ns("show_inactive"), "Vis inaktive", value = TRUE),
-          excelR::excelOutput(ns("tbl"), width = "100%", height = "auto")
-        )
-      )
-    )
-  )
+    p(class = "text-muted small", paste(
+      "Dobbeltklik en celle for at redigere direkte.",
+      "Klik en række og brug 'Åbn valgte' for definitioner, relationer",
+      "og diagrammer — eller 'Deaktivér valgte'.")),
+    excelR::excelOutput(ns("tbl"), width = "100%", height = "auto"),
+    verbatimTextOutput(ns("status")))
 }
 
 #' @noRd
@@ -99,6 +81,92 @@ mod_indikator_crud_ui <- function(id) {
     vals[[f$col]] <- v
   }
   vals
+}
+
+# Grid-titler → tblIndikatorer-kolonner for inline-redigering (excelR).
+# Datapakke + Indikator-id vises readOnly (kontekst); resten redigeres
+# direkte. Lange felter (definitioner m.m.) + m2m-relationer + diagrammer
+# redigeres fortsat i modalen ("Åbn valgte").
+.INDIKATOR_GRID_FIELDS <- c(
+  "Aktiv" = "aktiv_indikator", "Nøgle" = "nøgleindikator",
+  "Datasæt" = "indikator_hierarki", "Navn" = "indikator_navn",
+  "Mål" = "mål", "Output-enhed" = "output_enhed",
+  "Ønsket tendens" = "ønsket_tendens", "Direkte link" = "direkte_link",
+  "Kontaktperson" = "kontaktperson", "Datakilde" = "datakilde"
+)
+
+#' Grid-data: pk (hidden) + kontekst (readOnly) + redigerbare felter.
+#' FK-felter som character-id'er; flag som logicals (checkbox-celler).
+#' Manglende kolonner i d tolereres (→ tomme celler).
+#' @noRd
+indikator_excel_data <- function(d) {
+  col_of <- function(col) if (col %in% names(d)) d[[col]] else rep(NA, nrow(d))
+  chr_or_empty <- function(x) ifelse(is.na(x), "", as.character(x))
+  out <- data.frame(id = d$id, stringsAsFactors = FALSE, check.names = FALSE)
+  out[["Aktiv"]] <- col_of("aktiv_indikator") %in% TRUE
+  out[["Nøgle"]] <- col_of("nøgleindikator") %in% TRUE
+  out[["Datapakke"]] <- chr_or_empty(col_of("label_datapakke"))
+  out[["Datasæt"]] <- chr_or_empty(col_of("indikator_hierarki"))
+  out[["Indikator-id"]] <- chr_or_empty(col_of("indikator_navn_teknisk"))
+  out[["Navn"]] <- chr_or_empty(col_of("indikator_navn"))
+  out[["Mål"]] <- chr_or_empty(col_of("mål"))
+  out[["Output-enhed"]] <- chr_or_empty(col_of("output_enhed"))
+  out[["Ønsket tendens"]] <- chr_or_empty(col_of("ønsket_tendens"))
+  out[["Direkte link"]] <- chr_or_empty(col_of("direkte_link"))
+  out[["Kontaktperson"]] <- chr_or_empty(col_of("kontaktperson"))
+  out[["Datakilde"]] <- chr_or_empty(col_of("datakilde"))
+  out
+}
+
+#' Kolonne-spec til indikator-grid'et: FK-felter som dropdowns med
+#' {id, name}-source (Datasæt/Kontaktperson med autocomplete — listerne er
+#' lange), output_enhed med kanonisk værdisæt, flag som checkbokse.
+#' Ukendte eksisterende id'er/legacy-værdier bevares i sourcen.
+#' @param fk db$fk_options(): named list col → data.frame(id, label)
+#' @noRd
+indikator_excel_columns <- function(d, fk) {
+  col_of <- function(col) if (col %in% names(d)) d[[col]] else NULL
+  src_of <- function(df, used, prefix) {
+    s <- data.frame(id = as.character(df$id), name = as.character(df$label),
+                    stringsAsFactors = FALSE)
+    unknown <- setdiff(stats::na.omit(as.character(used)), s$id)
+    if (length(unknown) > 0) {
+      s <- rbind(s, data.frame(id = unknown,
+        name = sprintf("%s #%s", prefix, unknown), stringsAsFactors = FALSE))
+    }
+    s
+  }
+  ds_src <- src_of(fk$indikator_hierarki, col_of("indikator_hierarki"),
+                   "Ukendt datasæt")
+  kp_src <- src_of(fk$kontaktperson, col_of("kontaktperson"), "Ukendt person")
+  dk_src <- src_of(fk$datakilde, col_of("datakilde"), "Ukendt datakilde")
+  oe_used <- setdiff(stats::na.omit(unique(as.character(col_of("output_enhed")))),
+                     OUTPUT_ENHED_CHOICES)
+  oe_src <- data.frame(
+    id = c("", OUTPUT_ENHED_CHOICES, oe_used),
+    name = c("(ingen)", OUTPUT_ENHED_CHOICES, oe_used),
+    stringsAsFactors = FALSE)
+  titles <- c("id", "Aktiv", "Nøgle", "Datapakke", "Datasæt", "Indikator-id",
+              "Navn", "Mål", "Output-enhed", "Ønsket tendens", "Direkte link",
+              "Kontaktperson", "Datakilde")
+  dropdown_titles <- c("Datasæt", "Output-enhed", "Kontaktperson", "Datakilde")
+  out <- data.frame(
+    title = titles,
+    type = ifelse(titles == "id", "hidden",
+      ifelse(titles %in% c("Aktiv", "Nøgle"), "checkbox",
+        ifelse(titles %in% dropdown_titles, "dropdown", "text"))),
+    readOnly = titles %in% c("id", "Datapakke", "Indikator-id"),
+    align = "left",
+    autocomplete = titles %in% c("Datasæt", "Kontaktperson"),
+    stringsAsFactors = FALSE)
+  srcs <- list("Datasæt" = ds_src, "Output-enhed" = oe_src,
+               "Kontaktperson" = kp_src, "Datakilde" = dk_src)
+  out$source <- lapply(titles, function(t) srcs[[t]] %||% NA)
+  # Fraktil-bredder målt på VISTE labels (ikke id'erne)
+  disp <- indikator_excel_data(d)
+  for (t in names(srcs)) disp[[t]] <- .excel_dropdown_display(disp[[t]], srcs[[t]])
+  out$width <- unname(excel_col_widths(disp)[titles])
+  out
 }
 
 #' @noRd
@@ -225,11 +293,14 @@ mod_indikator_crud_server <- function(id, db) {
             actionButton(ns("modal_save"), "Gem og luk", class = "btn-primary"))))
     }
 
-    observeEvent(input$open_id, {
-      rid <- as.integer(input$open_id)
-      editing_id(rid)
+    # "Åbn valgte": fuld modal (definitioner, m2m, diagrammer) for den
+    # række der senest er klikket i grid'et
+    observeEvent(input$open_selected, {
+      rid <- selected_id()
+      if (is.null(rid)) { status_msg("Vælg en række først"); return() }
       row <- rows()[rows()[["id"]] == rid, , drop = FALSE]
       if (nrow(row) == 0) { status_msg("Indikator ikke fundet"); return() }
+      editing_id(as.integer(rid))
       showModal(.build_modal(row[1, , drop = FALSE]))
     })
 
@@ -366,19 +437,24 @@ mod_indikator_crud_server <- function(id, db) {
 
     observeEvent(input$m_diagram_back, .reopen_indikator_modal())
 
-    output$form <- renderUI({
-      ns <- session$ns
-      tagList(lapply(INDIKATOR_FIELDS, function(f) .field_input(ns, f, fk_choices)))
-    })
-
-    # Den VISTE tabel (inkl. inaktiv-filter) — delt af render, celle-diff og
-    # række-selektion, så indeks aldrig kan pege på en anden række end den
-    # der vises (DT-versionen mappede selektion mod ufiltreret rows()).
+    # Den VISTE tabel (status/datapakke/datasæt-filtre) — delt af render,
+    # celle-diff og række-selektion, så indeks aldrig kan pege på en anden
+    # række end den der vises.
     tbl_rows <- reactive({
       d <- rows()
-      if (!isTRUE(input$show_inactive) && "aktiv_indikator" %in% names(d)) {
+      status <- input$filter_status %||% "alle"
+      if (identical(status, "aktiv"))
         d <- d[d$aktiv_indikator %in% TRUE, , drop = FALSE]
-      }
+      if (identical(status, "inaktiv"))
+        d <- d[!(d$aktiv_indikator %in% TRUE), , drop = FALSE]
+      if (identical(status, "noegle"))
+        d <- d[d$nøgleindikator %in% TRUE, , drop = FALSE]
+      fdp <- input$filter_datapakke
+      if (!is.null(fdp) && nzchar(fdp))
+        d <- d[d$label_datapakke %in% fdp, , drop = FALSE]
+      fds <- input$filter_datasaet
+      if (!is.null(fds) && nzchar(fds))
+        d <- d[d$label_indikator_hierarki %in% fds, , drop = FALSE]
       d
     })
     tbl_refresh <- reactiveVal(0) # bump → snap-back efter fejlet gem
@@ -387,21 +463,9 @@ mod_indikator_crud_server <- function(id, db) {
     output$tbl <- excelR::renderExcel({
       tbl_refresh()
       d <- tbl_rows()
-      # output_enhed som dropdown: kun kanoniske værdier (BFHddl-pipelinen
-      # ignorerer alt andet). "" = (ingen); eksisterende legacy-fritekst i
-      # data bevares i sourcen, så den hverken vises blankt eller tabes.
-      oe_used <- setdiff(
-        stats::na.omit(unique(as.character(d$output_enhed))),
-        OUTPUT_ENHED_CHOICES)
-      oe_src <- data.frame(
-        id = c("", OUTPUT_ENHED_CHOICES, oe_used),
-        name = c("(ingen)", OUTPUT_ENHED_CHOICES, oe_used),
-        stringsAsFactors = FALSE)
       excelR::excelTable(
-        data = d,
-        columns = excel_text_columns(names(d), INLINE_EDITABLE,
-          data = d, hidden = "id",
-          dropdowns = list(output_enhed = oe_src)),
+        data = indikator_excel_data(d),
+        columns = indikator_excel_columns(d, fk),
         autoColTypes = FALSE,
         # FALSE: ellers deaktiverer width:auto table-layout:fixed, og
         # celleindholdet vinder over de beregnede kolonnebredder
@@ -440,91 +504,11 @@ mod_indikator_crud_server <- function(id, db) {
         choices = choices, selected = selected)
     })
 
-    # Filtreret datasæt til oversigten (delt af render + række-klik-observer)
-    oversigt_rows <- reactive({
-      d <- rows()
-      status <- input$filter_status %||% "alle"
-      if (identical(status, "aktiv"))
-        d <- d[d$aktiv_indikator %in% TRUE, , drop = FALSE]
-      if (identical(status, "inaktiv"))
-        d <- d[!(d$aktiv_indikator %in% TRUE), , drop = FALSE]
-      if (identical(status, "noegle"))
-        d <- d[d$nøgleindikator %in% TRUE, , drop = FALSE]
-      fdp <- input$filter_datapakke
-      if (!is.null(fdp) && nzchar(fdp))
-        d <- d[d$label_datapakke %in% fdp, , drop = FALSE]
-      fds <- input$filter_datasaet
-      if (!is.null(fds) && nzchar(fds))
-        d <- d[d$label_indikator_hierarki %in% fds, , drop = FALSE]
-      d
-    })
-
-    output$oversigt <- DT::renderDT({
-      d <- oversigt_rows()
-      # Aktiv: grøn ✓ / grå streg
-      aktiv <- ifelse(d[["aktiv_indikator"]] %in% TRUE,
-        '<span style="color:#198754;font-weight:700;">&#10003;</span>',
-        '<span style="color:#adb5bd;">&mdash;</span>')
-      # Indikator-id (teknisk navn) + gul "Nøgle"-badge ved nøgleindikator
-      idtxt <- d[["indikator_navn_teknisk"]]
-      idtxt[is.na(idtxt)] <- ""
-      idcol <- mapply(function(txt, key) {
-        txt <- htmltools::htmlEscape(txt)
-        if (isTRUE(key)) paste0(txt, ' <span class="badge text-bg-warning">Nøgle</span>') else txt
-      }, idtxt, d[["nøgleindikator"]] %in% TRUE, USE.NAMES = FALSE)
-      btn <- '<span class="btn btn-outline-secondary btn-sm">Åbn &rsaquo;</span>'
-      # Kolonner: knap → aktiv → datapakke → datasæt → indikator-id → navn
-      out <- data.frame(
-        ` ` = btn,
-        Aktiv = aktiv,
-        Datapakke = d[["label_datapakke"]],
-        Datasæt = d[["label_indikator_hierarki"]],
-        `Indikator-id` = idcol,
-        Navn = d[["indikator_navn"]],
-        check.names = FALSE, stringsAsFactors = FALSE)
-      # Knap/Aktiv/Id indeholder bevidst HTML; escape kun rene tekstkolonner (XSS)
-      esc <- which(names(out) %in% c("Datapakke", "Datasæt", "Navn"))
-      DT::datatable(out, escape = esc, rownames = FALSE, selection = "single",
-        options = .dt_session_state_options(session$ns("oversigt"), list(
-          pageLength = 10,
-          columnDefs = list(list(orderable = FALSE, targets = 0))
-        )))
-    })
-
-    # Hel-række-klik åbner modal (design: hele rækken er klikbar)
-    oversigt_proxy <- DT::dataTableProxy("oversigt", session)
-    observeEvent(input$oversigt_rows_selected, {
-      idx <- input$oversigt_rows_selected
-      d <- oversigt_rows()
-      if (idx > nrow(d)) return()
-      rid <- as.integer(d[["id"]][idx])
-      editing_id(rid)
-      row <- rows()[rows()[["id"]] == rid, , drop = FALSE]
-      if (nrow(row) == 0) { status_msg("Indikator ikke fundet"); return() }
-      showModal(.build_modal(row[1, , drop = FALSE]))
-      DT::selectRows(oversigt_proxy, NULL)  # nulstil → samme række kan genåbnes
-    })
-
     selected_id <- reactive({
       sel <- tbl_sel()
       d <- tbl_rows()
       if (is.null(sel) || is.na(sel) || sel < 1 || sel > nrow(d)) return(NULL)
       d[["id"]][sel]
-    })
-
-    observeEvent(input$save, {
-      vals <- .collect_form(input, INDIKATOR_FIELDS)
-      errs <- validate_indikator(vals)
-      if (length(errs) > 0) { status_msg(paste(errs, collapse = "; ")); return() }
-      safe_operation("gem indikator", {
-        sid <- selected_id()
-        if (is.null(sid)) {
-          newid <- db$create_indikator(vals); status_msg(paste("Oprettet id", newid))
-        } else {
-          db$update_indikator(sid, vals); status_msg("Gemt")
-        }
-        reload()
-      }, fallback = status_msg("Fejl ved gem (se log)"))
     })
 
     observeEvent(input$soft_delete, {
@@ -537,8 +521,11 @@ mod_indikator_crud_server <- function(id, db) {
 
     # excelR sender BÅDE celle-ændringer og selektioner på input$tbl —
     # forSelectedVals skelner. Ændringer diffes mod den VISTE tabel (pk-match)
-    # og skrives enkeltvis; readOnly-kolonner kan ikke redigeres i grid'et,
-    # men diffen guarder alligevel (klient-manipulation).
+    # og skrives enkeltvis (update_indikator med KUN det ændrede felt);
+    # readOnly-kolonner kan ikke redigeres i grid'et, men diffen guarder
+    # alligevel (klient-manipulation).
+    .IND_FK_FIELDS <- c("indikator_hierarki", "kontaktperson", "datakilde")
+    .IND_BOOL_FIELDS <- c("aktiv_indikator", "nøgleindikator")
     observeEvent(input$tbl, {
       p <- input$tbl
       if (isTRUE(p$forSelectedVals)) {
@@ -547,28 +534,47 @@ mod_indikator_crud_server <- function(id, db) {
         return()
       }
       d <- tbl_rows()
-      changes <- excel_diff_cells(d, excel_payload_to_df(p), "id")
-      changes <- changes[changes$col %in% INLINE_EDITABLE, , drop = FALSE]
+      changes <- excel_diff_cells(indikator_excel_data(d),
+                                  excel_payload_to_df(p), "id")
+      changes <- changes[changes$col %in% names(.INDIKATOR_GRID_FIELDS), ,
+                         drop = FALSE]
       if (nrow(changes) == 0) {
         return()
       }
-      any_fail <- FALSE
+      revert <- FALSE
       for (k in seq_len(nrow(changes))) {
         rid <- d[["id"]][match(changes$pk[k], as.character(d[["id"]]))]
+        field <- .INDIKATOR_GRID_FIELDS[[changes$col[k]]]
+        val <- changes$value[k]
+        if (field %in% .IND_FK_FIELDS) {
+          # FK-dropdowns har intet tom-valg: tømt/ugyldig celle → afvis
+          iv <- suppressWarnings(as.integer(val))
+          if (is.na(iv)) {
+            status_msg("Vælg en værdi fra listen")
+            revert <- TRUE
+            next
+          }
+          val <- iv
+        } else if (field %in% .IND_BOOL_FIELDS) {
+          val <- identical(val, "TRUE")
+        } else if (identical(field, "indikator_navn") && is.na(val)) {
+          status_msg("Navn på indikator er obligatorisk")
+          revert <- TRUE
+          next
+        }
         ok <- safe_operation("inline-update", {
-          db$update_indikator(rid,
-            stats::setNames(list(changes$value[k]), changes$col[k]))
+          db$update_indikator(rid, stats::setNames(list(val), field))
           TRUE
         }, fallback = FALSE)
         if (isTRUE(ok)) {
-          status_msg(paste("Opdateret", changes$col[k]))
+          status_msg(paste("Opdateret", field))
         } else {
           status_msg("Fejl ved inline-update")
-          any_fail <- TRUE
+          revert <- TRUE
         }
       }
       reload() # genindlæs fra DB → grid viser den gemte tilstand
-      if (any_fail) tbl_refresh(tbl_refresh() + 1)
+      if (revert) tbl_refresh(tbl_refresh() + 1)
     })
 
     output$status <- renderText(status_msg())

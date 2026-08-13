@@ -146,35 +146,6 @@ lookup_excel_columns <- function(cfg, col_names, fk_sources = list(),
   out
 }
 
-#' Kolonne-spec hvor kun `editable`-kolonner kan redigeres (som text);
-#' alle øvrige — inkl. pk og afledte label-kolonner — er readOnly text.
-#' Til indikator-oversigtens inline-redigering (INLINE_EDITABLE).
-#' `data` (valgfri) sætter fraktil-baserede kolonnebredder. `hidden`-
-#' kolonner (typisk pk) skjules helt men bliver i data/payload.
-#' `dropdowns` (named list: kolonne → data.frame(id, name)) gør enkelte
-#' editable kolonner til dropdowns med fast værdisæt.
-#' @noRd
-excel_text_columns <- function(col_names, editable, data = NULL,
-                               hidden = character(0), dropdowns = list()) {
-  out <- data.frame(
-    title = col_names,
-    type = ifelse(col_names %in% hidden, "hidden",
-      ifelse(col_names %in% names(dropdowns), "dropdown", "text")),
-    readOnly = !(col_names %in% editable),
-    align = "left", # jexcel centrerer som default — venstrestil alle celler
-    stringsAsFactors = FALSE
-  )
-  out$source <- lapply(col_names, function(nm) dropdowns[[nm]] %||% NA)
-  if (!is.null(data)) {
-    disp <- data[, intersect(col_names, names(data)), drop = FALSE]
-    for (nm in intersect(names(dropdowns), names(disp))) {
-      disp[[nm]] <- .excel_dropdown_display(disp[[nm]], dropdowns[[nm]])
-    }
-    out$width <- unname(excel_col_widths(disp)[col_names])
-  }
-  out
-}
-
 #' Rekonstruér data.frame fra excelR's onChange-payload.
 #'
 #' payload$data er en liste af rækker (liste af celleværdier), payload$
