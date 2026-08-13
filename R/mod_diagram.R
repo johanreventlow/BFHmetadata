@@ -230,7 +230,12 @@ mod_diagram_server <- function(id, db) {
     warn_msg <- reactiveVal("")
     grid_sel <- reactiveVal(NULL) # pk (chr) for senest valgte række
     grid_refresh <- reactiveVal(0) # bump → snap-back efter afvist inline-edit
-    reload <- function() admin(db$list_diagrams_admin())
+    # Fejl-tolerant genindlæsning: DB-udfald må aldrig vælte sessionen —
+    # behold senest hentede rækker og sig det højt.
+    reload <- function() {
+      safe_operation("genindlæs diagrammer", admin(db$list_diagrams_admin()),
+        fallback = status_msg("Databasen svarer ikke — viser senest hentede data"))
+    }
 
     # Flydende notifikationer (synlige over modal, jf. mod_indikator_crud)
     observeEvent(status_msg(), {

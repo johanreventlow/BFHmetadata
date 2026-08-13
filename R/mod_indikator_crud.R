@@ -177,7 +177,13 @@ mod_indikator_crud_server <- function(id, db) {
     fk <- db$fk_options()
     fk_choices <- lapply(fk, function(d) stats::setNames(d$id, d$label))
 
-    reload <- function() rows(db$list_indikatorer())
+    # Fejl-tolerant genindlæsning: et DB-udfald (Supabase lukker inaktive
+    # forbindelser; pool-recovery kan fejle ved netværksbortfald) må ALDRIG
+    # vælte sessionen — behold senest hentede rækker og sig det højt.
+    reload <- function() {
+      safe_operation("genindlæs indikatorer", rows(db$list_indikatorer()),
+        fallback = status_msg("Databasen svarer ikke — viser senest hentede data"))
+    }
 
     editing_id <- reactiveVal(NULL)
     # Swap-retur: husker hvilken indikator-modal der skal genåbnes efter

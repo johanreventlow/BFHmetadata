@@ -611,9 +611,19 @@ mod_signal_review_server <- function(id, db) {
     # Ryd diagrammets cache-nøgler + re-scan det scannede vindue, så grafen
     # opdateres i stedet for at gå blank efter en knæk-ændring (gem/fjern).
     .refresh_diagram <- function(cd) {
+      # Medians hentes FØR cachen røres: fejler DB'en (udfald/pool-recovery)
+      # beholdes det cachede scan-resultat, og sessionen overlever.
+      meds <- safe_operation("hent median-knæk (refresh)",
+        db$diagram_medians(cd$diagram_id),
+        fallback = NULL)
+      if (is.null(meds)) {
+        showNotification(
+          "Databasen svarer ikke — diagrammet er ikke genberegnet",
+          type = "warning", session = session)
+        return(invisible())
+      }
       cc <- cache()
       cc[grepl(paste0("^", cd$diagram_id, "\\|"), names(cc))] <- NULL
-      meds <- db$diagram_medians(cd$diagram_id)
       base <- input$parquet_dir
       ind <- cd$indikator_navn_teknisk
       # Knæk-ændringer rører kun medians — indikatorens slice er uændret, så

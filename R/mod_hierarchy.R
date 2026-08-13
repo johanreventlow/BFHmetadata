@@ -102,8 +102,12 @@ mod_hierarchy_server <- function(id, db, cfg) {
     table_revision <- reactiveVal(0L)
     selected_id <- reactiveVal(NULL)
     delete_id <- reactiveVal(NULL)
+    # Fejl-tolerant genindlæsning: DB-udfald må aldrig vælte sessionen —
+    # behold senest hentede noder (revision bumpes stadig → grid snapper
+    # tilbage til den kendte tilstand).
     reload <- function() {
-      nodes(db$list_nodes())
+      safe_operation("genindlæs org-træ", nodes(db$list_nodes()),
+        fallback = notify_warning("Databasen svarer ikke — viser senest hentede data"))
       table_revision(isolate(table_revision()) + 1L)
     }
     notify_status <- function(message) {

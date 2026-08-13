@@ -162,7 +162,10 @@ mod_lookup_table_server <- function(id, db, cfg) {
         })
         return()
       }
-      rows(db$list_rows())
+      # Fejl-tolerant genindlæsning: DB-udfald efter en gennemført sletning
+      # må ikke vælte sessionen — behold senest hentede rækker
+      safe_operation("genindlæs rækker", rows(db$list_rows()),
+        fallback = status_msg("Databasen svarer ikke — viser senest hentede data"))
       sel_pk(NULL) # rækken findes ikke længere — stale selektion må ej genbruges
       refresh(refresh() + 1)
       status_msg("Slettet")
