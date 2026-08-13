@@ -156,6 +156,9 @@ build_diagram_index_sql <- function() {
     ") ",
     'SELECT d."id" AS diagram_id, d."periode_aggregering", ',
     'i."id" AS indikator_id, i."indikator_navn", i."indikator_navn_teknisk", ',
+    # Nulfyld-flag med i indekset: scan_diagram spejler BFHddl's
+    # fill_empty_periods, så signalet beregnes på samme serie som tegnes
+    'i."nulfyld_tomme_perioder", ',
     'h."hierarki_navn" AS datasaet, dp."hierarki_navn" AS datapakke, ',
     'o."Id" AS org_id, o."organisatorisk_navn_teknisk" AS org_teknisk, ',
     'o."organisatorisk_navn_langt" AS org_navn, o."organisatorisk_niveau" AS org_niveau, ',

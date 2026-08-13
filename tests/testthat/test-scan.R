@@ -390,6 +390,69 @@ test_that("scan_diagram: vaerdi-kolonne + aggregering → fejl (ej tavs no-op)",
   expect_equal(res$status, "fejl")   # safe_operation fanger → synlig fejl
 })
 
+# --- Nulfyldning af tomme perioder (spejler BFHddl fill_empty_periods) ------
+
+test_that("scan_fill_empty_periods: huller OG hale fyldes med 0 frem til seneste afsluttede periode", {
+  s <- data.frame(dato = as.Date(c("2026-01-05", "2026-01-19")),
+                  taeller = c(2, 3), stringsAsFactors = FALSE)
+  # I dag = onsdag 2026-02-04 → seneste afsluttede uge starter 2026-01-26
+  out <- scan_fill_empty_periods(s, "week", today = as.Date("2026-02-04"))
+  expect_equal(out$dato, as.Date(c("2026-01-05", "2026-01-12",
+                                   "2026-01-19", "2026-01-26")))
+  expect_equal(out$taeller, c(2, 0, 3, 0))
+})
+
+test_that("scan_fill_empty_periods: naevner-/vaerdi-serier røres ALDRIG", {
+  d <- as.Date(c("2026-01-05", "2026-01-19"))
+  andel <- data.frame(dato = d, taeller = c(1, 2), naevner = c(10, 10))
+  expect_identical(scan_fill_empty_periods(andel, "week",
+    today = as.Date("2026-02-04")), andel)
+  vaerdi <- data.frame(dato = d, vaerdi = c(4, 6), taeller = NA_real_)
+  expect_identical(scan_fill_empty_periods(vaerdi, "week",
+    today = as.Date("2026-02-04")), vaerdi)
+  # All-NA naevner er reelt fraværende (scan-slices bærer alle kolonner) → fyldes
+  count_na_naevner <- data.frame(dato = d, taeller = c(1, 2),
+                                 naevner = NA_real_)
+  filled <- scan_fill_empty_periods(count_na_naevner, "week",
+    today = as.Date("2026-02-04"))
+  expect_equal(nrow(filled), 4L)
+  expect_true(all(is.na(filled$naevner)))
+})
+
+test_that("scan_fill_empty_periods: tom/dato-løs slice returneres uændret", {
+  empty <- data.frame(dato = as.Date(character(0)), taeller = numeric(0))
+  expect_identical(scan_fill_empty_periods(empty, "week"), empty)
+  expect_null(scan_fill_empty_periods(NULL, "week"))
+})
+
+test_that("scan_diagram: nulfyld-flag udfylder tomme perioder før signal", {
+  skip_if_not_installed("arrow")
+  base <- withr::local_tempdir()
+  ind <- "count_gap"
+  dir.create(file.path(base, ind))
+  # Uge-tælling med hul (og hale op til i dag, jf. levende dataleverance)
+  arrow::write_parquet(data.frame(
+    indikator = "x", enhed = "e",
+    dato = as.Date(c("2026-01-05", "2026-01-19")),
+    taeller = c(2, 3), stringsAsFactors = FALSE),
+    file.path(base, ind, "p.parquet"))
+  vdf <- data.frame(org_id = 5L, teknisk = "E", kort = NA, langt = NA,
+                    fra_data = NA, stringsAsFactors = FALSE)
+  row_on <- list(diagram_id = 1L, indikator_navn_teknisk = ind, org_id = 5L,
+                 nulfyld_tomme_perioder = TRUE)
+  res <- scan_diagram(row_on, base, medians_df = NULL, variants_df = vdf,
+                      period = "uge")
+  expect_equal(res$status, "ok")
+  # Hullet 2026-01-12 er fyldt med 0
+  expect_true(as.Date("2026-01-12") %in% as.Date(res$slice$dato))
+  expect_equal(res$slice$taeller[as.Date(res$slice$dato) == as.Date("2026-01-12")], 0)
+  # Uden flag: hullet forbliver tomt
+  row_off <- list(diagram_id = 2L, indikator_navn_teknisk = ind, org_id = 5L)
+  res_off <- scan_diagram(row_off, base, medians_df = NULL, variants_df = vdf,
+                          period = "uge")
+  expect_false(as.Date("2026-01-12") %in% as.Date(res_off$slice$dato))
+})
+
 test_that("scan_view_filter: show_breaks medtager knæk-diagrammer uden signal", {
   sl <- data.frame(
     diagram_id = 1:4,

@@ -19,6 +19,59 @@ enhed_variants_for <- function(variants_df, org_id) {
   unique(v)
 }
 
+#' Nulfyld tomme perioder i en tælle-serie. Vendored fra BFHddl
+#' (fill_empty_periods + pipeline §5.2a', se BFHddl DATA_CONVENTIONS §3b):
+#' en tom periode i en hændelsestælling ER et 0-punkt — uden fyld beregnes
+#' centerlinjen kun på perioder MED hændelser, og scannet ville se en anden
+#' serie end den BFHddl tegner.
+#'
+#' Kun tælle-serier fyldes: nævner-serier (andele/rater) og værdi-serier må
+#' aldrig 0-udfyldes. Scan-slices bærer ALLE kolonner (NA for ubrugte), så
+#' guarden bruger "har data"-semantik som compute_signal — ikke kolonne-
+#' tilstedeværelse som BFHddl's pipeline-guard.
+#'
+#' Fyldes fra seriens første observation frem til seneste AFSLUTTEDE periode
+#' (også efter sidste hændelse — forudsætter levende dataleverance). Én
+#' 0-række pr. manglende periode: qic summerer pr. dato, så resultatet
+#' matcher BFHddl's per-gruppe-fyld.
+#' @param slice slice EFTER periode-aggregering
+#' @param period_en lubridate-enhed ("day"/"week"/"month"/"quarter"/"year")
+#' @param today injicérbar "i dag" (test) — styrer seneste afsluttede periode
+#' @noRd
+scan_fill_empty_periods <- function(slice, period_en, today = Sys.Date()) {
+  if (is.null(slice) || nrow(slice) == 0 || !"dato" %in% names(slice)) {
+    return(slice)
+  }
+  has_data <- function(col) col %in% names(slice) && any(!is.na(slice[[col]]))
+  if (!has_data("taeller") || has_data("naevner") || has_data("vaerdi")) {
+    return(slice)
+  }
+  wk <- getOption("lubridate.week.start", 1)
+  dates <- as.Date(slice$dato)
+  # Seneste afsluttede periode: dagen før indeværende periodes start,
+  # floor'et til periodestart (BFHddl: until = floor(today)-1 → floor(until))
+  until_start <- lubridate::floor_date(
+    lubridate::floor_date(as.Date(today), unit = period_en, week_start = wk) - 1,
+    unit = period_en, week_start = wk
+  )
+  slut <- max(dates)
+  if (until_start > slut) slut <- until_start
+  full <- seq.Date(min(dates), slut, by = period_en)
+  missing <- full[!full %in% dates]
+  if (length(missing) == 0) {
+    return(slice)
+  }
+  # Skabelon = første række (id-kolonner som indikator/enhed er konstante i
+  # et scan-slice; måle-kolonner naevner/vaerdi er alle-NA jf. guarden)
+  new_rows <- slice[rep(1L, length(missing)), , drop = FALSE]
+  slice$dato <- dates # normalisér til Date så rbind ikke blander typer
+  new_rows$dato <- missing
+  new_rows$taeller <- 0
+  out <- rbind(slice, new_rows)
+  rownames(out) <- NULL
+  out[order(out$dato), , drop = FALSE]
+}
+
 #' Scan ét diagram: byg enhed-filter → hent fuldt indikator-slice → filtrér
 #' in-memory → (vindue) → resolve median-knæk → compute_signal. Fanger fejl
 #' pr. diagram (safe_operation).
@@ -120,6 +173,12 @@ scan_diagram <- function(row, base_path, medians_df, variants_df, window_n = NUL
           if (nrow(slice) == 0) {
             empty("ingen_data")
           } else {
+            # Nulfyld tomme perioder (opt-in-flag fra tblIndikatorer) —
+            # EFTER aggregering, FØR vinduet (BFHddl-orden §5.2a' → §5.2b):
+            # omvendt ville "seneste N" tælles på serien uden 0-punkterne.
+            if (isTRUE(as.logical(row$nulfyld_tomme_perioder %||% FALSE))) {
+              slice <- scan_fill_empty_periods(slice, p)
+            }
             if (!is.null(window_n)) slice <- parquet_limit_observations(slice, window_n)
             slice <- slice[order(slice$dato), , drop = FALSE]
             # Knæk sat under en ANDEN aggregering ignoreres: deres dato ville
