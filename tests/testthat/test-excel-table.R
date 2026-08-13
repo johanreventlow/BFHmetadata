@@ -43,6 +43,46 @@ test_that("excel_text_columns: kun editable-kolonner er åbne, alt er text", {
   expect_true(all(cols$align == "left"))
 })
 
+test_that("excel_col_widths: bredden følger fraktilen, ikke længste værdi", {
+  d <- data.frame(
+    navn = c(rep("kort", 19), strrep("x", 100)),
+    stringsAsFactors = FALSE)
+  w <- excel_col_widths(d)
+  expect_lt(w[["navn"]], 200)     # én 100-tegns outlier må ikke styre bredden
+  expect_gte(w[["navn"]], 70)
+})
+
+test_that("excel_col_widths: clamp til min/max og plads til kolonnetitlen", {
+  d <- data.frame(
+    x = "a",
+    en_meget_lang_kolonnetitel = "a",
+    lang = strrep("y", 500),
+    stringsAsFactors = FALSE)
+  w <- excel_col_widths(d, min_px = 70, max_px = 320)
+  expect_equal(unname(w[["x"]]), 70)                # min-clamp
+  expect_equal(unname(w[["lang"]]), 320)            # max-clamp
+  expect_gt(w[["en_meget_lang_kolonnetitel"]], 70)  # titlen skal kunne læses
+})
+
+test_that("excel_col_widths: NA/tom kolonne falder til minimum", {
+  d <- data.frame(x = NA_character_, stringsAsFactors = FALSE)
+  expect_equal(unname(excel_col_widths(d)[["x"]]), 70)
+})
+
+test_that("lookup_excel_columns: data giver fraktil-bredder, fk målt på labels", {
+  fk <- list(enhed = data.frame(id = c(10L, 20L),
+    label = c("Kirurgisk Afdeling K123", "Medicinsk Afdeling M456")))
+  d <- data.frame(Id = 1:2, navn = c("A", "B"), niveau = c(1L, 2L),
+                  enhed = c(10L, 20L), stringsAsFactors = FALSE)
+  cols <- lookup_excel_columns(.cfg_excel, names(d), fk, data = d)
+  expect_true(is.numeric(cols$width))
+  # fk-bredden skal afspejle LABEL-længden (~23 tegn), ikke id'et (2 tegn)
+  expect_gt(cols$width[cols$title == "enhed"], 150)
+  expect_lt(cols$width[cols$title == "Id"], 100)
+  # uden data: ingen width-kolonne (jexcel auto)
+  expect_null(lookup_excel_columns(.cfg_excel, names(d), fk)$width)
+})
+
 test_that("excel_payload_to_df: rækker rekonstrueres navne-baseret som character", {
   p <- list(
     colHeaders = list("Id", "navn", "niveau"),

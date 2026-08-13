@@ -211,6 +211,12 @@ hierarchy_excel_columns <- function(cfg, tree_df, niveauer) {
     stringsAsFactors = FALSE)
   out$source <- c(rep(list(NA), 2 + length(field_titles)),
                   list(parent_src), list(niveau_src))
+  # Fraktil-baserede bredder (enkelte lange navne må ikke trække kolonnen
+  # bred). Dropdown-kolonner måles på deres viste labels, ikke id'erne.
+  disp <- hierarchy_excel_data(tree_df, cfg)
+  disp[["Forælder"]] <- .excel_dropdown_display(disp[["Forælder"]], parent_src)
+  disp[["Niveau"]] <- .excel_dropdown_display(disp[["Niveau"]], niveau_src)
+  out$width <- unname(excel_col_widths(disp)[out$title])
   out
 }
 

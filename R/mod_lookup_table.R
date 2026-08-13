@@ -54,7 +54,7 @@ mod_lookup_table_server <- function(id, db, cfg) {
       d <- isolate(rows())
       excelR::excelTable(
         data = d,
-        columns = lookup_excel_columns(cfg, names(d), .fk_sources()),
+        columns = lookup_excel_columns(cfg, names(d), .fk_sources(), data = d),
         autoColTypes = FALSE,
         # Række/kolonne-operationer styres af knapperne + DB — ikke af grid'et.
         # Sortering/drag er slået fra så grid-rækkefølgen ALTID matcher rows()

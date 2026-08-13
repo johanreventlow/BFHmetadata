@@ -389,7 +389,7 @@ mod_indikator_crud_server <- function(id, db) {
       d <- tbl_rows()
       excelR::excelTable(
         data = d,
-        columns = excel_text_columns(names(d), INLINE_EDITABLE),
+        columns = excel_text_columns(names(d), INLINE_EDITABLE, data = d),
         autoColTypes = FALSE,
         allowInsertRow = FALSE, allowInsertColumn = FALSE,
         allowDeleteRow = FALSE, allowDeleteColumn = FALSE,

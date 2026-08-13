@@ -38,6 +38,42 @@
   "))
 }
 
+#' Kolonnebredder fra indholdets længde-fordeling.
+#'
+#' Bredden dækker q-fraktilen (default 90 %) af værdilængderne — enkelte
+#' ekstremt lange værdier trækker altså IKKE hele kolonnen bred; de
+#' ombrydes i cellen i stedet (autoWidth sætter white-space: normal).
+#' Kolonnetitlen skal altid kunne læses, og alt clampes til [min_px,
+#' max_px].
+#'
+#' @param data df med DISPLAY-værdier — dropdown-kolonner skal være mappet
+#'   til labels før kald (id-længder siger intet om visningsbredden)
+#' @noRd
+excel_col_widths <- function(data, q = 0.9, min_px = 70, max_px = 320,
+                             px_per_char = 8, padding_px = 24) {
+  vapply(names(data), function(nm) {
+    v <- as.character(data[[nm]])
+    v <- v[!is.na(v)]
+    qlen <- if (length(v) == 0) {
+      0
+    } else {
+      stats::quantile(nchar(v), q, names = FALSE)
+    }
+    chars <- max(qlen, nchar(nm))
+    round(min(max_px, max(min_px, chars * px_per_char + padding_px)))
+  }, numeric(1))
+}
+
+#' Display-tekst for en dropdown-kolonne: id'er → source-labels (ukendte
+#' id'er beholdes rå). Bruges KUN til breddeberegning.
+#' @noRd
+.excel_dropdown_display <- function(values, source) {
+  idx <- match(as.character(values), as.character(source$id))
+  out <- as.character(source$name)[idx]
+  out[is.na(idx)] <- as.character(values)[is.na(idx)]
+  out
+}
+
 #' Kolonne-spec til excelR::excelTable fra et LOOKUP_TABLES-cfg.
 #'
 #' pk-kolonnen er readOnly (numeric); cfg-type "int" → numeric, "fk" →
@@ -49,9 +85,12 @@
 #' @param cfg LOOKUP_TABLES-element (pk + cols-liste)
 #' @param col_names kolonnenavne i data-rækkefølge (typisk names(rows))
 #' @param fk_sources named list: fk-kolonnenavn → data.frame(id, label)
+#' @param data valgfri rækker: sætter fraktil-baserede kolonnebredder
+#'   (excel_col_widths; fk-kolonner måles på labels). NULL → jexcel auto.
 #' @return data.frame(title, type, readOnly) + list-kolonnen source
 #' @noRd
-lookup_excel_columns <- function(cfg, col_names, fk_sources = list()) {
+lookup_excel_columns <- function(cfg, col_names, fk_sources = list(),
+                                 data = NULL) {
   meta <- stats::setNames(cfg$cols, vapply(cfg$cols, function(c) c$col, ""))
   spec <- lapply(col_names, function(nm) {
     m <- meta[[nm]]
@@ -82,21 +121,39 @@ lookup_excel_columns <- function(cfg, col_names, fk_sources = list()) {
     stringsAsFactors = FALSE
   )
   out$source <- lapply(spec, function(s) s$source)
+  if (!is.null(data)) {
+    disp <- data[, intersect(col_names, names(data)), drop = FALSE]
+    for (i in seq_along(col_names)) {
+      src <- out$source[[i]]
+      if (identical(out$type[i], "dropdown") && is.data.frame(src) &&
+        col_names[i] %in% names(disp)) {
+        disp[[col_names[i]]] <- .excel_dropdown_display(
+          disp[[col_names[i]]], src)
+      }
+    }
+    out$width <- unname(excel_col_widths(disp)[col_names])
+  }
   out
 }
 
 #' Kolonne-spec hvor kun `editable`-kolonner kan redigeres (som text);
 #' alle øvrige — inkl. pk og afledte label-kolonner — er readOnly text.
 #' Til indikator-oversigtens inline-redigering (INLINE_EDITABLE).
+#' `data` (valgfri) sætter fraktil-baserede kolonnebredder.
 #' @noRd
-excel_text_columns <- function(col_names, editable) {
-  data.frame(
+excel_text_columns <- function(col_names, editable, data = NULL) {
+  out <- data.frame(
     title = col_names,
     type = "text",
     readOnly = !(col_names %in% editable),
     align = "left", # jexcel centrerer som default — venstrestil alle celler
     stringsAsFactors = FALSE
   )
+  if (!is.null(data)) {
+    disp <- data[, intersect(col_names, names(data)), drop = FALSE]
+    out$width <- unname(excel_col_widths(disp)[col_names])
+  }
+  out
 }
 
 #' Rekonstruér data.frame fra excelR's onChange-payload.
