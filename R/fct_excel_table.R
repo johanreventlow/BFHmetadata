@@ -84,6 +84,19 @@ lookup_excel_columns <- function(cfg, col_names, fk_sources = list()) {
   out
 }
 
+#' Kolonne-spec hvor kun `editable`-kolonner kan redigeres (som text);
+#' alle øvrige — inkl. pk og afledte label-kolonner — er readOnly text.
+#' Til indikator-oversigtens inline-redigering (INLINE_EDITABLE).
+#' @noRd
+excel_text_columns <- function(col_names, editable) {
+  data.frame(
+    title = col_names,
+    type = "text",
+    readOnly = !(col_names %in% editable),
+    stringsAsFactors = FALSE
+  )
+}
+
 #' Rekonstruér data.frame fra excelR's onChange-payload.
 #'
 #' payload$data er en liste af rækker (liste af celleværdier), payload$

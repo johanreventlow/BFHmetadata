@@ -33,6 +33,14 @@ test_that("lookup_excel_columns: fk uden source degraderer til readOnly text", {
   expect_true(cols$readOnly[2])
 })
 
+test_that("excel_text_columns: kun editable-kolonner er åbne, alt er text", {
+  cols <- excel_text_columns(c("id", "indikator_navn", "aktiv_indikator"),
+                             editable = c("indikator_navn"))
+  expect_equal(cols$title, c("id", "indikator_navn", "aktiv_indikator"))
+  expect_true(all(cols$type == "text"))
+  expect_equal(cols$readOnly, c(TRUE, FALSE, TRUE))
+})
+
 test_that("excel_payload_to_df: rækker rekonstrueres navne-baseret som character", {
   p <- list(
     colHeaders = list("Id", "navn", "niveau"),

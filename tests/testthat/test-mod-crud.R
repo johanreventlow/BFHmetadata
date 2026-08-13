@@ -65,7 +65,7 @@ test_that("modul indlæser data ved start", {
   })
 })
 
-test_that("indikator-tabeller bevarer DT-tilstand i browser-sessionen", {
+test_that("oversigt bevarer DT-tilstand; inline-tabel er excelR-grid med låste kolonner", {
   db <- fake_db()
   overview_rows <- data.frame(
     id = 1L, indikator_navn = "A", indikator_navn_teknisk = "a",
@@ -79,18 +79,20 @@ test_that("indikator-tabeller bevarer DT-tilstand i browser-sessionen", {
     inline_widget <- jsonlite::fromJSON(output$tbl, simplifyVector = FALSE)
     overview_widget <- jsonlite::fromJSON(output$oversigt, simplifyVector = FALSE)
 
-    inline_state <- expect_session_dt_state(inline_widget, session$ns("tbl"))
-    overview_state <- expect_session_dt_state(
-      overview_widget, session$ns("oversigt"))
-
-    expect_false(identical(inline_state$key, overview_state$key))
-    expect_false(identical(
-      inline_state$save_callback, overview_state$save_callback))
+    expect_session_dt_state(overview_widget, session$ns("oversigt"))
     expect_identical(overview_widget$x$options$pageLength, 10L)
     expect_true(any(vapply(overview_widget$x$options$columnDefs, function(def) {
       identical(def$orderable, FALSE) && identical(def$targets, 0L)
     }, logical(1))))
-    expect_false(is.null(inline_widget$x$editable))
+
+    # Inline-tabellen: excelR-grid — kun INLINE_EDITABLE-kolonner er åbne
+    cols <- inline_widget$x$columns
+    titles <- vapply(cols, function(c) c$title, "")
+    ro <- vapply(cols, function(c) isTRUE(c$readOnly), logical(1))
+    expect_false(ro[titles == "indikator_navn"])
+    expect_true(ro[titles == "id"])
+    expect_true(ro[titles == "aktiv_indikator"])
+    expect_false(isTRUE(inline_widget$x$allowInsertRow))
   })
 })
 
@@ -122,10 +124,17 @@ test_that("dynamiske oversigtsfiltre bevarer kun gyldige valg", {
   })
 })
 
+# excelR-selektion: borderTop er 0-baseret række i den viste tabel
+.tbl_select <- function(row0) {
+  list(forSelectedVals = TRUE,
+       selectedDataBoundary = list(borderTop = row0, borderBottom = row0,
+                                   borderLeft = 0, borderRight = 0))
+}
+
 test_that("Gem med tomt navn giver valideringsfejl, ingen update", {
   db <- fake_db()
   testServer(mod_indikator_crud_server, args = list(db = db), {
-    session$setInputs(tbl_rows_selected = 1, indikator_navn = "", save = 1)
+    session$setInputs(tbl = .tbl_select(0), indikator_navn = "", save = 1)
     expect_match(status_msg(), "indikator_navn")
   })
 })
@@ -133,16 +142,40 @@ test_that("Gem med tomt navn giver valideringsfejl, ingen update", {
 test_that("soft_delete kalder db.soft_delete med active=FALSE", {
   db <- fake_db()
   testServer(mod_indikator_crud_server, args = list(db = db), {
-    session$setInputs(tbl_rows_selected = 1, soft_delete = 1)
+    session$setInputs(tbl = .tbl_select(0))   # selektion FØR knap (egen flush)
+    session$setInputs(soft_delete = 1)
     expect_equal(db$.calls()$deleted[[2]], FALSE)
   })
 })
 
-test_that("inline-edit på editable felt kalder update", {
+test_that("inline-edit på editable felt diffes og kalder update med korrekt id", {
   db <- fake_db()
   testServer(mod_indikator_crud_server, args = list(db = db), {
-    session$setInputs(tbl_cell_edit = list(row = 1, col = which(names(db$list_indikatorer())=="indikator_navn")-1, value = "Nyt navn"))
-    expect_false(is.null(db$.calls()$updated))
+    d <- rows()
+    pay <- lapply(seq_len(nrow(d)), function(i) {
+      lapply(d[i, ], function(v) if (is.na(v)) NULL else as.character(v))
+    })
+    pay[[1]][[which(names(d) == "indikator_navn")]] <- "Nyt navn"
+    session$setInputs(tbl = list(colHeaders = as.list(names(d)), data = pay,
+                                 forSelectedVals = FALSE))
+    u <- db$.calls()$updated
+    expect_false(is.null(u))
+    expect_equal(u[[1]], 1L)                       # rid fra pk-match
+    expect_equal(u[[2]], list(indikator_navn = "Nyt navn"))
+  })
+})
+
+test_that("inline-edit på readOnly kolonne ignoreres (klient-manipulation)", {
+  db <- fake_db()
+  testServer(mod_indikator_crud_server, args = list(db = db), {
+    d <- rows()
+    pay <- lapply(seq_len(nrow(d)), function(i) {
+      lapply(d[i, ], function(v) if (is.na(v)) NULL else as.character(v))
+    })
+    pay[[1]][[which(names(d) == "aktiv_indikator")]] <- "FALSE"
+    session$setInputs(tbl = list(colHeaders = as.list(names(d)), data = pay,
+                                 forSelectedVals = FALSE))
+    expect_null(db$.calls()$updated)
   })
 })
 

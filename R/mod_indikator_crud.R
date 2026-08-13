@@ -81,7 +81,7 @@ mod_indikator_crud_ui <- function(id) {
         ),
         div(
           checkboxInput(ns("show_inactive"), "Vis inaktive", value = TRUE),
-          DT::DTOutput(ns("tbl"))
+          excelR::excelOutput(ns("tbl"), width = "100%", height = "auto")
         )
       )
     )
@@ -371,14 +371,32 @@ mod_indikator_crud_server <- function(id, db) {
       tagList(lapply(INDIKATOR_FIELDS, function(f) .field_input(ns, f, fk_choices)))
     })
 
-    output$tbl <- DT::renderDT({
+    # Den VISTE tabel (inkl. inaktiv-filter) — delt af render, celle-diff og
+    # række-selektion, så indeks aldrig kan pege på en anden række end den
+    # der vises (DT-versionen mappede selektion mod ufiltreret rows()).
+    tbl_rows <- reactive({
       d <- rows()
-      if (!isTRUE(input$show_inactive) && "aktiv_indikator" %in% names(d))
+      if (!isTRUE(input$show_inactive) && "aktiv_indikator" %in% names(d)) {
         d <- d[d$aktiv_indikator %in% TRUE, , drop = FALSE]
-      editable_cols <- which(names(d) %in% INLINE_EDITABLE) - 1
-      DT::datatable(d, selection = "single", rownames = FALSE,
-        options = .dt_session_state_options(session$ns("tbl")),
-        editable = list(target = "cell", disable = list(columns = setdiff(seq_len(ncol(d))-1, editable_cols))))
+      }
+      d
+    })
+    tbl_refresh <- reactiveVal(0) # bump → snap-back efter fejlet gem
+    tbl_sel <- reactiveVal(NULL) # 1-baseret række fra seneste selektion
+
+    output$tbl <- excelR::renderExcel({
+      tbl_refresh()
+      d <- tbl_rows()
+      excelR::excelTable(
+        data = d,
+        columns = excel_text_columns(names(d), INLINE_EDITABLE),
+        autoColTypes = FALSE,
+        allowInsertRow = FALSE, allowInsertColumn = FALSE,
+        allowDeleteRow = FALSE, allowDeleteColumn = FALSE,
+        allowRenameColumn = FALSE, columnSorting = FALSE,
+        rowDrag = FALSE, columnDrag = FALSE,
+        getSelectedData = TRUE
+      )
     })
 
     # Datapakke-filter: valg afledt af de datapakke-værdier der faktisk findes
@@ -473,9 +491,10 @@ mod_indikator_crud_server <- function(id, db) {
     })
 
     selected_id <- reactive({
-      sel <- input$tbl_rows_selected
-      if (is.null(sel)) return(NULL)
-      rows()[["id"]][sel]
+      sel <- tbl_sel()
+      d <- tbl_rows()
+      if (is.null(sel) || is.na(sel) || sel < 1 || sel > nrow(d)) return(NULL)
+      d[["id"]][sel]
     })
 
     observeEvent(input$save, {
@@ -501,15 +520,40 @@ mod_indikator_crud_server <- function(id, db) {
       }, fallback = status_msg("Fejl ved deaktivering"))
     })
 
-    observeEvent(input$tbl_cell_edit, {
-      info <- input$tbl_cell_edit
-      d <- rows(); col <- names(d)[info$col + 1]
-      if (!col %in% INLINE_EDITABLE) { status_msg("Kolonne ej redigerbar inline"); return() }
-      rid <- d[["id"]][info$row]
-      safe_operation("inline-update", {
-        db$update_indikator(rid, stats::setNames(list(info$value), col))
-        status_msg(paste("Opdateret", col)); reload()
-      }, fallback = status_msg("Fejl ved inline-update"))
+    # excelR sender BÅDE celle-ændringer og selektioner på input$tbl —
+    # forSelectedVals skelner. Ændringer diffes mod den VISTE tabel (pk-match)
+    # og skrives enkeltvis; readOnly-kolonner kan ikke redigeres i grid'et,
+    # men diffen guarder alligevel (klient-manipulation).
+    observeEvent(input$tbl, {
+      p <- input$tbl
+      if (isTRUE(p$forSelectedVals)) {
+        top <- p$selectedDataBoundary$borderTop
+        tbl_sel(if (is.null(top)) NULL else as.integer(top) + 1L)
+        return()
+      }
+      d <- tbl_rows()
+      changes <- excel_diff_cells(d, excel_payload_to_df(p), "id")
+      changes <- changes[changes$col %in% INLINE_EDITABLE, , drop = FALSE]
+      if (nrow(changes) == 0) {
+        return()
+      }
+      any_fail <- FALSE
+      for (k in seq_len(nrow(changes))) {
+        rid <- d[["id"]][match(changes$pk[k], as.character(d[["id"]]))]
+        ok <- safe_operation("inline-update", {
+          db$update_indikator(rid,
+            stats::setNames(list(changes$value[k]), changes$col[k]))
+          TRUE
+        }, fallback = FALSE)
+        if (isTRUE(ok)) {
+          status_msg(paste("Opdateret", changes$col[k]))
+        } else {
+          status_msg("Fejl ved inline-update")
+          any_fail <- TRUE
+        }
+      }
+      reload() # genindlæs fra DB → grid viser den gemte tilstand
+      if (any_fail) tbl_refresh(tbl_refresh() + 1)
     })
 
     output$status <- renderText(status_msg())
