@@ -40,3 +40,44 @@ test_that("hierarchy_descendants overlever cyklus", {
   df <- data.frame(id = 1:2, parent = c(2L, 1L))
   expect_setequal(hierarchy_descendants(df, "id", "parent", 1L), c(1L, 2L))
 })
+
+# --- Org-filter-helpers (Diagrammer-sidens organisations-dropdown) ----------
+
+test_that("org_hierarchy_choices: depth-first orden med indrykning", {
+  tree <- data.frame(id = c(1L, 2L, 3L, 4L),
+                     parent_id = c(NA, 1L, 1L, 3L))
+  labels <- data.frame(id = c(1L, 2L, 3L, 4L),
+                       label = c("Hospital", "Kirurgi", "Medicin", "Afsnit M1"),
+                       stringsAsFactors = FALSE)
+  ch <- org_hierarchy_choices(tree, labels)
+  expect_identical(unname(ch), c("1", "2", "3", "4"))
+  expect_identical(names(ch)[1], "Hospital")               # rod uindrykket
+  expect_match(names(ch)[2], "^\u00a0+Kirurgi$")           # barn indrykket
+  expect_match(names(ch)[4], "^\u00a0+\u00a0+Afsnit M1$")  # barnebarn dybere
+})
+
+test_that("org_hierarchy_choices: NULL/tomt trae -> flad alfabetisk fallback", {
+  labels <- data.frame(id = c(2L, 1L), label = c("B", "A"),
+                       stringsAsFactors = FALSE)
+  ch <- org_hierarchy_choices(NULL, labels)
+  expect_identical(ch, c("A" = "1", "B" = "2"))
+  expect_identical(org_hierarchy_choices(data.frame(), labels),
+                   c("A" = "1", "B" = "2"))
+})
+
+test_that("org_hierarchy_choices: enheder uden traerække appendes fladt", {
+  tree <- data.frame(id = 1L, parent_id = NA_integer_)
+  labels <- data.frame(id = c(1L, 9L), label = c("Hospital", "Løsrevet"),
+                       stringsAsFactors = FALSE)
+  ch <- org_hierarchy_choices(tree, labels)
+  expect_identical(unname(ch), c("1", "9"))
+  expect_identical(names(ch)[2], "Løsrevet")
+})
+
+test_that("org_subtree_ids: valgt enhed + alle underliggende; NULL-trae = kun selv", {
+  tree <- data.frame(id = c(1L, 2L, 3L, 4L),
+                     parent_id = c(NA, 1L, 1L, 3L))
+  expect_setequal(org_subtree_ids(tree, 1L), 1:4)
+  expect_setequal(org_subtree_ids(tree, 3L), c(3L, 4L))
+  expect_identical(org_subtree_ids(NULL, 3L), 3L)
+})

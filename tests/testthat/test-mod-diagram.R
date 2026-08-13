@@ -31,9 +31,15 @@ fake_diagram_db <- function(dup_count = 0L, median_count = 0L) {
         id = c(10L, 11L),
         label = c("Tryksår", "Inaktiv indikator"),
         aktiv_indikator = c(TRUE, FALSE)),
-      org = data.frame(id = c(20L, 21L), label = c("Kirurgi", "Medicin")),
+      org = data.frame(
+        id = c(19L, 20L, 21L, 22L),
+        label = c("Hospital", "Kirurgi", "Medicin", "Onkologi")),
       type = data.frame(id = c(1L, 2L),
                         label = c("Seriediagram", "Søjlediagram"))),
+    # Org-træ: Hospital(19) → Kirurgi(20) + Medicin(21); Medicin → Onkologi(22)
+    org_struct = function() data.frame(
+      id = c(19L, 20L, 21L, 22L),
+      parent_id = c(NA, 19L, 19L, 21L)),
     diagram_periode_choices = function() c("måned", "uge"),
     diagram_duplicate_count = function(indikator, org, type, exclude_id = -1L) {
       dup_count
@@ -223,14 +229,14 @@ test_that("dynamiske diagramfiltre bevarer gyldige valg efter reload", {
   testServer(mod_diagram_server, args = list(db = db), {
     session$setInputs(
       filter_indikator = "Tryksår",
-      filter_org = "Kirurgi",
+      filter_org = "20",
       filter_datapakke = "Kliniske indikatorer",
       filter_datasaet = "Tryksår-datasæt")
     reload()
     session$flushReact()
 
     expect_identical(selected_option_value(output$filter_indikator_ui), "Tryksår")
-    expect_identical(selected_option_value(output$filter_org_ui), "Kirurgi")
+    expect_identical(selected_option_value(output$filter_org_ui), "20")
     expect_identical(selected_option_value(output$filter_datapakke_ui), "Kliniske indikatorer")
     expect_identical(selected_option_value(output$filter_datasaet_ui), "Tryksår-datasæt")
 
@@ -241,6 +247,32 @@ test_that("dynamiske diagramfiltre bevarer gyldige valg efter reload", {
     session$flushReact()
 
     expect_identical(selected_option_value(output$filter_indikator_ui), "")
+  })
+})
+
+test_that("org-filter medtager valgt enhed plus alle underliggende enheder", {
+  db <- fake_diagram_db()
+  testServer(mod_diagram_server, args = list(db = db), {
+    session$setInputs(filter_status = "alle")
+    session$setInputs(filter_org = "19")   # Hospital → alt derunder
+    expect_setequal(filtered()$diagram_id, c(1L, 2L))
+    session$setInputs(filter_org = "19", filter_datapakke = "Kliniske indikatorer")
+    expect_setequal(filtered()$diagram_id, c(1L, 2L))  # AND med øvrige filtre
+    session$setInputs(filter_org = "21", filter_datapakke = "")
+    expect_identical(filtered()$diagram_id, 2L)        # Medicin → kun diagram 2
+    session$setInputs(filter_org = "")
+    expect_setequal(filtered()$diagram_id, c(1L, 2L))  # ryddet → alle
+  })
+})
+
+test_that("org-filterets dropdown har id-værdier og hierarkisk indrykning", {
+  db <- fake_diagram_db()
+  testServer(mod_diagram_server, args = list(db = db), {
+    session$flushReact()
+    html <- htmltools::renderTags(output$filter_org_ui)$html
+    expect_match(html, 'value="19"', fixed = TRUE)
+    expect_match(html, 'value="20"', fixed = TRUE)
+    expect_match(html, " Kirurgi")   # barn af Hospital → indrykket label
   })
 })
 

@@ -108,11 +108,11 @@ mod_diagram_ui <- function(id) {
     div(class = "d-flex justify-content-end mb-2",
       actionButton(ns("new_diagram"), "Nyt diagram", class = "btn-success")),
     bslib::layout_columns(
-      col_widths = c(3, 3, 2, 2, 2),
-      uiOutput(ns("filter_indikator_ui")),
-      uiOutput(ns("filter_org_ui")),
+      col_widths = c(2, 2, 3, 3, 2),
       uiOutput(ns("filter_datapakke_ui")),
       uiOutput(ns("filter_datasaet_ui")),
+      uiOutput(ns("filter_indikator_ui")),
+      uiOutput(ns("filter_org_ui")),
       selectInput(ns("filter_status"), "Status",
         choices = c("Kun aktive" = "aktive", "Alle" = "alle",
                     "Kun inaktive" = "inaktive"),
@@ -151,12 +151,25 @@ mod_diagram_server <- function(id, db) {
     }
     output$filter_indikator_ui <- renderUI(
       .filter_ui("filter_indikator", "Indikator", "indikator_navn"))
-    output$filter_org_ui <- renderUI(
-      .filter_ui("filter_org", "Organisatorisk enhed", "org_navn"))
     output$filter_datapakke_ui <- renderUI(
       .filter_ui("filter_datapakke", "Datapakke", "datapakke"))
     output$filter_datasaet_ui <- renderUI(
       .filter_ui("filter_datasaet", "Datasæt", "datasaet"))
+
+    # Org-filter: hierarkisk dropdown over HELE org-træet (id-værdier), så
+    # en overordnet enhed kan vælges selv om den ikke selv har diagrammer —
+    # filtreringen medtager alle underliggende enheder (se filtered()).
+    # NULL ved fejlet trae-hentning → flad liste + kun-enheden-selv-filter.
+    org_tree <- safe_operation("hent org-træ", db$org_struct(), fallback = NULL)
+    output$filter_org_ui <- renderUI({
+      ns <- session$ns
+      admin() # re-render ved reload som de øvrige filtre (bevar valg eksplicit)
+      choices <- c("Alle" = "", org_hierarchy_choices(org_tree, opts$org))
+      selected <- .preserved_filter_selection(
+        isolate(input$filter_org), choices)
+      selectInput(ns("filter_org"), "Organisatorisk enhed",
+        choices = choices, selected = selected)
+    })
 
     filtered <- reactive({
       d <- admin()
@@ -169,7 +182,11 @@ mod_diagram_server <- function(id, db) {
       if (!is.null(fi) && nzchar(fi))
         d <- d[d$indikator_navn %in% fi, , drop = FALSE]
       fo <- input$filter_org
-      if (!is.null(fo) && nzchar(fo)) d <- d[d$org_navn %in% fo, , drop = FALSE]
+      if (!is.null(fo) && nzchar(fo)) {
+        # Valgt enhed + alle underliggende (org-id-match, ej navne-match)
+        ids <- org_subtree_ids(org_tree, as.integer(fo))
+        d <- d[d$organisatorisk_navn_teknisk %in% ids, , drop = FALSE]
+      }
       fdp <- input$filter_datapakke
       if (!is.null(fdp) && nzchar(fdp))
         d <- d[d$datapakke %in% fdp, , drop = FALSE]
