@@ -78,6 +78,7 @@ lookup_excel_columns <- function(cfg, col_names, fk_sources = list()) {
     title = col_names,
     type = vapply(spec, function(s) s$type, ""),
     readOnly = vapply(spec, function(s) s$readOnly, TRUE),
+    align = "left", # jexcel centrerer som default — venstrestil alle celler
     stringsAsFactors = FALSE
   )
   out$source <- lapply(spec, function(s) s$source)
@@ -93,6 +94,7 @@ excel_text_columns <- function(col_names, editable) {
     title = col_names,
     type = "text",
     readOnly = !(col_names %in% editable),
+    align = "left", # jexcel centrerer som default — venstrestil alle celler
     stringsAsFactors = FALSE
   )
 }

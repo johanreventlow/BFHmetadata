@@ -14,6 +14,7 @@ test_that("lookup_excel_columns: pk er readOnly, typer mappes, fk får dropdown-
   expect_equal(cols$title, c("Id", "navn", "niveau", "enhed"))
   expect_equal(cols$type, c("numeric", "text", "numeric", "dropdown"))
   expect_equal(cols$readOnly, c(TRUE, FALSE, FALSE, FALSE))
+  expect_true(all(cols$align == "left"))   # jexcel centrerer ellers
   # dropdown-source er {id, name}-objekter (vises som label, gemmes som id)
   src <- cols$source[[4]]
   expect_equal(src$id, c(10L, 20L))
@@ -39,6 +40,7 @@ test_that("excel_text_columns: kun editable-kolonner er åbne, alt er text", {
   expect_equal(cols$title, c("id", "indikator_navn", "aktiv_indikator"))
   expect_true(all(cols$type == "text"))
   expect_equal(cols$readOnly, c(TRUE, FALSE, TRUE))
+  expect_true(all(cols$align == "left"))
 })
 
 test_that("excel_payload_to_df: rækker rekonstrueres navne-baseret som character", {
