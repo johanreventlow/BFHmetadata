@@ -29,6 +29,13 @@ validate_diagram <- function(vals) {
   errs
 }
 
+#' @noRd
+.preserved_filter_selection <- function(current, choices, fallback = "") {
+  if (length(current) != 1L || is.na(current)) return(fallback)
+  current <- as.character(current)
+  if (current %in% as.character(unname(choices))) current else fallback
+}
+
 #' NULL-coalesce
 #' @noRd
 `%||%` <- function(a, b) if (is.null(a)) b else a

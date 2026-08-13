@@ -1,3 +1,10 @@
+selected_option_value <- function(tag) {
+  html <- htmltools::renderTags(tag)$html
+  option <- regmatches(html, regexpr(
+    '<option[^>]* selected(?:="selected")?[^>]*>', html, perl = TRUE))
+  sub('.*value="([^"]*)".*', '\\1', option)
+}
+
 fake_db <- function() {
   store <- data.frame(id = 1L, indikator_navn = "A", aktiv_indikator = TRUE,
                       indikator_hierarki = 1L, kontaktperson = 1L, datakilde = 1L,
@@ -55,6 +62,39 @@ test_that("modul indlæser data ved start", {
   db <- fake_db()
   testServer(mod_indikator_crud_server, args = list(db = db), {
     expect_equal(nrow(rows()), 1)
+  })
+})
+
+test_that("dynamiske oversigtsfiltre bevarer kun gyldige valg", {
+  db <- fake_db()
+  initial_rows <- data.frame(
+    id = c(1L, 2L), indikator_navn = c("A", "B"),
+    indikator_navn_teknisk = c("a", "b"), aktiv_indikator = c(TRUE, TRUE),
+    nøgleindikator = c(FALSE, FALSE), indikator_hierarki = c(1L, 2L),
+    kontaktperson = c(1L, 1L), datakilde = c(1L, 1L),
+    label_datapakke = c("Pakke A", "Pakke B"),
+    label_indikator_hierarki = c("Datasæt A", "Datasæt B"),
+    stringsAsFactors = FALSE)
+  rows_source <- new.env(parent = emptyenv())
+  rows_source$rows <- initial_rows
+  db$list_indikatorer <- function() rows_source$rows
+
+  testServer(mod_indikator_crud_server, args = list(db = db), {
+    session$setInputs(filter_datapakke = "Pakke A", filter_datasaet = "Datasæt A")
+    reload()
+    session$flushReact()
+
+    expect_identical(selected_option_value(output$filter_datapakke_ui), "Pakke A")
+    expect_identical(selected_option_value(output$filter_datasaet_ui), "Datasæt A")
+
+    rows_without_dataset_a <- initial_rows
+    rows_without_dataset_a$label_indikator_hierarki[[1L]] <- "Datasæt B"
+    rows_source$rows <- rows_without_dataset_a
+    reload()
+    session$flushReact()
+
+    expect_identical(selected_option_value(output$filter_datapakke_ui), "Pakke A")
+    expect_identical(selected_option_value(output$filter_datasaet_ui), "")
   })
 })
 

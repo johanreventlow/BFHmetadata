@@ -144,8 +144,10 @@ mod_diagram_server <- function(id, db) {
     .filter_ui <- function(input_id, lab, col) {
       ns <- session$ns
       vals <- sort(unique(stats::na.omit(admin()[[col]])))
-      selectInput(ns(input_id), lab,
-        choices = c("Alle" = "", stats::setNames(vals, vals)), selected = "")
+      choices <- c("Alle" = "", stats::setNames(vals, vals))
+      selected <- .preserved_filter_selection(
+        isolate(input[[input_id]]), choices)
+      selectInput(ns(input_id), lab, choices = choices, selected = selected)
     }
     output$filter_indikator_ui <- renderUI(
       .filter_ui("filter_indikator", "Indikator", "indikator_navn"))

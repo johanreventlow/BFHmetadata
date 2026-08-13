@@ -48,3 +48,11 @@ test_that("validate_diagram fanger enkelt manglende felt", {
   expect_length(errs, 1)
   expect_match(errs, "enhed")
 })
+
+test_that("filtervalg bevares kun mens det fortsat er gyldigt", {
+  choices <- c("Alle" = "", "Pakke A" = "A", "Pakke B" = "B")
+  expect_identical(.preserved_filter_selection("B", choices), "B")
+  expect_identical(.preserved_filter_selection("Slettet", choices), "")
+  expect_identical(.preserved_filter_selection(NULL, choices), "")
+  expect_identical(.preserved_filter_selection(NA_character_, choices), "")
+})

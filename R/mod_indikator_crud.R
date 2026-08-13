@@ -384,8 +384,11 @@ mod_indikator_crud_server <- function(id, db) {
     output$filter_datapakke_ui <- renderUI({
       ns <- session$ns
       vals <- sort(unique(stats::na.omit(rows()[["label_datapakke"]])))
+      choices <- c("Alle" = "", stats::setNames(vals, vals))
+      selected <- .preserved_filter_selection(
+        isolate(input$filter_datapakke), choices)
       selectInput(ns("filter_datapakke"), "Datapakke",
-        choices = c("Alle" = "", stats::setNames(vals, vals)), selected = "")
+        choices = choices, selected = selected)
     })
 
     # Datasæt-filter: kaskaderer på valgt datapakke (viser kun datasæt derunder)
@@ -396,8 +399,11 @@ mod_indikator_crud_server <- function(id, db) {
       if (!is.null(fdp) && nzchar(fdp))
         d <- d[d$label_datapakke %in% fdp, , drop = FALSE]
       vals <- sort(unique(stats::na.omit(d[["label_indikator_hierarki"]])))
+      choices <- c("Alle" = "", stats::setNames(vals, vals))
+      selected <- .preserved_filter_selection(
+        isolate(input$filter_datasaet), choices)
       selectInput(ns("filter_datasaet"), "Datasæt",
-        choices = c("Alle" = "", stats::setNames(vals, vals)), selected = "")
+        choices = choices, selected = selected)
     })
 
     # Filtreret datasæt til oversigten (delt af render + række-klik-observer)

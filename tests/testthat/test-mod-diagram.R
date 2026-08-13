@@ -1,5 +1,12 @@
 # testServer-tests for mod_diagram med fake-db (closures der logger kald).
 
+selected_option_value <- function(tag) {
+  html <- htmltools::renderTags(tag)$html
+  option <- regmatches(html, regexpr(
+    '<option[^>]* selected(?:="selected")?[^>]*>', html, perl = TRUE))
+  sub('.*value="([^"]*)".*', '\\1', option)
+}
+
 fake_diagram_db <- function(dup_count = 0L, median_count = 0L) {
   admin <- data.frame(
     diagram_id = c(1L, 2L),
@@ -184,6 +191,35 @@ test_that("admin-liste indlæses og status-filter default 'aktive' reducerer", {
     expect_equal(nrow(filtered()), 2)
     session$setInputs(filter_status = "inaktive")
     expect_equal(filtered()$diagram_id, 2L)
+  })
+})
+
+test_that("dynamiske diagramfiltre bevarer gyldige valg efter reload", {
+  db <- fake_diagram_db()
+  admin_source <- new.env(parent = emptyenv())
+  admin_source$rows <- db$list_diagrams_admin()
+  db$list_diagrams_admin <- function() admin_source$rows
+  testServer(mod_diagram_server, args = list(db = db), {
+    session$setInputs(
+      filter_indikator = "Tryksår",
+      filter_org = "Kirurgi",
+      filter_datapakke = "Kliniske indikatorer",
+      filter_datasaet = "Tryksår-datasæt")
+    reload()
+    session$flushReact()
+
+    expect_identical(selected_option_value(output$filter_indikator_ui), "Tryksår")
+    expect_identical(selected_option_value(output$filter_org_ui), "Kirurgi")
+    expect_identical(selected_option_value(output$filter_datapakke_ui), "Kliniske indikatorer")
+    expect_identical(selected_option_value(output$filter_datasaet_ui), "Tryksår-datasæt")
+
+    admin_without_tryksaar <- admin_source$rows
+    admin_without_tryksaar <- admin_without_tryksaar[admin_without_tryksaar$diagram_id != 1L, , drop = FALSE]
+    admin_source$rows <- admin_without_tryksaar
+    reload()
+    session$flushReact()
+
+    expect_identical(selected_option_value(output$filter_indikator_ui), "")
   })
 })
 
