@@ -8,11 +8,12 @@
     list(col = "niveau", type = "int", label = "Niveau"),
     list(col = "enhed", type = "fk", label = "Enhed")))
 
-test_that("lookup_excel_columns: pk er readOnly, typer mappes, fk får dropdown-source", {
+test_that("lookup_excel_columns: pk skjules, typer mappes, fk får dropdown-source", {
   fk <- list(enhed = data.frame(id = c(10L, 20L), label = c("E10", "E20")))
   cols <- lookup_excel_columns(.cfg_excel, c("Id", "navn", "niveau", "enhed"), fk)
   expect_equal(cols$title, c("Id", "navn", "niveau", "enhed"))
-  expect_equal(cols$type, c("numeric", "text", "numeric", "dropdown"))
+  # pk er "hidden": med i data/payload (diff-match) men aldrig synlig
+  expect_equal(cols$type, c("hidden", "text", "numeric", "dropdown"))
   expect_equal(cols$readOnly, c(TRUE, FALSE, FALSE, FALSE))
   expect_true(all(cols$align == "left"))   # jexcel centrerer ellers
   # dropdown-source er {id, name}-objekter (vises som label, gemmes som id)
@@ -41,6 +42,11 @@ test_that("excel_text_columns: kun editable-kolonner er åbne, alt er text", {
   expect_true(all(cols$type == "text"))
   expect_equal(cols$readOnly, c(TRUE, FALSE, TRUE))
   expect_true(all(cols$align == "left"))
+})
+
+test_that("excel_text_columns: hidden-kolonner skjules (typisk pk)", {
+  cols <- excel_text_columns(c("id", "navn"), editable = "navn", hidden = "id")
+  expect_equal(cols$type, c("hidden", "text"))
 })
 
 test_that("excel_col_widths: bredden følger fraktilen, ikke længste værdi", {

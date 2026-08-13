@@ -389,8 +389,12 @@ mod_indikator_crud_server <- function(id, db) {
       d <- tbl_rows()
       excelR::excelTable(
         data = d,
-        columns = excel_text_columns(names(d), INLINE_EDITABLE, data = d),
+        columns = excel_text_columns(names(d), INLINE_EDITABLE,
+          data = d, hidden = "id"),
         autoColTypes = FALSE,
+        # FALSE: ellers deaktiverer width:auto table-layout:fixed, og
+        # celleindholdet vinder over de beregnede kolonnebredder
+        autoWidth = FALSE,
         allowInsertRow = FALSE, allowInsertColumn = FALSE,
         allowDeleteRow = FALSE, allowDeleteColumn = FALSE,
         allowRenameColumn = FALSE, columnSorting = FALSE,

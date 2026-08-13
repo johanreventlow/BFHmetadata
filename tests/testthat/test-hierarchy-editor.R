@@ -169,9 +169,11 @@ test_that("hierarchy_excel_columns: dropdowns med (rod)/(vælg), ukendte id'er b
   d$niveau_id[d$id == 4L] <- 888L
   cols <- hierarchy_excel_columns(.hierarchy_cfg(), d, db$niveau_options())
   expect_equal(cols$title[1:2], c("id", "Struktur"))
+  expect_identical(cols$type[1], "hidden")             # pk aldrig synlig
   expect_true(all(cols$readOnly[1:2]))                 # id + struktur låst
   expect_false(any(cols$readOnly[3:7]))                # resten redigerbar
   expect_true(all(cols$align == "left"))
+  expect_true(is.numeric(cols$width))                  # fraktil-bredder sat
   p <- cols$source[[which(cols$title == "Forælder")]]
   expect_equal(p$name[p$id == ""], "(rod)")
   expect_true("Ukendt forælder #999" %in% p$name)      # ukendt id tabes ikke

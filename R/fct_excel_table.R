@@ -28,6 +28,14 @@
       border: 1px solid #d9d9d9;
       padding: 4px 8px;
     }
+    /* Faste kolonnebredder (autoWidth=FALSE): lange vaerdier ombrydes i
+       cellen i stedet for at traekke kolonnen bred. overflow-wrap fanger
+       ogsaa lange tokens uden mellemrum (URL'er, tekniske navne). */
+    .jexcel > tbody > tr > td {
+      white-space: normal;
+      overflow-wrap: anywhere;
+      overflow: hidden;
+    }
     .jexcel .highlight { background-color: #99d8f6 !important; }
     .jexcel_content {
       overflow-y: unset !important;
@@ -95,7 +103,9 @@ lookup_excel_columns <- function(cfg, col_names, fk_sources = list(),
   spec <- lapply(col_names, function(nm) {
     m <- meta[[nm]]
     if (identical(nm, cfg$pk)) {
-      list(type = "numeric", readOnly = TRUE, source = NA)
+      # pk skjules helt (type "hidden"): den skal med i data/payload til
+      # diff-matching, men brugeren behøver aldrig se den
+      list(type = "hidden", readOnly = TRUE, source = NA)
     } else if (!is.null(m) && identical(m$type, "fk")) {
       src <- fk_sources[[nm]]
       if (is.null(src) || !is.data.frame(src) || nrow(src) == 0) {
@@ -139,12 +149,14 @@ lookup_excel_columns <- function(cfg, col_names, fk_sources = list(),
 #' Kolonne-spec hvor kun `editable`-kolonner kan redigeres (som text);
 #' alle øvrige — inkl. pk og afledte label-kolonner — er readOnly text.
 #' Til indikator-oversigtens inline-redigering (INLINE_EDITABLE).
-#' `data` (valgfri) sætter fraktil-baserede kolonnebredder.
+#' `data` (valgfri) sætter fraktil-baserede kolonnebredder. `hidden`-
+#' kolonner (typisk pk) skjules helt men bliver i data/payload.
 #' @noRd
-excel_text_columns <- function(col_names, editable, data = NULL) {
+excel_text_columns <- function(col_names, editable, data = NULL,
+                               hidden = character(0)) {
   out <- data.frame(
     title = col_names,
-    type = "text",
+    type = ifelse(col_names %in% hidden, "hidden", "text"),
     readOnly = !(col_names %in% editable),
     align = "left", # jexcel centrerer som default — venstrestil alle celler
     stringsAsFactors = FALSE

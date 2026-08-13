@@ -33,8 +33,10 @@ test_that("grid'et renderes med Struktur-kolonne og dropdown-kolonner", {
       expect_true(all(vapply(cols[1:2], function(c) isTRUE(c$readOnly),
                              logical(1))))
       types <- vapply(cols, function(c) c$type, "")
+      expect_identical(types[titles == "id"], "hidden")  # pk aldrig synlig
       expect_identical(types[titles %in% c("Forælder", "Niveau")],
                        c("dropdown", "dropdown"))
+      expect_false(isTRUE(w$x$autoWidth))
       expect_false(isTRUE(w$x$allowInsertRow))
       expect_false(isTRUE(w$x$columnSorting))
     })

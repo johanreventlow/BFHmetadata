@@ -204,7 +204,8 @@ hierarchy_excel_columns <- function(cfg, tree_df, niveauer) {
   field_titles <- vapply(cfg$fields, function(f) f$label, "")
   out <- data.frame(
     title = c("id", "Struktur", field_titles, "Forælder", "Niveau"),
-    type = c("numeric", "text", rep("text", length(field_titles)),
+    # id: "hidden" — med i data/payload (pk-diff) men aldrig synlig
+    type = c("hidden", "text", rep("text", length(field_titles)),
              "dropdown", "dropdown"),
     readOnly = c(TRUE, TRUE, rep(FALSE, length(field_titles)), FALSE, FALSE),
     align = "left",

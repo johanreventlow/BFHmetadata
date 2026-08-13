@@ -89,9 +89,11 @@ test_that("oversigt bevarer DT-tilstand; inline-tabel er excelR-grid med låste 
     cols <- inline_widget$x$columns
     titles <- vapply(cols, function(c) c$title, "")
     ro <- vapply(cols, function(c) isTRUE(c$readOnly), logical(1))
+    types <- vapply(cols, function(c) c$type, "")
     expect_false(ro[titles == "indikator_navn"])
-    expect_true(ro[titles == "id"])
+    expect_equal(types[titles == "id"], "hidden")   # pk aldrig synlig
     expect_true(ro[titles == "aktiv_indikator"])
+    expect_false(isTRUE(inline_widget$x$autoWidth))
     expect_false(isTRUE(inline_widget$x$allowInsertRow))
   })
 })

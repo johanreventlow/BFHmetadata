@@ -145,6 +145,9 @@ mod_hierarchy_server <- function(id, db, cfg) {
         data = hierarchy_excel_data(d, cfg),
         columns = hierarchy_excel_columns(cfg, d, niveauer()),
         autoColTypes = FALSE,
+        # FALSE: ellers deaktiverer width:auto table-layout:fixed, og
+        # celleindholdet vinder over de beregnede kolonnebredder
+        autoWidth = FALSE,
         # R\u00e6kke/kolonne-operationer styres af knapperne + DB. Sortering/drag
         # er sl\u00e5et fra s\u00e5 grid-r\u00e6kkef\u00f8lgen ALTID matcher tree() (trae-orden;
         # selektion mappes positionsbaseret til node-id).

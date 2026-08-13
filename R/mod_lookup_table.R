@@ -56,6 +56,11 @@ mod_lookup_table_server <- function(id, db, cfg) {
         data = d,
         columns = lookup_excel_columns(cfg, names(d), .fk_sources(), data = d),
         autoColTypes = FALSE,
+        # autoWidth sætter width:auto inline på tabellen — det deaktiverer
+        # table-layout:fixed, og så vinder celleindholdet over vores
+        # beregnede kolonnebredder. FALSE → colgroup-bredderne styrer, og
+        # lange værdier ombrydes i cellen (se .jexcel_theme_css).
+        autoWidth = FALSE,
         # Række/kolonne-operationer styres af knapperne + DB — ikke af grid'et.
         # Sortering/drag er slået fra så grid-rækkefølgen ALTID matcher rows()
         # (sel_row er positionsbaseret).

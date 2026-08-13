@@ -81,14 +81,16 @@ test_that("tømt celle gemmes som NA", {
   })
 })
 
-test_that("widgetten renderes som excelR-grid med låst pk og uden grid-operationer", {
+test_that("widgetten renderes som excelR-grid med skjult pk og faste bredder", {
   db <- fake_lookup_db()
   testServer(mod_lookup_table_server, args = list(db = db, cfg = cfg_test), {
     w <- jsonlite::fromJSON(output$tbl, simplifyVector = FALSE)
     cols <- w$x$columns
     expect_equal(cols[[1]]$title, "Id")
-    expect_true(cols[[1]]$readOnly)
+    expect_equal(cols[[1]]$type, "hidden")     # pk aldrig synlig
     expect_equal(cols[[3]]$type, "numeric")
+    expect_true(is.numeric(cols[[2]]$width))   # fraktil-bredde sat
+    expect_false(isTRUE(w$x$autoWidth))        # ellers ignoreres bredderne
     expect_false(isTRUE(w$x$allowInsertRow))
     expect_false(isTRUE(w$x$columnSorting))
   })
