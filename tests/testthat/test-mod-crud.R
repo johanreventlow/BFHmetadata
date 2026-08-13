@@ -9,6 +9,7 @@ fake_db <- function() {
   store <- data.frame(id = 1L, indikator_navn = "A", aktiv_indikator = TRUE,
                       indikator_hierarki = 1L, kontaktperson = 1L, datakilde = 1L,
                       label_indikator_hierarki = "Inf.hyg",
+                      output_enhed = "pct",  # legacy-fritekst (ej kanonisk)
                       stringsAsFactors = FALSE)
   calls <- list(created = NULL, updated = NULL, deleted = NULL, junction = list(),
                 diagram_created = NULL, diagram_updated = NULL)
@@ -164,6 +165,38 @@ test_that("inline-edit på editable felt diffes og kalder update med korrekt id"
     expect_false(is.null(u))
     expect_equal(u[[1]], 1L)                       # rid fra pk-match
     expect_equal(u[[2]], list(indikator_navn = "Nyt navn"))
+  })
+})
+
+test_that("output_enhed er dropdown med kanoniske værdier + bevaret legacy", {
+  db <- fake_db()
+  testServer(mod_indikator_crud_server, args = list(db = db), {
+    w <- jsonlite::fromJSON(output$tbl, simplifyVector = FALSE)
+    cols <- w$x$columns
+    titles <- vapply(cols, function(c) c$title, "")
+    oe <- cols[[which(titles == "output_enhed")]]
+    expect_equal(oe$type, "dropdown")
+    names_in_src <- vapply(oe$source, function(s) s$name, "")
+    expect_true(all(OUTPUT_ENHED_CHOICES %in% names_in_src))
+    expect_true("(ingen)" %in% names_in_src)
+    expect_true("pct" %in% names_in_src)   # legacy-værdi tabes ikke
+  })
+})
+
+test_that("inline-valg af output_enhed kalder update med kanonisk værdi", {
+  db <- fake_db()
+  testServer(mod_indikator_crud_server, args = list(db = db), {
+    d <- rows()
+    pay <- lapply(seq_len(nrow(d)), function(i) {
+      lapply(d[i, ], function(v) if (is.na(v)) NULL else as.character(v))
+    })
+    pay[[1]][[which(names(d) == "output_enhed")]] <- "Procent"
+    session$setInputs(tbl = list(colHeaders = as.list(names(d)), data = pay,
+                                 forSelectedVals = FALSE))
+    u <- db$.calls()$updated
+    expect_false(is.null(u))
+    expect_equal(u[[1]], 1L)
+    expect_equal(u[[2]], list(output_enhed = "Procent"))
   })
 })
 

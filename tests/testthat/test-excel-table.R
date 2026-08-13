@@ -49,6 +49,16 @@ test_that("excel_text_columns: hidden-kolonner skjules (typisk pk)", {
   expect_equal(cols$type, c("hidden", "text"))
 })
 
+test_that("excel_text_columns: dropdowns-param giver dropdown med source", {
+  src <- data.frame(id = c("", "Procent"), name = c("(ingen)", "Procent"),
+                    stringsAsFactors = FALSE)
+  cols <- excel_text_columns(c("id", "output_enhed"),
+    editable = "output_enhed", hidden = "id",
+    dropdowns = list(output_enhed = src))
+  expect_equal(cols$type, c("hidden", "dropdown"))
+  expect_identical(cols$source[[2]]$name, c("(ingen)", "Procent"))
+})
+
 test_that("excel_col_widths: bredden følger fraktilen, ikke længste værdi", {
   d <- data.frame(
     navn = c(rep("kort", 19), strrep("x", 100)),

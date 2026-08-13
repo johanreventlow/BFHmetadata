@@ -387,10 +387,21 @@ mod_indikator_crud_server <- function(id, db) {
     output$tbl <- excelR::renderExcel({
       tbl_refresh()
       d <- tbl_rows()
+      # output_enhed som dropdown: kun kanoniske værdier (BFHddl-pipelinen
+      # ignorerer alt andet). "" = (ingen); eksisterende legacy-fritekst i
+      # data bevares i sourcen, så den hverken vises blankt eller tabes.
+      oe_used <- setdiff(
+        stats::na.omit(unique(as.character(d$output_enhed))),
+        OUTPUT_ENHED_CHOICES)
+      oe_src <- data.frame(
+        id = c("", OUTPUT_ENHED_CHOICES, oe_used),
+        name = c("(ingen)", OUTPUT_ENHED_CHOICES, oe_used),
+        stringsAsFactors = FALSE)
       excelR::excelTable(
         data = d,
         columns = excel_text_columns(names(d), INLINE_EDITABLE,
-          data = d, hidden = "id"),
+          data = d, hidden = "id",
+          dropdowns = list(output_enhed = oe_src)),
         autoColTypes = FALSE,
         # FALSE: ellers deaktiverer width:auto table-layout:fixed, og
         # celleindholdet vinder over de beregnede kolonnebredder
