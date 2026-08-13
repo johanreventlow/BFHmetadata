@@ -1,6 +1,10 @@
-# Generisk hierarki-CRUD (traeer med parent-FK): indrykket DT-tabel + delt
-# formular-modal. Config-drevet (HIERARCHY_TABLES) — ét modul, N instanser
-# (org-struktur Fase C, indikator-hierarki Fase D). Mønster fra mod_diagram.R.
+# Generisk hierarki-CRUD (traeer med parent-FK): excelR-grid (jspreadsheet,
+# samme editor som opslagstabellerne) + delt formular-modal til nye noder.
+# Config-drevet (HIERARCHY_TABLES) — ét modul, N instanser. Grid'et viser
+# traeet via en readOnly "Struktur"-kolonne (indrykket, depth-first);
+# tekstfelter redigeres direkte, Forælder/Niveau via dropdowns. Alle
+# ændringer valideres server-side af .prepare_hierarchy_inline_update
+# (cyklus-værn, obligatorisk visningsnavn, ukendte id'er).
 
 #' Delt formular-UI for en hierarki-node. cfg = element fra HIERARCHY_TABLES.
 #' vals = named list (NULL → ny), parent_choices = named vector (label→id,
@@ -53,76 +57,6 @@
   sprintf("(uden navn #%s)", id)
 }
 
-#' Byg de fem permanente inline-editor-kolonner til hierarki-tabellen.
-#' @noRd
-.hierarchy_editor_data <- function(d, cfg, ns, niveauer) {
-  fields <- .hierarchy_inline_fields(cfg)
-  text_cols <- unname(fields[c("teknisk", "langt", "kort")])
-  teknisk_col <- text_cols[1]
-  column_names <- c(vapply(cfg$fields, function(field) field$label, ""),
-                    "Forælder", "Niveau")
-  teknisk <- d[[teknisk_col]]
-  display <- d[[cfg$display_col]]
-  node_labels <- vapply(seq_len(nrow(d)), function(i) {
-    .node_label(cfg, display[i], teknisk[i], d$id[i])
-  }, "")
-  padding <- function(depth) {
-    value <- htmltools::htmlEscape(as.character(depth * 1.5), attribute = TRUE)
-    sprintf('<div style="padding-left:%srem">', value)
-  }
-  text_value <- function(col, row) {
-    value <- d[[col]][row]
-    if (is.na(value)) "" else value
-  }
-  if (nrow(d) == 0) {
-    return(as.data.frame(stats::setNames(
-      replicate(length(column_names), character(), simplify = FALSE),
-      column_names), stringsAsFactors = FALSE, check.names = FALSE))
-  }
-
-  out <- lapply(seq_len(nrow(d)), function(i) {
-    id <- d$id[i]
-    parent_value <- d$parent_id_raw[i]
-    parent_match <- match(parent_value, d$id)
-    parent_label <- if (is.na(parent_value)) {
-      "(rod)"
-    } else if (is.na(parent_match)) {
-      sprintf("Ukendt forælder #%s", parent_value)
-    } else {
-      node_labels[parent_match]
-    }
-    level_value <- d$niveau_id[i]
-    level_match <- match(level_value, niveauer$id)
-    level_label <- if (is.na(level_value)) {
-      "(vælg)"
-    } else if (is.na(level_match) || is.na(niveauer$label[level_match]) ||
-               !nzchar(niveauer$label[level_match])) {
-      sprintf("Ukendt niveau #%s", level_value)
-    } else {
-      niveauer$label[level_match]
-    }
-    c(
-      .hierarchy_text_editor_html(ns, id, text_cols[1], text_value(text_cols[1], i)),
-      paste0(padding(d$depth[i]),
-             .hierarchy_text_editor_html(ns, id, text_cols[2],
-                                         text_value(text_cols[2], i), d$depth[i]),
-             "</div>"),
-      .hierarchy_text_editor_html(ns, id, text_cols[3], text_value(text_cols[3], i)),
-      .hierarchy_select_editor_html(ns, id, fields[["parent"]],
-                                    parent_value, choices = character(),
-                                    root = TRUE, lazy = TRUE,
-                                    current_label = parent_label),
-      .hierarchy_select_editor_html(ns, id, fields[["niveau"]],
-                                    level_value, choices = character(),
-                                    lazy = TRUE, current_label = level_label)
-    )
-  })
-  out <- as.data.frame(do.call(rbind, out), stringsAsFactors = FALSE,
-                       check.names = FALSE)
-  names(out) <- column_names
-  out
-}
-
 #' Saml formular-inputs → named list i hierarchy_edit_cols(cfg)-orden. Tom
 #' forælder → NA (rodnode OK). Tomme tekstfelter → NA.
 #' @noRd
@@ -147,18 +81,13 @@
 mod_hierarchy_ui <- function(id, cfg) {
   ns <- NS(id)
   div(class = "mt-2",
-    tags$style(HTML(sprintf(paste0(
-      "#%s .hierarchy-editor { min-height:calc(1.5em + .5rem + 2px); ",
-      "padding:.25rem .5rem; background-color:#f8f9fa; } ",
-      "#%s .hierarchy-editor:focus { background-color:#fff; } ",
-      "#%s .hierarchy-editor:disabled, #%s .hierarchy-editor.hierarchy-saving ",
-      "{ opacity:.65; background-color:#e9ecef; cursor:wait; }"),
-      ns("tbl"), ns("tbl"), ns("tbl"), ns("tbl")))),
     div(class = "d-flex justify-content-end gap-2 mb-2",
       actionButton(ns("new_node"), "Ny node", class = "btn-success"),
       actionButton(ns("delete_selected"), "Slet valgt",
                    class = "btn-outline-danger")),
-    DT::DTOutput(ns("tbl")))
+    p(class = "text-muted small",
+      "Dobbeltklik en celle for at redigere. Klik en række og tryk Slet valgt."),
+    excelR::excelOutput(ns("tbl"), width = "100%", height = "auto"))
 }
 
 #' @noRd
@@ -202,10 +131,6 @@ mod_hierarchy_server <- function(id, db, cfg) {
         showNotification(event$message, type = "warning", duration = 8)
     }, ignoreInit = TRUE)
 
-    observeEvent(input$selected_node_id, {
-      selected_id(.hierarchy_editor_integer(input$selected_node_id))
-    }, ignoreNULL = FALSE)
-
     .labels <- function(d) {
       teknisk <- if ("organisatorisk_navn_teknisk" %in% names(d))
         d$organisatorisk_navn_teknisk else rep(NA_character_, nrow(d))
@@ -213,49 +138,38 @@ mod_hierarchy_server <- function(id, db, cfg) {
         .node_label(cfg, d[[cfg$display_col]][i], teknisk[i], d$id[i]), "")
     }
 
-    output$tbl <- DT::renderDT({
+    output$tbl <- excelR::renderExcel({
       table_revision()
       d <- tree()
-      selected <- isolate(selected_id())
-      selected_row <- if (is.null(selected)) integer() else match(selected, d$id)
-      if (length(selected_row) == 1L && is.na(selected_row)) {
-        selected_row <- integer()
-      }
-      out <- .hierarchy_editor_data(d, cfg, session$ns, niveauer())
-      parent_choices <- data.frame(
-        id = d$id,
-        label = .labels(d),
-        parent_id = d$parent_id_raw,
-        stringsAsFactors = FALSE)
-      level_choices <- data.frame(
-        id = niveauer()$id,
-        label = niveauer()$label,
-        stringsAsFactors = FALSE)
-      editor_value <- htmlwidgets::JS(
-        "function(data, type) {\n          if (type === 'sort' || type === 'filter') {\n            return $('<div>').html(data).find('.hierarchy-editor').val() || '';\n          }\n          return data;\n        }")
-      DT::datatable(out, escape = FALSE, rownames = FALSE,
-        selection = list(mode = "single", selected = selected_row),
-        callback = .hierarchy_dt_callback(session$ns, parent_choices,
-                                          level_choices),
-        options = .dt_session_state_options(session$ns("tbl"), list(
-          pageLength = 25,
-          columnDefs = list(list(targets = 0:4, render = editor_value))
-        )))
-    }, server = FALSE)
+      excelR::excelTable(
+        data = hierarchy_excel_data(d, cfg),
+        columns = hierarchy_excel_columns(cfg, d, niveauer()),
+        autoColTypes = FALSE,
+        # R\u00e6kke/kolonne-operationer styres af knapperne + DB. Sortering/drag
+        # er sl\u00e5et fra s\u00e5 grid-r\u00e6kkef\u00f8lgen ALTID matcher tree() (trae-orden;
+        # selektion mappes positionsbaseret til node-id).
+        allowInsertRow = FALSE, allowInsertColumn = FALSE,
+        allowDeleteRow = FALSE, allowDeleteColumn = FALSE,
+        allowRenameColumn = FALSE, columnSorting = FALSE,
+        rowDrag = FALSE, columnDrag = FALSE,
+        getSelectedData = TRUE
+      )
+    })
 
-    observeEvent(input$inline_edit, {
+    # F\u00e6lles h\u00e5ndtering af \u00e9t valideret inline-event (id, field, value).
+    # Afvisning/u\u00e6ndret \u2192 reload (grid snapper tilbage til DB-tilstanden).
+    .handle_inline_event <- function(event) {
       result <- .prepare_hierarchy_inline_update(
-        nodes(), niveauer(), cfg, input$inline_edit)
+        nodes(), niveauer(), cfg, event)
       if (!isTRUE(result$ok)) {
         notify_warning(result$error)
         reload()
-        return()
+        return(invisible())
       }
       if (isTRUE(result$unchanged)) {
         reload()
-        return()
+        return(invisible())
       }
-
       ok <- safe_operation("hierarki-inline-gem", {
         db$update_node(result$id, result$values)
         TRUE
@@ -266,6 +180,37 @@ mod_hierarchy_server <- function(id, db, cfg) {
         if (nzchar(result$warning)) notify_warning(result$warning)
       } else {
         notify_warning("Fejl ved gem; v\u00e6rdien er gendannet")
+      }
+    }
+
+    # excelR sender B\u00c5DE celle-\u00e6ndringer og selektioner p\u00e5 input$tbl \u2014
+    # forSelectedVals skelner. Selektion: gem node-ID (ikke position) med
+    # det samme, s\u00e5 et senere trae-reorder ikke flytter valget til en anden
+    # node. \u00c6ndringer: diff mod grid-data (pk-match) \u2192 \u00e9t valideret event
+    # pr. celle; kolonner uden lagringsfelt (id/Struktur) ignoreres.
+    observeEvent(input$tbl, {
+      p <- input$tbl
+      d <- tree()
+      if (isTRUE(p$forSelectedVals)) {
+        top <- p$selectedDataBoundary$borderTop
+        pos <- if (is.null(top)) NA_integer_ else as.integer(top) + 1L
+        selected_id(if (is.na(pos) || pos < 1 || pos > nrow(d)) {
+          NULL
+        } else {
+          d$id[pos]
+        })
+        return()
+      }
+      grid <- hierarchy_excel_data(d, cfg)
+      changes <- excel_diff_cells(grid, excel_payload_to_df(p), "id")
+      fm <- hierarchy_grid_fields(cfg)
+      changes <- changes[changes$col %in% names(fm), , drop = FALSE]
+      for (k in seq_len(nrow(changes))) {
+        .handle_inline_event(list(
+          id = as.integer(changes$pk[k]),
+          field = fm[[changes$col[k]]],
+          value = changes$value[k]
+        ))
       }
     })
 
@@ -332,7 +277,6 @@ mod_hierarchy_server <- function(id, db, cfg) {
     .clear_delete_selection <- function() {
       selected_id(NULL)
       delete_id(NULL)
-      DT::selectRows(DT::dataTableProxy("tbl", session), NULL)
     }
 
     observeEvent(input$delete_selected, {

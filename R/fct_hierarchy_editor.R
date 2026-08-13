@@ -139,152 +139,78 @@
                            values = values, warning = warning)
 }
 
-#' Sikker tekst-editor til en enkelt DT-celle.
+#' Grid-titler → lagringskolonner for hierarki-grid'et (excelR).
 #' @noRd
-.hierarchy_text_editor_html <- function(ns, id, field, value, depth = 0L) {
-  esc_attr <- function(x) htmltools::htmlEscape(as.character(x), attribute = TRUE)
-  input_id <- ns(paste0("inline_", id, "_", field))
-  sprintf(paste0(
-    '<input id="%s" class="form-control form-control-sm hierarchy-editor" ',
-    'type="text" value="%s" data-saved="%s" data-node-id="%s" ',
-    'data-field="%s" data-depth="%s">'),
-    esc_attr(input_id), esc_attr(value), esc_attr(value), esc_attr(id),
-    esc_attr(field), esc_attr(depth))
+hierarchy_grid_fields <- function(cfg) {
+  stats::setNames(
+    c(vapply(cfg$fields, function(f) f$col, ""), cfg$parent_col, cfg$level$col),
+    c(vapply(cfg$fields, function(f) f$label, ""), "Forælder", "Niveau")
+  )
 }
 
-#' Sikker select-editor til en enkelt DT-celle.
+#' Visningslabels for alle noder (display_col → teknisk → "(uden navn #id)").
 #' @noRd
-.hierarchy_select_editor_html <- function(ns, id, field, current, choices,
-                                          root = FALSE, lazy = FALSE,
-                                          current_label = NULL) {
-  esc_attr <- function(x) htmltools::htmlEscape(as.character(x), attribute = TRUE)
-  esc_text <- function(x) htmltools::htmlEscape(as.character(x))
-  current <- if (is.null(current) || is.na(current)) "" else as.character(current)
-  if (isTRUE(lazy)) {
-    if (is.null(current_label)) {
-      current_match <- match(current, as.character(choices))
-      current_label <- if (is.na(current_match)) "" else names(choices)[current_match]
-    }
-    if (length(current_label) != 1 || is.na(current_label)) current_label <- ""
-    option_html <- sprintf('<option value="%s" selected>%s</option>',
-                           esc_attr(current), esc_text(current_label))
-  } else {
-    option_html <- vapply(seq_along(choices), function(i) {
-      value <- as.character(choices[[i]])
-      selected <- if (identical(value, current)) " selected" else ""
-      sprintf('<option value="%s"%s>%s</option>',
-        esc_attr(value), selected, esc_text(names(choices)[i]))
-    }, "")
-  }
-  input_id <- ns(paste0("inline_", id, "_", field))
-  sprintf(paste0(
-    '<select id="%s" class="form-select form-select-sm hierarchy-editor" ',
-    'data-saved="%s" data-saved-label="%s" data-node-id="%s" ',
-    'data-field="%s" data-root="%s" ',
-    'data-lazy="%s">%s</select>'),
-    esc_attr(input_id), esc_attr(current), esc_attr(current_label %||% ""),
-    esc_attr(id), esc_attr(field),
-    esc_attr(tolower(as.character(isTRUE(root)))),
-    esc_attr(tolower(as.character(isTRUE(lazy)))),
-    paste0(option_html, collapse = ""))
+hierarchy_node_labels <- function(tree_df, cfg) {
+  teknisk_col <- cfg$fields[[1]]$col
+  vapply(seq_len(nrow(tree_df)), function(i) {
+    .node_label(cfg, tree_df[[cfg$display_col]][i],
+                tree_df[[teknisk_col]][i], tree_df$id[i])
+  }, "")
 }
 
-#' Delegated DT-callback til inline-editorernes change/blur-events.
+#' Grid-data til excelR fra et hierarchy_order-ordnet trae.
+#'
+#' Kolonner: id (pk, readOnly) + "Struktur" (indrykket label, readOnly —
+#' traeet SKAL kunne aflæses uden at indrykningen forurener redigerbare
+#' værdier) + cfg-felterne + Forælder/Niveau som character-id'er ("" = NA,
+#' matcher dropdown-sourcens id-format).
 #' @noRd
-.hierarchy_dt_callback <- function(ns, parent_choices = NULL,
-                                   level_choices = NULL) {
-  input_name <- jsonlite::toJSON(ns("inline_edit"), auto_unbox = TRUE)
-  selection_name <- jsonlite::toJSON(ns("selected_node_id"), auto_unbox = TRUE)
-  parent_json <- jsonlite::toJSON(parent_choices %||% data.frame(),
-                                  dataframe = "rows", na = "null")
-  level_json <- jsonlite::toJSON(level_choices %||% data.frame(),
-                                 dataframe = "rows", na = "null")
-  htmlwidgets::JS(sprintf(
-    "var $table = $(table.table().node());
-      var inputName = %s;
-      var selectionName = %s;
-      var parentChoices = %s;
-      var levelChoices = %s;
-      var parentById = new Map(parentChoices.map(function(choice) {
-        return [Number(choice.id), choice.parent_id];
-      }));
-      function wouldCreateCycle(candidateId, nodeId) {
-        var current = candidateId;
-        var seen = {};
-        while (current !== null && current !== undefined && !seen[current]) {
-          if (Number(current) === Number(nodeId)) return true;
-          seen[current] = true;
-          current = parentById.has(Number(current)) ?
-            parentById.get(Number(current)) : null;
-        }
-        return false;
-      }
-      function hydrate(editor) {
-        if (editor.dataset.lazy !== 'true' || editor.dataset.hydrated === 'true') return;
-        var choices = editor.dataset.root === 'true' ? parentChoices : levelChoices;
-        var saved = editor.dataset.saved;
-        var nodeId = Number(editor.dataset.nodeId);
-        var emptyLabel = editor.dataset.root === 'true' ? '(rod)' : '(v\\u00e6lg)';
-        editor.replaceChildren(new Option(emptyLabel, '', false, saved === ''));
-        var addedSaved = saved === '';
-        choices.forEach(function(choice) {
-          if (editor.dataset.root === 'true' && wouldCreateCycle(choice.id, nodeId)) return;
-          var selected = String(choice.id) === saved;
-          editor.add(new Option(choice.label, String(choice.id), false, selected));
-          if (selected) addedSaved = true;
-        });
-        if (!addedSaved) {
-          var fallback = new Option(editor.dataset.savedLabel || ('#' + saved),
-            saved, false, true);
-          fallback.disabled = true;
-          editor.add(fallback);
-        }
-        editor.dataset.hydrated = 'true';
-      }
-      function submit(editor) {
-        if (editor.dataset.cancelled === 'true') {
-          delete editor.dataset.cancelled;
-          return;
-        }
-        if (editor.classList.contains('hierarchy-saving')) return;
-        if (editor.value === editor.dataset.saved) return;
-        var oldValue = editor.dataset.saved;
-        editor.classList.add('hierarchy-saving');
-        Shiny.setInputValue(inputName, {
-          id: Number(editor.dataset.nodeId),
-          field: editor.dataset.field,
-          oldValue: oldValue,
-          value: editor.value,
-          nonce: Date.now()
-        }, {priority: 'event'});
-      }
-      $table.off('.hierarchy-editor');
-      $table.on('focus.hierarchy-editor mousedown.hierarchy-editor',
-        'select.hierarchy-editor[data-lazy=\"true\"]', function() { hydrate(this); });
-      $table.on('click.hierarchy-editor', 'tbody tr', function() {
-        var row = this;
-        setTimeout(function() {
-          var editor = row.querySelector('.hierarchy-editor[data-node-id]');
-          var isSelected = row.classList.contains('selected') ||
-            row.classList.contains('active');
-          var selectedId = isSelected && editor ?
-            Number(editor.dataset.nodeId) : null;
-          Shiny.setInputValue(selectionName, selectedId, {priority: 'event'});
-        }, 0);
-      });
-      $table.on('keydown.hierarchy-editor', '.hierarchy-editor', function(event) {
-        if (event.key === 'Enter' && this.tagName === 'INPUT') {
-          event.preventDefault();
-          this.blur();
-        }
-        if (event.key === 'Escape') {
-          event.preventDefault();
-          this.value = this.dataset.saved;
-          this.dataset.cancelled = 'true';
-          this.blur();
-        }
-      });
-      $table.on('blur.hierarchy-editor change.hierarchy-editor',
-        '.hierarchy-editor', function() { submit(this); });
-    ", input_name, selection_name, parent_json, level_json))
+hierarchy_excel_data <- function(tree_df, cfg) {
+  chr_or_empty <- function(x) ifelse(is.na(x), "", as.character(x))
+  fm <- hierarchy_grid_fields(cfg)
+  field_titles <- setdiff(names(fm), c("Forælder", "Niveau"))
+  out <- data.frame(id = tree_df$id, stringsAsFactors = FALSE,
+                    check.names = FALSE)
+  #   (non-breaking space): alm. mellemrum kollapses i HTML-celler
+  out[["Struktur"]] <- paste0(
+    strrep("  ", tree_df$depth), hierarchy_node_labels(tree_df, cfg))
+  for (t in field_titles) out[[t]] <- chr_or_empty(tree_df[[fm[[t]]]])
+  out[["Forælder"]] <- chr_or_empty(tree_df$parent_id_raw)
+  out[["Niveau"]] <- chr_or_empty(tree_df$niveau_id)
+  out
 }
+
+#' Kolonne-spec til hierarki-grid'et: id + Struktur readOnly, tekstfelter
+#' åbne, Forælder/Niveau som dropdowns med {id, name}-source. "(rod)"/
+#' "(vælg)" er tom-id-valget; ukendte eksisterende id'er tilføjes sourcen
+#' ("Ukendt … #id") så de hverken vises blankt eller tabes ved gem.
+#' Cyklus-værn ligger IKKE her (kolonne-dropdowns kan ikke filtreres pr.
+#' række) — .prepare_hierarchy_inline_update afviser server-side.
+#' @noRd
+hierarchy_excel_columns <- function(cfg, tree_df, niveauer) {
+  labels <- hierarchy_node_labels(tree_df, cfg)
+  unknown_parents <- setdiff(stats::na.omit(tree_df$parent_id_raw), tree_df$id)
+  parent_src <- data.frame(
+    id = c("", as.character(tree_df$id), as.character(unknown_parents)),
+    name = c("(rod)", labels,
+             sprintf("Ukendt forælder #%s", unknown_parents)),
+    stringsAsFactors = FALSE)
+  unknown_niv <- setdiff(stats::na.omit(tree_df$niveau_id), niveauer$id)
+  niveau_src <- data.frame(
+    id = c("", as.character(niveauer$id), as.character(unknown_niv)),
+    name = c("(vælg)", as.character(niveauer$label),
+             sprintf("Ukendt niveau #%s", unknown_niv)),
+    stringsAsFactors = FALSE)
+  field_titles <- vapply(cfg$fields, function(f) f$label, "")
+  out <- data.frame(
+    title = c("id", "Struktur", field_titles, "Forælder", "Niveau"),
+    type = c("numeric", "text", rep("text", length(field_titles)),
+             "dropdown", "dropdown"),
+    readOnly = c(TRUE, TRUE, rep(FALSE, length(field_titles)), FALSE, FALSE),
+    align = "left",
+    stringsAsFactors = FALSE)
+  out$source <- c(rep(list(NA), 2 + length(field_titles)),
+                  list(parent_src), list(niveau_src))
+  out
+}
+

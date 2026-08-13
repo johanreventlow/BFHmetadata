@@ -4,6 +4,28 @@
 
 .hierarchy_cfg <- function() HIERARCHY_TABLES$org_struktur
 
+# excelR onChange-payload for hierarki-grid'et: bygget fra den ægte
+# grid-data-helper med én celle overskrevet (value = NULL → tømt celle).
+.hierarchy_grid_edit <- function(tree_df, cfg, id, column, value) {
+  g <- hierarchy_excel_data(tree_df, cfg)
+  g[[column]][g$id == id] <- if (is.null(value)) NA_character_ else value
+  list(
+    colHeaders = as.list(names(g)),
+    data = lapply(seq_len(nrow(g)), function(i) {
+      lapply(g[i, ], function(v) {
+        if (length(v) == 1 && is.na(v)) NULL else as.character(v)
+      })
+    }),
+    forSelectedVals = FALSE)
+}
+
+# excelR onSelection-payload: borderTop er 0-baseret række i trae-orden
+.hierarchy_grid_select <- function(row0) {
+  list(forSelectedVals = TRUE,
+       selectedDataBoundary = list(borderTop = row0, borderBottom = row0,
+                                   borderLeft = 0, borderRight = 0))
+}
+
 fake_hierarchy_db <- function() {
   nodes <- data.frame(
     id = c(1L, 2L, 3L, 4L),

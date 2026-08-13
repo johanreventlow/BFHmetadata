@@ -1,3 +1,6 @@
+# Rene hierarki-editor-hjælpere: felt-mapping, validering af inline-events
+# (genbruges af excelR-grid'et) og grid-data/kolonne-byggere.
+
 test_that("inline-felter mapper de fem viste felter til lagringsfelter", {
   cfg <- HIERARCHY_TABLES$org_struktur
   expect_identical(.hierarchy_inline_fields(cfg), c(
@@ -18,20 +21,6 @@ test_that("inline-opdatering bygger en komplet vaerdiliste", {
   expect_identical(result$id, 2L)
   expect_identical(result$values$organisatorisk_navn_kort, "Nyt")
   expect_identical(names(result$values), hierarchy_edit_cols(.hierarchy_cfg()))
-})
-
-test_that("organisationshierarkiet bevarer DT-tilstand i browser-sessionen", {
-  db <- fake_hierarchy_db()
-  testServer(mod_hierarchy_server,
-    args = list(id = "org_struktur", db = db, cfg = .hierarchy_cfg()), {
-      widget <- jsonlite::fromJSON(output$tbl, simplifyVector = FALSE)
-
-      expect_session_dt_state(widget, session$ns("tbl"))
-      expect_identical(widget$x$options$pageLength, 25L)
-      expect_true(any(vapply(widget$x$options$columnDefs, function(def) {
-        !is.null(def$render) && identical(unlist(def$targets), 0:4)
-      }, logical(1))))
-    })
 })
 
 test_that("tom tekst og tom foraelder normaliseres til korrekt NA-type", {
@@ -73,111 +62,6 @@ test_that("inline-foraelder afviser egen subtree", {
   expect_false(self$ok)
   expect_false(child$ok)
   expect_match(child$error, "cyklus|subtree|efterkommer", ignore.case = TRUE)
-})
-
-test_that("teksteditor escaper attributter og indeholder stabil routing", {
-  html <- .hierarchy_text_editor_html(
-    function(x) paste0("org-", x), 7L, "organisatorisk_navn_langt",
-    '\"><script>alert(1)</script>', depth = 2L)
-  expect_match(html, "data-node-id=\"7\"")
-  expect_match(html, "data-field=\"organisatorisk_navn_langt\"")
-  expect_false(grepl("<script>", html, fixed = TRUE))
-  expect_match(html, "&lt;script&gt;", fixed = TRUE)
-})
-
-test_that("select-editor escaper labels og udelader subtree-valg", {
-  choices <- c("Rod <A>" = "", "Barn & B" = "2")
-  html <- .hierarchy_select_editor_html(
-    function(x) paste0("org-", x), 7L, "parent_Id", "", choices,
-    root = TRUE)
-  expect_false(grepl("Rod <A>", html, fixed = TRUE))
-  expect_match(html, "Rod &lt;A&gt;", fixed = TRUE)
-  expect_match(html, "data-saved=\"\"")
-})
-
-test_that("lazy select-editor renderer kun den aktuelle vaerdi", {
-  html <- .hierarchy_select_editor_html(
-    function(x) paste0("org-", x), 7L, "parent_Id", "2",
-    choices = c("(rod)" = "", "Barn & B" = "2"), root = TRUE,
-    lazy = TRUE, current_label = "Barn & B")
-
-  expect_match(html, 'data-lazy="true"', fixed = TRUE)
-  expect_match(html, '<option value="2" selected>Barn &amp; B</option>',
-               fixed = TRUE)
-  expect_length(regmatches(html, gregexpr("<option", html, fixed = TRUE))[[1]],
-                1L)
-})
-
-test_that("DT callback hydratiserer lazy dropdowns fra delte valg", {
-  js <- as.character(.hierarchy_dt_callback(
-    function(x) paste0("org-", x),
-    parent_choices = data.frame(id = c(1L, 2L), label = c("Rod", "Barn")),
-    level_choices = data.frame(id = 10L, label = "Niveau")))
-
-  expect_match(js, "parentChoices", fixed = TRUE)
-  expect_match(js, "levelChoices", fixed = TRUE)
-  expect_match(js, "focus.hierarchy-editor", fixed = TRUE)
-  expect_match(js, "data-lazy", fixed = TRUE)
-  expect_match(js, "wouldCreateCycle", fixed = TRUE)
-  expect_match(js, "parent_id", fixed = TRUE)
-  expect_match(js, "new Map", fixed = TRUE)
-  expect_match(js, "addedSaved", fixed = TRUE)
-  expect_match(js, "editor.dataset.savedLabel", fixed = TRUE)
-  expect_match(js, "(v\\u00e6lg)", fixed = TRUE)
-  expect_false(grepl("vÃ¦lg", js, fixed = TRUE))
-})
-
-test_that("lazy select-editor bevarer label til ugyldig eksisterende vaerdi", {
-  html <- .hierarchy_select_editor_html(
-    identity, 7L, "parent_Id", "999", choices = character(), root = TRUE,
-    lazy = TRUE, current_label = "Manglende forælder")
-
-  expect_match(html, 'data-saved-label="Manglende forælder"', fixed = TRUE)
-  expect_match(html,
-    '<option value="999" selected>Manglende forælder</option>', fixed = TRUE)
-})
-
-test_that("DT callback bruger DataTables-argumentet og implementerer Enter Escape blur", {
-  js <- as.character(.hierarchy_dt_callback(function(x) paste0("org-", x)))
-  expect_false(startsWith(trimws(js), "function(table)"))
-  expect_match(js, "table.table().node()", fixed = TRUE)
-  expect_false(grepl("this.api()", js, fixed = TRUE))
-  expect_match(js, "Shiny.setInputValue", fixed = TRUE)
-  expect_match(js, "org-inline_edit", fixed = TRUE)
-  expect_match(js, "keydown", fixed = TRUE)
-  expect_match(js, "Escape", fixed = TRUE)
-  expect_match(js, "blur", fixed = TRUE)
-})
-
-test_that("DT callback bliver kun pakket i een funktion af DT", {
-  widget <- DT::datatable(
-    data.frame(x = 1L),
-    callback = .hierarchy_dt_callback(function(x) paste0("org-", x)))
-  callback <- as.character(widget$x$callback)
-
-  expect_match(callback, "function(table) {", fixed = TRUE)
-  expect_length(gregexpr("function(table)", callback, fixed = TRUE)[[1]], 1L)
-  expect_false(grepl("function(table) {function(table)",
-                     gsub("[[:space:]]+", "", callback), fixed = TRUE))
-})
-
-test_that("DT callback sender valgt nodes stabile id uden at overtage raekkevalg", {
-  js <- as.character(.hierarchy_dt_callback(function(x) paste0("org-", x)))
-  expect_match(js, "org-selected_node_id", fixed = TRUE)
-  expect_match(js, "tbody tr", fixed = TRUE)
-  expect_match(js, ".hierarchy-editor[data-node-id]", fixed = TRUE)
-  expect_match(js, "editor.dataset.nodeId", fixed = TRUE)
-  expect_match(js, "classList.contains('selected')", fixed = TRUE)
-  expect_match(js, "classList.contains('active')", fixed = TRUE)
-  expect_match(js, "setTimeout", fixed = TRUE)
-  expect_match(js, "priority: 'event'", fixed = TRUE)
-  expect_false(grepl("stopPropagation", js, fixed = TRUE))
-})
-
-test_that("DT callback bevarer gemt baseline mens en redigering afventer", {
-  js <- as.character(.hierarchy_dt_callback(function(x) paste0("org-", x)))
-  expect_match(js, "classList.contains('hierarchy-saving')", fixed = TRUE)
-  expect_false(grepl("editor.dataset.saved = editor.value", js, fixed = TRUE))
 })
 
 test_that("ugyldigt visningsfelt afvises uden en intern fejl", {
@@ -237,5 +121,61 @@ test_that("uaendret vaerdi bevarer raekken og advarer om niveau-spring", {
     list(id = 3, field = "organisatorisk_navn_kort", value = "C"))
   expect_true(result$ok)
   expect_true(result$unchanged)
-  expect_identical(result$warning, "Niveau er ikke dybere end for\u00e6lderens niveau")
+  expect_identical(result$warning, "Niveau er ikke dybere end forælderens niveau")
+})
+
+# --- excelR-grid-byggere -----------------------------------------------------
+
+test_that("hierarchy_grid_fields mapper grid-titler til lagringskolonner", {
+  fm <- hierarchy_grid_fields(.hierarchy_cfg())
+  expect_identical(unname(fm[c("Teknisk navn", "Langt navn", "Kort navn")]),
+                   c("organisatorisk_navn_teknisk", "organisatorisk_navn_langt",
+                     "organisatorisk_navn_kort"))
+  expect_identical(fm[["Forælder"]], "parent_Id")
+  expect_identical(fm[["Niveau"]], "organisatorisk_niveau")
+})
+
+test_that("hierarchy_excel_data: grid i trae-orden med indrykning og id-værdier", {
+  db <- fake_hierarchy_db()
+  d <- hierarchy_order(db$list_nodes(), "id", "parent_id_raw",
+                       .hierarchy_cfg()$display_col)
+  g <- hierarchy_excel_data(d, .hierarchy_cfg())
+  expect_equal(names(g), c("id", "Struktur", "Teknisk navn", "Langt navn",
+                           "Kort navn", "Forælder", "Niveau"))
+  expect_equal(g$id, c(1L, 2L, 3L, 4L))
+  expect_equal(g$Struktur[1], "Rod A")                 # rod uindrykket
+  expect_match(g$Struktur[3], "^ + +Barn C$") # depth 2 → indrykket
+  expect_equal(g[["Forælder"]], c("", "1", "2", ""))   # NA-parent → "" (rod)
+  expect_equal(g[["Niveau"]], c("10", "20", "10", "10"))
+})
+
+test_that("hierarchy_excel_data: NA-tekst vises tomt; tomt trae bevarer kolonner", {
+  db <- fake_hierarchy_db()
+  d <- hierarchy_order(db$list_nodes(), "id", "parent_id_raw",
+                       .hierarchy_cfg()$display_col)
+  d$organisatorisk_navn_kort[2] <- NA_character_
+  g <- hierarchy_excel_data(d, .hierarchy_cfg())
+  expect_equal(g[["Kort navn"]][2], "")
+  empty <- hierarchy_excel_data(d[FALSE, ], .hierarchy_cfg())
+  expect_equal(nrow(empty), 0L)
+  expect_equal(names(empty), names(g))
+})
+
+test_that("hierarchy_excel_columns: dropdowns med (rod)/(vælg), ukendte id'er bevares", {
+  db <- fake_hierarchy_db()
+  d <- hierarchy_order(db$list_nodes(), "id", "parent_id_raw",
+                       .hierarchy_cfg()$display_col)
+  d$parent_id_raw[d$id == 4L] <- 999L
+  d$niveau_id[d$id == 4L] <- 888L
+  cols <- hierarchy_excel_columns(.hierarchy_cfg(), d, db$niveau_options())
+  expect_equal(cols$title[1:2], c("id", "Struktur"))
+  expect_true(all(cols$readOnly[1:2]))                 # id + struktur låst
+  expect_false(any(cols$readOnly[3:7]))                # resten redigerbar
+  expect_true(all(cols$align == "left"))
+  p <- cols$source[[which(cols$title == "Forælder")]]
+  expect_equal(p$name[p$id == ""], "(rod)")
+  expect_true("Ukendt forælder #999" %in% p$name)      # ukendt id tabes ikke
+  nv <- cols$source[[which(cols$title == "Niveau")]]
+  expect_equal(nv$name[nv$id == ""], "(vælg)")
+  expect_true("Ukendt niveau #888" %in% nv$name)
 })
