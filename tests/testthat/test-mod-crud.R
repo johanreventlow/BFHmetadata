@@ -247,6 +247,52 @@ test_that(".collect_form med prefix læser præfiksede inputs", {
   expect_true(vals$aktiv_indikator)
 })
 
+test_that(".collect_form: tom dato og tomt choice-valg → NA (aldrig dags dato)", {
+  fields <- list(list(col = "periode_fra", kind = "date"),
+                 list(col = "output_enhed", kind = "choice",
+                      choices = OUTPUT_ENHED_CHOICES))
+  # Tom dateInput leverer en Date af længde 0 — må ikke ende som dags dato
+  input <- list(m_periode_fra = as.Date(character(0)), m_output_enhed = "")
+  vals <- .collect_form(input, fields, prefix = "m_")
+  expect_true(is.na(vals$periode_fra))
+  expect_true(is.na(vals$output_enhed))
+})
+
+test_that(".field_input: tom dato renderes TOM (ikke dags dato)", {
+  f <- list(col = "periode_fra", kind = "date")
+  html <- as.character(htmltools::renderTags(
+    .field_input(NS("x"), f, values = list(periode_fra = NA)))$html)
+  # dateInput(value = NULL) ville skrive dags dato i data-initial-date
+  expect_false(grepl(format(Sys.Date(), "%Y-%m-%d"), html, fixed = TRUE))
+})
+
+test_that(".field_input: choice-felt er dropdown med kanoniske + legacy-værdi", {
+  f <- list(col = "output_enhed", kind = "choice",
+            choices = OUTPUT_ENHED_CHOICES)
+  html <- as.character(htmltools::renderTags(
+    .field_input(NS("x"), f, values = list(output_enhed = "pct")))$html)
+  expect_match(html, "<select", fixed = TRUE)
+  expect_match(html, ">Procent<", fixed = TRUE)
+  expect_match(html, 'value="pct"', fixed = TRUE)     # legacy bevares + valgt
+  expect_match(html, "(ingen)", fixed = TRUE)
+})
+
+test_that("modal-gem inkluderer output_enhed", {
+  db <- fake_db()
+  testServer(mod_indikator_crud_server, args = list(db = db), {
+    session$setInputs(tbl = .tbl_select(0))
+    session$setInputs(open_selected = 1)
+    session$setInputs(m_indikator_navn = "Nyt", m_output_enhed = "Procent",
+                      m_j_faggrupper = character(0),
+                      m_j_dataprodukter = character(0),
+                      m_j_organisation = character(0),
+                      modal_save = 1)
+    u <- db$.calls()$updated
+    expect_false(is.null(u))
+    expect_identical(u[[2]]$output_enhed, "Procent")
+  })
+})
+
 test_that("Åbn valgte henter m2m og åbner modal", {
   db <- fake_db()
   testServer(mod_indikator_crud_server, args = list(db = db), {

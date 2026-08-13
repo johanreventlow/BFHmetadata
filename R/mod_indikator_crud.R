@@ -11,20 +11,38 @@
     "fk"       = selectInput(id, lab, choices = c("(ingen)" = "", fk_choices[[f$col]]),
                              selected = v %||% ""),
     "bool"     = checkboxInput(id, lab, value = isTRUE(v)),
-    "date"     = dateInput(id, lab,
-                           value = if (is.null(v) || is.na(v)) NULL else as.Date(v)),
+    # NA (ikke NULL!) ved tom værdi: NULL udelader data-initial-date og
+    # browserens datepicker defaulter så til DAGS DATO — et gem ville skrive
+    # en dato der aldrig har ligget i databasen. NA sætter attributten tom →
+    # tomt felt. suppressWarnings: shiny 1.14's dateYMD advarer kosmetisk om
+    # NA-koercion, men NA ER den dokumenterede tomme-felt-værdi.
+    "date"     = if (is.null(v) || length(v) == 0 || is.na(v)) {
+      suppressWarnings(dateInput(id, lab, value = NA))
+    } else {
+      dateInput(id, lab, value = as.Date(v))
+    },
     "int"      = numericInput(id, lab, value = if (is.null(v)) NA else v),
     "textarea" = textAreaInput(id, lab, value = v %||% ""),
+    # Fast værdisæt (f$choices) + evt. eksisterende legacy-værdi bevaret
+    "choice"   = {
+      ch <- f$choices %||% character(0)
+      if (!is.null(v) && length(v) == 1 && !is.na(v) && nzchar(v) &&
+        !(v %in% ch)) {
+        ch <- c(ch, v)
+      }
+      selectInput(id, lab, choices = c("(ingen)" = "", ch), selected = v %||% "")
+    },
     textInput(id, lab, value = v %||% "")  # text (default)
   )
 }
 
-# Felter modalen viser (design-retning C). indikator_navn_teknisk + output_enhed
-# udelades bevidst → modal-gem rører dem ej (bevares). Danske labels + required/
-# rosa-markering styres i .build_modal.
+# Felter modalen viser (design-retning C). indikator_navn_teknisk udelades
+# bevidst fra GEM (parquet-mappings-nøgle — omdøbning bryder datakoblingen);
+# den VISES readonly i .build_modal. Danske labels + required/rosa-markering
+# styres i .build_modal.
 INDIKATOR_MODAL_COLS <- c(
   "indikator_navn", "indikator_hierarki", "datakilde", "kontaktperson",
-  "ønsket_tendens", "mål", "sp_rapport_id", "direkte_link",
+  "ønsket_tendens", "mål", "output_enhed", "sp_rapport_id", "direkte_link",
   "definition_kort", "definition_dataportal", "tæller_beskrivelse",
   "nævner_beskrivelse", "indikator_ukompatibel_med", "antal_observationer",
   "periode_fra", "aktiv_indikator", "nøgleindikator", "tillad_auto_opdatering")
@@ -34,6 +52,7 @@ INDIKATOR_MODAL_LABELS <- c(
   indikator_navn = "Navn på indikator", indikator_hierarki = "Datasæt",
   datakilde = "Datakilde", kontaktperson = "Kontaktperson",
   ønsket_tendens = "Ønsket retning", mål = "Generelt indikatormål",
+  output_enhed = "Output-enhed",
   sp_rapport_id = "Evt. SP rapport id", direkte_link = "Evt. direkte link",
   definition_kort = "Kort definition", definition_dataportal = "Definition til dataportal",
   tæller_beskrivelse = "Beskrivelse af tæller", nævner_beskrivelse = "Beskrivelse af nævner",
@@ -77,7 +96,13 @@ mod_indikator_crud_ui <- function(id) {
     if (f$kind == "pk") next
     v <- input[[paste0(prefix, f$col)]]
     if (f$kind == "bool") v <- isTRUE(v)
-    if (f$kind %in% c("text", "textarea", "fk") && identical(v, "")) v <- NA
+    if (f$kind %in% c("text", "textarea", "fk", "choice") &&
+      identical(v, "")) {
+      v <- NA
+    }
+    # Tom dateInput leverer Date af længde 0 — normalisér til NA, så gem
+    # aldrig fejler på et 0-længde parameter (eller opfinder en dato)
+    if (f$kind == "date" && !is.null(v) && length(v) == 0) v <- NA
     vals[[f$col]] <- v
   }
   vals
@@ -236,17 +261,28 @@ mod_indikator_crud_server <- function(id, db) {
       two_up <- function(a, b, w = c(6, 6)) div(class = "row gx-3",
         div(class = paste0("col-", w[1]), a), div(class = paste0("col-", w[2]), b))
 
+      # Teknisk navn: VISES men kan ikke redigeres (parquet-mappings-nøgle —
+      # omdøbning ville bryde koblingen til datafilerne). Disabled input
+      # sender ingen værdi, og kolonnen er ikke i INDIKATOR_MODAL_COLS.
+      teknisk_vis <- if (!is_new) {
+        w <- textInput(ns("m_vis_teknisk"), "Indikator-id (teknisk navn — låst)",
+                       value = vals$indikator_navn_teknisk %||% "")
+        htmltools::tagQuery(w)$find("input")$addAttrs(disabled = NA)$allTags()
+      }
+
       left <- tagList(
         sect("Stamdata"),
         fin("indikator_navn"),
+        teknisk_vis,
         fin("indikator_hierarki"),
         two_up(fin("datakilde"), fin("kontaktperson")),
         two_up(fin("ønsket_tendens"), fin("mål")),
+        two_up(fin("output_enhed"), fin("sp_rapport_id")),
         sect("Relationer"),
         mfin("dataprodukter", "Indgår i dataprodukter"),
         mfin("faggrupper", "Relevant for faggrupper"),
         mfin("organisation", "Relevant for afdelinger"),
-        two_up(fin("sp_rapport_id"), fin("direkte_link"), w = c(5, 7)),
+        fin("direkte_link"),
         sect("Diagrammer"),
         if (is_new) {
           p(class = "text-muted small",

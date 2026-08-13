@@ -79,8 +79,16 @@ mk_fk_stmt <- function(fk) {
           qi(fk$col), qi(fk$parent), qi(fk$pcol))
 }
 
+# Kanoniske output_enhed-værdier. SKAL matche BFHddl::map_output_enhed
+# (target_parsing.R) — værdier udenfor sættet ignoreres af diagram-
+# pipelinen (y-akse falder tilbage til default). Derfor dropdown, ej fritekst.
+OUTPUT_ENHED_CHOICES <- c(
+  "Procent", "Andel", "Antal", "Kr", "Tid (dage)", "Tid (timer)",
+  "Tid (minutter)", "Tid (tt:mm)", "Rate"
+)
+
 # --- tblIndikatorer felt-metadata til CRUD-form ------------------------------
-# kind: pk | fk | text | textarea | bool | int | date
+# kind: pk | fk | text | textarea | bool | int | date | choice (fast værdisæt)
 INDIKATOR_FIELDS <- list(
   list(col="id",                       kind="pk"),
   list(col="indikator_hierarki",       kind="fk", parent="tblIndikatorHierarki", label="hierarki_navn"),
@@ -102,15 +110,7 @@ INDIKATOR_FIELDS <- list(
   list(col="ønsket_tendens",           kind="text"),
   list(col="antal_observationer",      kind="int"),
   list(col="periode_fra",              kind="date"),
-  list(col="output_enhed",             kind="text")
-)
-
-# Kanoniske output_enhed-værdier. SKAL matche BFHddl::map_output_enhed
-# (target_parsing.R) — værdier udenfor sættet ignoreres af diagram-
-# pipelinen (y-akse falder tilbage til default). Derfor dropdown, ej fritekst.
-OUTPUT_ENHED_CHOICES <- c(
-  "Procent", "Andel", "Antal", "Kr", "Tid (dage)", "Tid (timer)",
-  "Tid (minutter)", "Tid (tt:mm)", "Rate"
+  list(col="output_enhed",             kind="choice", choices=OUTPUT_ENHED_CHOICES)
 )
 
 # --- m2m junction-metadata for tblIndikatorer --------------------------------
