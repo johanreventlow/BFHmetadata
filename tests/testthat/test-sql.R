@@ -251,6 +251,23 @@ test_that("hierarchy insert/update/delete parametriserer alle edit-kolonner", {
     'SELECT count(*) AS n FROM "tblOrganisationStruktur" WHERE "parent_Id" = $1')
 })
 
+test_that("hierarki-SQL for indikator_hierarki medtager aktiv-kolonnen", {
+  cfg <- HIERARCHY_TABLES$indikator_hierarki
+  sql <- build_hierarchy_list_sql(cfg)
+  expect_match(sql, 'h."Id" AS id', fixed = TRUE)
+  expect_match(sql, 'h."parent_id" AS parent_id_raw', fixed = TRUE)
+  expect_match(sql, 'h."aktiv" AS aktiv', fixed = TRUE)
+  expect_match(sql, '"tblIndikatorNiveauer"', fixed = TRUE)
+  cols <- hierarchy_edit_cols(cfg)   # 5 felter + parent + niveau + aktiv = 8
+  expect_length(cols, 8)
+  ins <- build_hierarchy_insert_sql(cfg)
+  for (col in cols) expect_match(ins, sprintf('"%s"', col), fixed = TRUE)
+  upd <- build_hierarchy_update_sql(cfg)
+  expect_match(upd, '"Id" = \\$9')   # 8 kolonner + id
+  expect_identical(build_hierarchy_child_count_sql(cfg),
+    'SELECT count(*) AS n FROM "tblIndikatorHierarki" WHERE "parent_id" = $1')
+})
+
 # --- Hierarki-oprulning (org-træ + aggregerings-flag) -----------------------
 
 test_that("build_org_struct_sql henter id + parent fra org-tabellen", {

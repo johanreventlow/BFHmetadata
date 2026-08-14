@@ -194,7 +194,6 @@ LOOKUP_TABLES <- list(
 # level: FK-kolonne paa noden + parent-tabel med numerisk niveau (num_col, til
 # bloed niveau-konsistens-advarsel) og visningsnavn (name_col/label_expr).
 # aktiv_col: NULL hvis tabellen ingen aktiv-kolonne har.
-# Fase D tilfoejer indikator_hierarki-entry.
 HIERARCHY_TABLES <- list(
   org_struktur = list(
     id = "org_struktur", table = "tblOrganisationStruktur", pk = "Id",
@@ -211,5 +210,23 @@ HIERARCHY_TABLES <- list(
                  parent = "tblOrganisationNiveauer", parent_pk = "Id",
                  num_col = "organisatorisk_niveau",
                  name_col = "organisatorisk_niveau_navn",
-                 label_expr = '"organisatorisk_niveau_navn"'))
+                 label_expr = '"organisatorisk_niveau_navn"')),
+  # Datasæt/datapakke-træet bag tblIndikatorer.indikator_hierarki.
+  # parent_col er "parent_id" med LILLE i — modsat org-tabellens "parent_Id".
+  indikator_hierarki = list(
+    id = "indikator_hierarki", table = "tblIndikatorHierarki", pk = "Id",
+    parent_col = "parent_id", display_col = "hierarki_navn",
+    label = "Indikator-hierarki", aktiv_col = "aktiv",
+    fields = list(
+      list(col = "hierarki_navn", type = "text", label = "Navn"),
+      list(col = "hierarki_navn_kort", type = "text", label = "Kort navn"),
+      list(col = "beskrivelse_kort", type = "textarea",
+           label = "Kort beskrivelse"),
+      list(col = "beskrivelse_lang", type = "textarea",
+           label = "Lang beskrivelse"),
+      list(col = "kilde_id", type = "text", label = "Kilde-id (import)")),
+    level = list(col = "indikator_niveau", parent = "tblIndikatorNiveauer",
+                 parent_pk = "Id", num_col = "indikator_niveau",
+                 name_col = "indikator_niveau_navn",
+                 label_expr = '"indikator_niveau_navn"'))
 )

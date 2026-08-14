@@ -32,6 +32,22 @@ test_that("org_struktur-entry har korrekte kolonner og parent-casing", {
                           "organisatorisk_navn_kort"))
 })
 
+test_that("indikator_hierarki-entry har korrekte kolonner og aktiv-flag", {
+  cfg <- HIERARCHY_TABLES$indikator_hierarki
+  expect_identical(cfg$table, "tblIndikatorHierarki")
+  expect_identical(cfg$pk, "Id")
+  expect_identical(cfg$parent_col, "parent_id")   # lille i — modsat org-tabellen
+  expect_identical(cfg$display_col, "hierarki_navn")
+  expect_identical(cfg$aktiv_col, "aktiv")
+  expect_identical(cfg$level$parent, "tblIndikatorNiveauer")
+  expect_identical(cfg$level$col, "indikator_niveau")
+  cols <- vapply(cfg$fields, function(f) f$col, "")
+  expect_setequal(cols, c("hierarki_navn", "hierarki_navn_kort",
+                          "beskrivelse_kort", "beskrivelse_lang", "kilde_id"))
+  # 5 felter + parent + niveau + aktiv = 8 edit-kolonner
+  expect_length(hierarchy_edit_cols(cfg), 8)
+})
+
 test_that("alle HIERARCHY_TABLES-entries har paakraevede felter", {
   for (cfg in HIERARCHY_TABLES) {
     expect_true(all(c("id", "table", "pk", "parent_col", "display_col",
