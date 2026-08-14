@@ -25,6 +25,14 @@ app_server <- function(input, output, session) {
   lazy_module("diagrammer", selected_tab,
               function() mod_diagram_server("diagram", db),
               session = session, loading = "Henter diagram-liste…")
+  lazy_module("indikator_hierarki", selected_tab, function() {
+    # Delt cache-lager: hierarki-skrivninger rydder cachede læsninger (fx
+    # indikator-modalens datasæt-dropdown), så ændringer slår straks igennem.
+    mod_hierarchy_server("indikator_hierarki",
+      make_db_cached(make_hierarchy_db(pool, HIERARCHY_TABLES$indikator_hierarki),
+                     store = store),
+      HIERARCHY_TABLES$indikator_hierarki)
+  }, session = session, loading = "Henter indikator-hierarki…")
   lazy_module("org_struktur", selected_tab, function() {
     # make_db_cached: node-skrivninger rydder det DELTE cache-lager, så
     # org-ændringer straks slår igennem i cachede org-læsninger (fx
@@ -51,6 +59,8 @@ app_server <- function(input, output, session) {
 
   # Landing-fliser → naviger til valgt fane
   observeEvent(input$go_indikatorer, bslib::nav_select("nav", "indikatorer"))
+  observeEvent(input$go_indikator_hierarki,
+               bslib::nav_select("nav", "indikator_hierarki"))
   observeEvent(input$go_signal, bslib::nav_select("nav", "signal"))
   observeEvent(input$go_diagrammer, bslib::nav_select("nav", "diagrammer"))
   observeEvent(input$go_org_struktur, bslib::nav_select("nav", "org_struktur"))

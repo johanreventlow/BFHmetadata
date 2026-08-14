@@ -11,6 +11,13 @@ test_that("app_ui konstruerer uden fejl", {
   expect_no_error(app_ui(NULL))
 })
 
+test_that("app_ui har indikator-hierarki-fane og landing-flise", {
+  html <- as.character(app_ui(NULL))
+  expect_match(html, 'data-value="indikator_hierarki"', fixed = TRUE)
+  expect_match(html, "go_indikator_hierarki", fixed = TRUE)
+  expect_match(html, "Indikator-hierarki", fixed = TRUE)
+})
+
 test_that("hierarki-UI har opret og slet men ingen aabn-knap", {
   html <- as.character(mod_hierarchy_ui(
     "org", HIERARCHY_TABLES$org_struktur))
