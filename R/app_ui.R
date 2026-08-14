@@ -2,15 +2,12 @@
 #' @noRd
 app_ui <- function(request) {
   bslib::page_navbar(id = "nav", title = "BFH Metadata",
-    header = .jexcel_theme_css(),
+    header = tagList(.jexcel_theme_css(), .hidden_nav_css()),
     bslib::nav_panel("Start", value = "start", .landing_ui()),
-    bslib::nav_panel("Indikatorer", value = "indikatorer",
-      mod_indikator_crud_ui("indik")),
-    bslib::nav_panel("Indikator-hierarki", value = "indikator_hierarki",
-      mod_hierarchy_ui("indikator_hierarki",
-                       HIERARCHY_TABLES$indikator_hierarki)),
     bslib::nav_panel("Signal-gennemgang", value = "signal",
       mod_signal_review_ui("signal")),
+    bslib::nav_panel("Indikatorer", value = "indikatorer",
+      mod_indikator_crud_ui("indik")),
     bslib::nav_panel("Diagrammer", value = "diagrammer",
       mod_diagram_ui("diagram")),
     bslib::nav_panel("Organisation", value = "org_struktur",
@@ -19,9 +16,24 @@ app_ui <- function(request) {
       lapply(LOOKUP_TABLES, function(cfg)
         bslib::nav_panel(cfg$label, value = cfg$id,
           mod_lookup_table_ui(cfg$id, cfg))))),
+    # Fane UDEN menu-punkt: naas via Start-flisen (nav_select). Menu-linket
+    # skjules af .hidden_nav_css — panelet skal stadig ligge i navbar'ens
+    # tabset for at nav_select/lazy_module virker.
+    bslib::nav_panel("Indikator-hierarki", value = "indikator_hierarki",
+      mod_hierarchy_ui("indikator_hierarki",
+                       HIERARCHY_TABLES$indikator_hierarki)),
     bslib::nav_spacer(),
     bslib::nav_item(uiOutput("write_badge"))
   )
+}
+
+#' CSS der skjuler navbar-links for faner der kun skal naas via Start-siden.
+#' Panelet forbliver i tabsettet (nav_select virker); kun menu-linket
+#' forsvinder.
+#' @noRd
+.hidden_nav_css <- function() {
+  tags$style(HTML(paste0(
+    '.navbar a[data-value="indikator_hierarki"] { display: none; }')))
 }
 
 #' Badge der viser om DB-skrivning er aktiv (roed = writes rammer prod).
