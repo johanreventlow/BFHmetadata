@@ -35,6 +35,10 @@
   Forælder/Niveau som dropdowns med cyklus-værn) plus et redigerbart
   Aktiv-flueben pr. node. Dermed er fuld-CRUD-designet komplet — alle
   metadata-tabeller kan vedligeholdes uden Access.
+* Indikator-hierarki-siden har kaskade-filtre som Indikator-siden: vælg en
+  Datapakke og/eller et Datasæt for kun at se den gren af træet.
+  Forælder-dropdown'en tilbyder fortsat hele træet, så en node kan flyttes
+  ud af den viste gren.
 * Indikator-modalens og indikator-grid'ets "Datasæt"-dropdown tilbyder kun
   AKTIVE hierarki-noder ved nyvalg; en eksisterende værdi der peger på en
   inaktiv node bevares og vises med "(inaktiv)"-suffix — ingen stille

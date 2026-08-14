@@ -48,6 +48,17 @@ test_that("indikator_hierarki-entry har korrekte kolonner og aktiv-flag", {
   expect_length(hierarchy_edit_cols(cfg), 8)
 })
 
+test_that("indikator_hierarki har kaskade-filtre paa Datapakke/Datasæt-niveau", {
+  filters <- HIERARCHY_TABLES$indikator_hierarki$filters
+  expect_length(filters, 2)
+  expect_identical(vapply(filters, function(f) f$label, ""),
+                   c("Datapakke", "Datasæt"))
+  expect_identical(vapply(filters, function(f) f$niveau_navn, ""),
+                   c("Datapakke", "Datasæt"))
+  # org-instansen har ingen filtre (opt-in)
+  expect_null(HIERARCHY_TABLES$org_struktur$filters)
+})
+
 test_that("alle HIERARCHY_TABLES-entries har paakraevede felter", {
   for (cfg in HIERARCHY_TABLES) {
     expect_true(all(c("id", "table", "pk", "parent_col", "display_col",

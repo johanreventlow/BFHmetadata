@@ -201,12 +201,17 @@ hierarchy_excel_data <- function(tree_df, cfg) {
 #' ("Ukendt … #id") så de hverken vises blankt eller tabes ved gem.
 #' Cyklus-værn ligger IKKE her (kolonne-dropdowns kan ikke filtreres pr.
 #' række) — .prepare_hierarchy_inline_update afviser server-side.
+#' source_df: fuldt trae til Forælder-dropdown-sourcen, saa re-parenting
+#' UD af en filtreret gren stadig er muligt (default = tree_df, dvs. de
+#' viste rækker). Kolonnebredder maales altid paa de VISTE rækker.
 #' @noRd
-hierarchy_excel_columns <- function(cfg, tree_df, niveauer) {
-  labels <- hierarchy_node_labels(tree_df, cfg)
-  unknown_parents <- setdiff(stats::na.omit(tree_df$parent_id_raw), tree_df$id)
+hierarchy_excel_columns <- function(cfg, tree_df, niveauer,
+                                    source_df = tree_df) {
+  labels <- hierarchy_node_labels(source_df, cfg)
+  unknown_parents <- setdiff(stats::na.omit(source_df$parent_id_raw),
+                             source_df$id)
   parent_src <- data.frame(
-    id = c("", as.character(tree_df$id), as.character(unknown_parents)),
+    id = c("", as.character(source_df$id), as.character(unknown_parents)),
     name = c("(rod)", labels,
              sprintf("Ukendt forælder #%s", unknown_parents)),
     stringsAsFactors = FALSE)

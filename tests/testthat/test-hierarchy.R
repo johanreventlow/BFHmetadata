@@ -41,6 +41,17 @@ test_that("hierarchy_descendants overlever cyklus", {
   expect_setequal(hierarchy_descendants(df, "id", "parent", 1L), c(1L, 2L))
 })
 
+test_that("hierarchy_subtree beskaerer til gren og renormaliserer dybden", {
+  d <- hierarchy_order(.tree_df(), "id", "parent", sort_col = "navn")
+  sub <- hierarchy_subtree(d, "id", "parent", 3L)
+  expect_identical(sub$id, c(3L, 4L))         # noden selv + efterkommere
+  expect_identical(sub$depth, c(0L, 1L))      # 1/2 → 0/1 (uindrykket rod)
+  # blad → kun noden selv; raekkeorden (depth-first) bevares
+  leaf <- hierarchy_subtree(d, "id", "parent", 5L)
+  expect_identical(leaf$id, 5L)
+  expect_identical(leaf$depth, 0L)
+})
+
 # --- Org-filter-helpers (Diagrammer-sidens organisations-dropdown) ----------
 
 test_that("org_hierarchy_choices: depth-first orden med indrykning", {

@@ -28,24 +28,27 @@
        fullData = list(data = lapply(pks, function(p) list(p))))
 }
 
-# Fake-db for indikator-hierarkiet (cfg med aktiv_col): 3-node trae
-# 1 (rod/datapakke) -> 2 (datasaet, aktiv) + 3 (datasaet, inaktiv).
+# Fake-db for indikator-hierarkiet (cfg med aktiv_col + filters): 4-node trae
+# 1 (rod/datapakke) -> 2 (datasaet, aktiv) -> 4 (indikatorsamling)
+#                   -> 3 (datasaet, inaktiv).
+# niveau_navn matcher cfg$filters (Datapakke/Datasæt).
 fake_ih_nodes <- function() data.frame(
-  id = c(1L, 2L, 3L),
-  parent_id_raw = c(NA_integer_, 1L, 1L),
-  hierarki_navn = c("Rod", "Datasaet A", "Datasaet B"),
-  hierarki_navn_kort = c("R", "A", "B"),
-  beskrivelse_kort = c(NA_character_, "kort", NA_character_),
-  beskrivelse_lang = c(NA_character_, NA_character_, NA_character_),
-  kilde_id = c(NA_character_, NA_character_, NA_character_),
-  aktiv = c(TRUE, TRUE, FALSE),
-  niveau_id = c(10L, 20L, 20L),
-  niveau_num = c(1L, 2L, 2L),
-  niveau_navn = c("Datapakke", "Datasaet", "Datasaet"),
+  id = c(1L, 2L, 3L, 4L),
+  parent_id_raw = c(NA_integer_, 1L, 1L, 2L),
+  hierarki_navn = c("Rod", "Datasaet A", "Datasaet B", "Samling"),
+  hierarki_navn_kort = c("R", "A", "B", "S"),
+  beskrivelse_kort = c(NA_character_, "kort", NA_character_, NA_character_),
+  beskrivelse_lang = rep(NA_character_, 4),
+  kilde_id = rep(NA_character_, 4),
+  aktiv = c(TRUE, TRUE, FALSE, TRUE),
+  niveau_id = c(10L, 20L, 20L, 30L),
+  niveau_num = c(1L, 2L, 2L, 3L),
+  niveau_navn = c("Datapakke", "Datasæt", "Datasæt", "Indikatorsamling"),
   stringsAsFactors = FALSE)
 
 fake_ih_niveauer <- function() data.frame(
-  id = c(10L, 20L), label = c("Datapakke", "Datasaet"),
+  id = c(10L, 20L, 30L),
+  label = c("Datapakke", "Datasæt", "Indikatorsamling"),
   stringsAsFactors = FALSE)
 
 fake_ih_db <- function() {

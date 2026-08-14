@@ -267,6 +267,46 @@ test_that("ny node i indikator-hierarkiet gemmer aktiv-flag fra formularen", {
   })
 })
 
+test_that("datapakke/datasaet-filtre beskaerer grid'et til valgt gren", {
+  db <- fake_ih_db()
+  cfg <- HIERARCHY_TABLES$indikator_hierarki
+  testServer(mod_hierarchy_server, args = list(db = db, cfg = cfg), {
+    expect_identical(shown()$id, c(1L, 2L, 4L, 3L))       # fuldt trae
+    session$setInputs(filter_datapakke = "1")
+    expect_identical(shown()$id, c(1L, 2L, 4L, 3L))       # rod-gren = alt
+    session$setInputs(filter_datasaet = "2")
+    expect_identical(shown()$id, c(2L, 4L))               # datasaet + subtree
+    expect_identical(shown()$depth, c(0L, 1L))            # renormaliseret
+    # mest specifikke filter vinder; tom datasaet → tilbage til datapakke-gren
+    session$setInputs(filter_datasaet = "")
+    expect_identical(shown()$id, c(1L, 2L, 4L, 3L))
+  })
+})
+
+test_that("inline-redigering under aktivt filter rammer korrekt node", {
+  db <- fake_ih_db()
+  cfg <- HIERARCHY_TABLES$indikator_hierarki
+  testServer(mod_hierarchy_server, args = list(db = db, cfg = cfg), {
+    session$setInputs(filter_datasaet = "2")
+    session$setInputs(tbl = .hierarchy_grid_edit(
+      isolate(shown()), cfg, 4L, "Navn", "Samling ny"))
+    upd <- tail(db$.calls()$updates, 1)[[1]]
+    expect_identical(upd$id, 4L)
+    expect_identical(upd$values$hierarki_navn, "Samling ny")
+    expect_match(status_msg(), "Gemt")
+  })
+})
+
+test_that("hierarki-UI viser kun filtre for cfg med filters", {
+  ih_html <- as.character(mod_hierarchy_ui(
+    "ih", HIERARCHY_TABLES$indikator_hierarki))
+  expect_match(ih_html, "ih-filter_datapakke_ui", fixed = TRUE)
+  expect_match(ih_html, "ih-filter_datasaet_ui", fixed = TRUE)
+  org_html <- as.character(mod_hierarchy_ui(
+    "org", HIERARCHY_TABLES$org_struktur))
+  expect_false(grepl("filter_", org_html, fixed = TRUE))
+})
+
 test_that("identiske status- og advarselsbeskeder udloeser nye events", {
   db <- fake_hierarchy_db()
   testServer(mod_hierarchy_server,

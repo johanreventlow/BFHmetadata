@@ -219,6 +219,12 @@ HIERARCHY_TABLES <- list(
     id = "indikator_hierarki", table = "tblIndikatorHierarki", pk = "Id",
     parent_col = "parent_id", display_col = "hierarki_navn",
     label = "Indikator-hierarki", aktiv_col = "aktiv",
+    # Kaskade-filtre (som Indikator-sidens Datapakke/Datasæt): hvert filter
+    # tilbyder noder paa et navngivet niveau; valg beskaerer grid'et til
+    # grenen under noden. Opt-in — org-instansen har ingen filtre.
+    filters = list(
+      list(id = "datapakke", label = "Datapakke", niveau_navn = "Datapakke"),
+      list(id = "datasaet", label = "Datasæt", niveau_navn = "Datasæt")),
     fields = list(
       list(col = "hierarki_navn", type = "text", label = "Navn"),
       list(col = "hierarki_navn_kort", type = "text", label = "Kort navn"),

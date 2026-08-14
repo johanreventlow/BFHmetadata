@@ -198,6 +198,19 @@ test_that("inline aktiv-aendring parses som logical", {
   expect_true(same$unchanged)
 })
 
+test_that("hierarchy_excel_columns: source_df giver fuldt foraelder-udvalg ved filtrering", {
+  d <- hierarchy_order(fake_ih_nodes(), "id", "parent_id_raw",
+                       sort_col = "hierarki_navn")
+  sub <- hierarchy_subtree(d, "id", "parent_id_raw", 2L)   # kun node 2 + 4
+  cols <- hierarchy_excel_columns(.ih_cfg(), sub, fake_ih_niveauer(),
+                                  source_df = d)
+  p <- cols$source[[which(cols$title == "Forælder")]]
+  # alle noder fra det FULDE trae kan vaelges som foraelder — ogsaa dem
+  # udenfor den viste gren — og ingen falske "Ukendt"-labels for node 1
+  expect_true(all(c("1", "2", "3", "4") %in% p$id))
+  expect_false(any(grepl("^Ukendt", p$name[p$id == "1"])))
+})
+
 test_that("inline aktiv-aendring afviser ugyldige vaerdier", {
   bad <- .prepare_hierarchy_inline_update(
     fake_ih_nodes(), fake_ih_niveauer(), .ih_cfg(),

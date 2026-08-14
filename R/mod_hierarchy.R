@@ -80,11 +80,20 @@
 #' @noRd
 mod_hierarchy_ui <- function(id, cfg) {
   ns <- NS(id)
+  # Opt-in kaskade-filtre (cfg$filters): én dropdown pr. filter, renderes
+  # server-side (choices afhaenger af trae-data)
+  filter_row <- if (!is.null(cfg$filters)) {
+    do.call(bslib::layout_columns,
+      c(list(col_widths = rep(4L, length(cfg$filters))),
+        lapply(cfg$filters, function(f)
+          uiOutput(ns(paste0("filter_", f$id, "_ui"))))))
+  }
   div(class = "mt-2",
     div(class = "d-flex justify-content-end gap-2 mb-2",
       actionButton(ns("new_node"), "Ny node", class = "btn-success"),
       actionButton(ns("delete_selected"), "Slet valgt",
                    class = "btn-outline-danger")),
+    filter_row,
     p(class = "text-muted small",
       "Dobbeltklik en celle for at redigere. Klik en række og tryk Slet valgt."),
     excelR::excelOutput(ns("tbl"), width = "100%", height = "auto"))
@@ -124,6 +133,48 @@ mod_hierarchy_server <- function(id, db, cfg) {
     tree <- reactive(hierarchy_order(nodes(), "id", "parent_id_raw",
                                      sort_col = cfg$display_col))
 
+    # Kaskade-filtre (cfg$filters, fx Datapakke → Datasæt): hvert filter
+    # tilbyder noder paa sit navngivne niveau; filter k begraenses til
+    # grenen under filter k-1's valg. Eget valg bevares ved re-render.
+    if (!is.null(cfg$filters)) {
+      for (k in seq_along(cfg$filters)) local({
+        kk <- k
+        f <- cfg$filters[[kk]]
+        output[[paste0("filter_", f$id, "_ui")]] <- renderUI({
+          d <- tree()
+          if (kk > 1) {
+            prev <- input[[paste0("filter_", cfg$filters[[kk - 1]]$id)]]
+            if (!is.null(prev) && nzchar(prev)) {
+              prev_id <- suppressWarnings(as.integer(prev))
+              if (!is.na(prev_id) && prev_id %in% d$id)
+                d <- hierarchy_subtree(d, "id", "parent_id_raw", prev_id)
+            }
+          }
+          cand <- d[d$niveau_navn %in% f$niveau_navn, , drop = FALSE]
+          choices <- c("Alle" = "", stats::setNames(
+            as.character(cand$id), hierarchy_node_labels(cand, cfg)))
+          selected <- .preserved_filter_selection(
+            isolate(input[[paste0("filter_", f$id)]]), choices)
+          selectInput(session$ns(paste0("filter_", f$id)), f$label,
+                      choices = choices, selected = selected)
+        })
+      })
+    }
+
+    # De VISTE rækker: mest specifikke valgte filter vinder (bagfra).
+    # Deles af render og celle-diff, saa diffen aldrig rammer skjulte rækker.
+    shown <- reactive({
+      d <- tree()
+      for (f in rev(cfg$filters)) {
+        sel <- input[[paste0("filter_", f$id)]]
+        if (is.null(sel) || !nzchar(sel)) next
+        sid <- suppressWarnings(as.integer(sel))
+        if (!is.na(sid) && sid %in% d$id)
+          return(hierarchy_subtree(d, "id", "parent_id_raw", sid))
+      }
+      d
+    })
+
     # Flydende notifikationer (synlige over modal, jf. mod_diagram)
     observeEvent(status_event(), {
       event <- status_event()
@@ -144,10 +195,13 @@ mod_hierarchy_server <- function(id, db, cfg) {
 
     output$tbl <- excelR::renderExcel({
       table_revision()
-      d <- tree()
+      d <- shown()
       excelR::excelTable(
         data = hierarchy_excel_data(d, cfg),
-        columns = hierarchy_excel_columns(cfg, d, niveauer()),
+        # source_df = fuldt trae: Forælder-dropdown skal kunne flytte en
+        # node UD af den filtrerede gren
+        columns = hierarchy_excel_columns(cfg, d, niveauer(),
+                                          source_df = tree()),
         autoColTypes = FALSE,
         # FALSE: ellers deaktiverer width:auto table-layout:fixed, og
         # celleindholdet vinder over de beregnede kolonnebredder
@@ -198,7 +252,7 @@ mod_hierarchy_server <- function(id, db, cfg) {
     # pr. celle; kolonner uden lagringsfelt (id/Struktur) ignoreres.
     observeEvent(input$tbl, {
       p <- input$tbl
-      d <- tree()
+      d <- shown()   # diff mod de VISTE rækker (payload = filtreret grid)
       if (isTRUE(p$forSelectedVals)) {
         # pk fra payloadens fullData (samme mønster som de flade grids)
         pk <- excel_selected_pk(p)
@@ -339,7 +393,7 @@ mod_hierarchy_server <- function(id, db, cfg) {
     })
 
     # eksponér til test
-    list(nodes = nodes, tree = tree, status_msg = status_msg,
+    list(nodes = nodes, tree = tree, shown = shown, status_msg = status_msg,
          warn_msg = warn_msg, status_event = status_event,
          warn_event = warn_event, table_revision = table_revision,
          selected_id = selected_id, delete_id = delete_id)

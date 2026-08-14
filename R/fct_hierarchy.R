@@ -80,6 +80,20 @@ org_subtree_ids <- function(tree, id) {
   hierarchy_descendants(tree, "id", "parent_id", id)
 }
 
+#' Beskaer et depth-first-ordnet trae (hierarchy_order-output) til grenen
+#' under id — inklusiv noden selv — og renormalisér depth saa grenens rod
+#' vises uindrykket. Raekkeorden bevares (subtree-raekker er kontiguøse).
+#' @noRd
+hierarchy_subtree <- function(tree_df, pk, parent_col, id) {
+  keep <- hierarchy_descendants(tree_df, pk, parent_col, id)
+  out <- tree_df[tree_df[[pk]] %in% keep, , drop = FALSE]
+  if ("depth" %in% names(out) && nrow(out) > 0) {
+    base <- out$depth[out[[pk]] == id][1]
+    if (!is.na(base)) out$depth <- pmax(out$depth - base, 0L)
+  }
+  out
+}
+
 #' Alle ids i subtree under id — INKLUSIV id selv. Bruges til at ekskludere
 #' egen subtree fra foraelder-dropdown (cyklus-lag 1) og som server-side
 #' assert foer flyt (cyklus-lag 2).
