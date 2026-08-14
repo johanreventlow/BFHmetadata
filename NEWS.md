@@ -29,6 +29,16 @@
   grænse), så ingen knæk falder ud ved opgraderingen.
 
 ## Nye features
+* Indikator-hierarkiet (datasæt/datapakker, `tblIndikatorHierarki`) kan nu
+  redigeres direkte i appen: ny fane "Indikator-hierarki" med samme
+  inline-trærediger som organisations-strukturen (dobbeltklik en celle,
+  Forælder/Niveau som dropdowns med cyklus-værn) plus et redigerbart
+  Aktiv-flueben pr. node. Dermed er fuld-CRUD-designet komplet — alle
+  metadata-tabeller kan vedligeholdes uden Access.
+* Indikator-modalens og indikator-grid'ets "Datasæt"-dropdown tilbyder kun
+  AKTIVE hierarki-noder ved nyvalg; en eksisterende værdi der peger på en
+  inaktiv node bevares og vises med "(inaktiv)"-suffix — ingen stille
+  datamutation ved deaktivering af et datasæt.
 * Signal-gennemgang er markant hurtigere, og man kan arbejde næsten med det
   samme: diagrammer scannes pr. indikator (ét parquet-load deles af alle
   diagrammer på samme indikator), resultater vises løbende mens scannet kører

@@ -49,6 +49,42 @@ test_that("hierarki-CRUD roundtrip: create -> update -> flyt -> read -> delete",
   expect_false(new_id %in% refreshed2$id)
 })
 
+test_that("indikator-hierarki roundtrip: create (aktiv) -> toggle aktiv -> delete", {
+  skip_if_no_db()
+  pool <- db_connect()
+  withr::defer(pool::poolClose(pool))
+  cfg <- HIERARCHY_TABLES$indikator_hierarki
+  db <- make_hierarchy_db(pool, cfg)
+
+  nodes <- db$list_nodes()
+  root_id <- nodes$id[is.na(nodes$parent_id_raw)][1]
+  niveau_id <- db$niveau_options()$id[1]
+
+  vals <- list(hierarki_navn = "TEST_ih_roundtrip",
+               hierarki_navn_kort = "TEST",
+               beskrivelse_kort = NA_character_,
+               beskrivelse_lang = NA_character_,
+               kilde_id = "test-kilde",
+               parent_id = root_id, indikator_niveau = niveau_id,
+               aktiv = TRUE)
+
+  new_id <- db$create_node(vals)
+  withr::defer(try(db$delete_node(new_id), silent = TRUE))
+  expect_true(is.numeric(new_id) && new_id > 0)
+
+  # Deaktivér noden (checkbox-flowet skriver hele værdirækken)
+  vals$aktiv <- FALSE
+  db$update_node(new_id, vals)
+  refreshed <- db$list_nodes()
+  row <- refreshed[refreshed$id == new_id, , drop = FALSE]
+  expect_identical(nrow(row), 1L)
+  expect_false(row$aktiv)
+  expect_identical(row$kilde_id, "test-kilde")
+
+  db$delete_node(new_id)
+  expect_false(new_id %in% db$list_nodes()$id)
+})
+
 test_that("delete_node fejler loud på node med børn (DB-FK self-join)", {
   skip_if_no_db()
   pool <- db_connect()
