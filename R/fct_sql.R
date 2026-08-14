@@ -41,6 +41,14 @@ build_fk_options_sql <- function(parent, label_expr) {
   sprintf('SELECT "Id" AS id, (%s) AS label FROM "%s" ORDER BY 2', label_expr, parent)
 }
 
+#' id + label + aktiv-flag for FK-dropdown der skal kunne filtrere inaktive
+#' noder klient-side (uden at miste eksisterende vaerdier der peger paa dem)
+#' @noRd
+build_fk_options_aktiv_sql <- function(parent, label_expr, aktiv_col) {
+  sprintf('SELECT "Id" AS id, (%s) AS label, "%s" AS aktiv FROM "%s" ORDER BY 2',
+          label_expr, aktiv_col, parent)
+}
+
 #' Parametriseret UPDATE; cols → $1..$n, id → $(n+1)
 #' @noRd
 build_update_sql <- function(cols) {

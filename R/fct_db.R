@@ -48,7 +48,12 @@ make_db <- function(pool) {
     fk_options = function() {
       stats::setNames(
         lapply(.fk_fields(), function(f) {
-          DBI::dbGetQuery(pool, build_fk_options_sql(f$parent, f$label))
+          sql <- if (is.null(f$aktiv_col)) {
+            build_fk_options_sql(f$parent, f$label)
+          } else {
+            build_fk_options_aktiv_sql(f$parent, f$label, f$aktiv_col)
+          }
+          DBI::dbGetQuery(pool, sql)
         }),
         vapply(.fk_fields(), function(f) f$col, "")
       )

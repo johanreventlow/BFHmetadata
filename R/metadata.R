@@ -91,7 +91,9 @@ OUTPUT_ENHED_CHOICES <- c(
 # kind: pk | fk | text | textarea | bool | int | date | choice (fast værdisæt)
 INDIKATOR_FIELDS <- list(
   list(col="id",                       kind="pk"),
-  list(col="indikator_hierarki",       kind="fk", parent="tblIndikatorHierarki", label="hierarki_navn"),
+  # aktiv_col: fk_options medtager aktiv-flag → dropdowns kan filtrere
+  # inaktive noder ved nyvalg (eksisterende vaerdier bevares med suffix)
+  list(col="indikator_hierarki",       kind="fk", parent="tblIndikatorHierarki", label="hierarki_navn", aktiv_col="aktiv"),
   list(col="indikator_navn",           kind="text"),
   list(col="indikator_navn_teknisk",   kind="text"),
   list(col="kontaktperson",            kind="fk", parent="tblPersoner",          label="fornavn||' '||efternavn"),

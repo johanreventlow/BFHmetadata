@@ -268,6 +268,15 @@ test_that("hierarki-SQL for indikator_hierarki medtager aktiv-kolonnen", {
     'SELECT count(*) AS n FROM "tblIndikatorHierarki" WHERE "parent_id" = $1')
 })
 
+test_that("build_fk_options_aktiv_sql medtager aktiv-kolonnen", {
+  sql <- build_fk_options_aktiv_sql("tblIndikatorHierarki",
+                                    '"hierarki_navn"', "aktiv")
+  expect_match(sql, '"Id" AS id', fixed = TRUE)
+  expect_match(sql, '("hierarki_navn") AS label', fixed = TRUE)
+  expect_match(sql, '"aktiv" AS aktiv', fixed = TRUE)
+  expect_match(sql, '"tblIndikatorHierarki"', fixed = TRUE)
+})
+
 # --- Hierarki-oprulning (org-træ + aggregerings-flag) -----------------------
 
 test_that("build_org_struct_sql henter id + parent fra org-tabellen", {

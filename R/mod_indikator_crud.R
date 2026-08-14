@@ -110,6 +110,48 @@ mod_indikator_crud_ui <- function(id) {
   vals
 }
 
+#' Dropdown-choices for indikator-hierarki: aktive noder + evt. nuvaerende
+#' inaktive node markeret "(inaktiv)" — bevarer eksisterende vaerdi uden
+#' stille datamutation. Tolererer opts uden aktiv-kolonne (alle = aktive).
+#' @noRd
+.hierarki_choices <- function(opts_df, current_id = NULL) {
+  akt <- if ("aktiv" %in% names(opts_df)) opts_df$aktiv %in% TRUE else
+    rep(TRUE, nrow(opts_df))
+  act <- opts_df[akt, , drop = FALSE]
+  ch <- stats::setNames(act$id, act$label)
+  if (!is.null(current_id) && length(current_id) == 1 && !is.na(current_id) &&
+      !(current_id %in% act$id) && current_id %in% opts_df$id) {
+    lbl <- opts_df$label[opts_df$id == current_id][1]
+    ch <- c(ch, stats::setNames(current_id, paste0(lbl, " (inaktiv)")))
+  }
+  ch
+}
+
+#' Grid-dropdown-source for datasaet-kolonnen: aktive noder + BRUGTE inaktive
+#' ("(inaktiv)"-suffix) + helt ukendte id'er ("Ukendt datasæt #id") saa
+#' eksisterende celle-vaerdier hverken vises blankt eller tabes ved gem.
+#' @noRd
+.hierarki_src <- function(opts_df, used) {
+  akt <- if ("aktiv" %in% names(opts_df)) opts_df$aktiv %in% TRUE else
+    rep(TRUE, nrow(opts_df))
+  src <- data.frame(id = as.character(opts_df$id[akt]),
+                    name = as.character(opts_df$label[akt]),
+                    stringsAsFactors = FALSE)
+  used <- stats::na.omit(as.character(used))
+  inactive_used <- setdiff(intersect(used, as.character(opts_df$id)), src$id)
+  if (length(inactive_used) > 0) {
+    lbl <- opts_df$label[match(inactive_used, as.character(opts_df$id))]
+    src <- rbind(src, data.frame(id = inactive_used,
+      name = paste0(lbl, " (inaktiv)"), stringsAsFactors = FALSE))
+  }
+  unknown <- setdiff(used, as.character(opts_df$id))
+  if (length(unknown) > 0) {
+    src <- rbind(src, data.frame(id = unknown,
+      name = sprintf("Ukendt datasæt #%s", unknown), stringsAsFactors = FALSE))
+  }
+  src
+}
+
 # Grid-titler → tblIndikatorer-kolonner for inline-redigering (excelR).
 # Datapakke + Indikator-id vises readOnly (kontekst); resten redigeres
 # direkte. Lange felter (definitioner m.m.) + m2m-relationer + diagrammer
@@ -165,8 +207,7 @@ indikator_excel_columns <- function(d, fk) {
     }
     s
   }
-  ds_src <- src_of(fk$indikator_hierarki, col_of("indikator_hierarki"),
-                   "Ukendt datasæt")
+  ds_src <- .hierarki_src(fk$indikator_hierarki, col_of("indikator_hierarki"))
   kp_src <- src_of(fk$kontaktperson, col_of("kontaktperson"), "Ukendt person")
   dk_src <- src_of(fk$datakilde, col_of("datakilde"), "Ukendt datakilde")
   oe_used <- setdiff(stats::na.omit(unique(as.character(col_of("output_enhed")))),
@@ -243,7 +284,14 @@ mod_indikator_crud_server <- function(id, db) {
         f <- Find(function(x) x$col == col, INDIKATOR_FIELDS)
         lab <- INDIKATOR_MODAL_LABELS[[col]] %||% col
         if (col %in% req_cols) lab <- tagList(lab, tags$span(" *", class = "req"))
-        w <- .field_input(ns, f, fk_choices, values = vals, prefix = "m_", label = lab)
+        fkc <- fk_choices
+        # Datasæt-dropdown: kun aktive hierarki-noder ved nyvalg; en
+        # eksisterende inaktiv værdi bevares med "(inaktiv)"-suffix.
+        if (identical(col, "indikator_hierarki")) {
+          fkc$indikator_hierarki <- .hierarki_choices(
+            fk$indikator_hierarki, vals$indikator_hierarki)
+        }
+        w <- .field_input(ns, f, fkc, values = vals, prefix = "m_", label = lab)
         # Rosa-klasse direkte på textarea (ej wrapper-div → bevarer fuld bredde
         # i bslib-grid'ets flex-kontekst).
         if (col %in% rosa_cols)

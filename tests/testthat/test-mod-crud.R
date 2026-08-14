@@ -441,3 +441,41 @@ test_that("Tilbage-knap genaabner indikator-modal uden db-kald", {
     expect_equal(editing_id(), 1L)
   })
 })
+
+# --- Aktiv-filtrering af datasaet-dropdown (Fase D) --------------------------
+
+.ih_opts <- function() data.frame(
+  id = c(1L, 2L, 3L),
+  label = c("Aktiv A", "Aktiv B", "Inaktiv C"),
+  aktiv = c(TRUE, TRUE, FALSE),
+  stringsAsFactors = FALSE)
+
+test_that(".hierarki_choices filtrerer inaktive ved nyvalg", {
+  ch <- .hierarki_choices(.ih_opts(), current_id = NULL)
+  expect_setequal(unname(ch), c(1L, 2L))
+  expect_false("Inaktiv C" %in% names(ch))
+})
+
+test_that(".hierarki_choices bevarer nuvaerende inaktiv vaerdi med suffix", {
+  ch <- .hierarki_choices(.ih_opts(), current_id = 3L)
+  expect_true(3L %in% ch)
+  expect_identical(names(ch)[ch == 3L], "Inaktiv C (inaktiv)")
+})
+
+test_that(".hierarki_choices duplikerer ikke aktivt valg og taaler manglende aktiv-kolonne", {
+  ch <- .hierarki_choices(.ih_opts(), current_id = 1L)
+  expect_identical(sum(ch == 1L), 1L)
+  # fk_options uden aktiv-kolonne (aeldre fakes/DB): alle behandles som aktive
+  legacy <- data.frame(id = 1:2, label = c("A", "B"), stringsAsFactors = FALSE)
+  expect_length(.hierarki_choices(legacy, current_id = NULL), 2)
+})
+
+test_that(".hierarki_src til grid: aktive + brugte inaktive + ukendte id'er", {
+  src <- .hierarki_src(.ih_opts(), used = c(1L, 3L, 99L))
+  expect_setequal(src$id, c("1", "2", "3", "99"))
+  expect_identical(src$name[src$id == "3"], "Inaktiv C (inaktiv)")
+  expect_match(src$name[src$id == "99"], "Ukendt")
+  # ubrugte inaktive noder tilbydes ikke
+  src2 <- .hierarki_src(.ih_opts(), used = c(1L))
+  expect_false("3" %in% src2$id)
+})
