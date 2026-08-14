@@ -28,6 +28,60 @@
        fullData = list(data = lapply(pks, function(p) list(p))))
 }
 
+# Fake-db for indikator-hierarkiet (cfg med aktiv_col): 3-node trae
+# 1 (rod/datapakke) -> 2 (datasaet, aktiv) + 3 (datasaet, inaktiv).
+fake_ih_nodes <- function() data.frame(
+  id = c(1L, 2L, 3L),
+  parent_id_raw = c(NA_integer_, 1L, 1L),
+  hierarki_navn = c("Rod", "Datasaet A", "Datasaet B"),
+  hierarki_navn_kort = c("R", "A", "B"),
+  beskrivelse_kort = c(NA_character_, "kort", NA_character_),
+  beskrivelse_lang = c(NA_character_, NA_character_, NA_character_),
+  kilde_id = c(NA_character_, NA_character_, NA_character_),
+  aktiv = c(TRUE, TRUE, FALSE),
+  niveau_id = c(10L, 20L, 20L),
+  niveau_num = c(1L, 2L, 2L),
+  niveau_navn = c("Datapakke", "Datasaet", "Datasaet"),
+  stringsAsFactors = FALSE)
+
+fake_ih_niveauer <- function() data.frame(
+  id = c(10L, 20L), label = c("Datapakke", "Datasaet"),
+  stringsAsFactors = FALSE)
+
+fake_ih_db <- function() {
+  nodes <- fake_ih_nodes()
+  niveauer <- fake_ih_niveauer()
+  calls <- list(created = NULL, updated = NULL, updates = list(), deleted = NULL)
+  list(
+    list_nodes = function() nodes,
+    niveau_options = function() niveauer,
+    create_node = function(values) { calls$created <<- values; 99L },
+    update_node = function(id, values) {
+      call <- list(id = as.integer(id), values = values)
+      calls$updated <<- call
+      calls$updates[[length(calls$updates) + 1L]] <<- call
+      row <- match(as.integer(id), nodes$id)
+      if (is.na(row)) stop("Node ikke fundet")
+      for (col in names(values)) {
+        node_col <- switch(col,
+          parent_id = "parent_id_raw",
+          indikator_niveau = "niveau_id",
+          col)
+        if (node_col %in% names(nodes)) nodes[[node_col]][row] <<- values[[col]]
+      }
+      1L
+    },
+    delete_node = function(id) {
+      calls$deleted <<- as.integer(id)
+      nodes <<- nodes[nodes$id != as.integer(id), , drop = FALSE]
+      1L
+    },
+    child_count = function(id) sum(nodes$parent_id_raw %in% id, na.rm = TRUE),
+    .calls = function() calls,
+    .nodes = function() nodes
+  )
+}
+
 fake_hierarchy_db <- function() {
   nodes <- data.frame(
     id = c(1L, 2L, 3L, 4L),

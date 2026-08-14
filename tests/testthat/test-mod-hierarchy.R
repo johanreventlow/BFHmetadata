@@ -236,6 +236,37 @@ test_that("databasefejl genindlaeser autoritativ vaerdi og melder rollback", {
     })
 })
 
+test_that("inline aktiv-flueben gemmer boolean via update_node (indikator-hierarki)", {
+  db <- fake_ih_db()
+  cfg <- HIERARCHY_TABLES$indikator_hierarki
+  testServer(mod_hierarchy_server, args = list(db = db, cfg = cfg), {
+    session$setInputs(tbl = .hierarchy_grid_edit(
+      isolate(tree()), cfg, 2L, "Aktiv", "FALSE"))
+    upd <- tail(db$.calls()$updates, 1)[[1]]
+    expect_identical(upd$id, 2L)
+    expect_identical(upd$values$aktiv, FALSE)
+    expect_false(db$.nodes()$aktiv[db$.nodes()$id == 2L])
+    expect_match(status_msg(), "Gemt")
+  })
+})
+
+test_that("ny node i indikator-hierarkiet gemmer aktiv-flag fra formularen", {
+  db <- fake_ih_db()
+  cfg <- HIERARCHY_TABLES$indikator_hierarki
+  testServer(mod_hierarchy_server, args = list(db = db, cfg = cfg), {
+    session$setInputs(new_node = 1)
+    session$setInputs(
+      h_hierarki_navn = "Nyt datasaet", h_hierarki_navn_kort = "Nyt",
+      h_beskrivelse_kort = "", h_beskrivelse_lang = "", h_kilde_id = "",
+      h_parent = "1", h_niveau = "20", h_aktiv = FALSE, h_save = 1)
+    created <- db$.calls()$created
+    expect_false(is.null(created))
+    expect_identical(created$hierarki_navn, "Nyt datasaet")
+    expect_identical(created$parent_id, 1L)
+    expect_false(created$aktiv)
+  })
+})
+
 test_that("identiske status- og advarselsbeskeder udloeser nye events", {
   db <- fake_hierarchy_db()
   testServer(mod_hierarchy_server,

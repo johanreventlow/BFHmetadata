@@ -1,14 +1,13 @@
 # Rene hierarki-editor-hjælpere: felt-mapping, validering af inline-events
 # (genbruges af excelR-grid'et) og grid-data/kolonne-byggere.
 
-test_that("inline-felter mapper de fem viste felter til lagringsfelter", {
-  cfg <- HIERARCHY_TABLES$org_struktur
-  expect_identical(.hierarchy_inline_fields(cfg), c(
-    teknisk = "organisatorisk_navn_teknisk",
-    langt = "organisatorisk_navn_langt",
-    kort = "organisatorisk_navn_kort",
-    parent = "parent_Id",
-    niveau = "organisatorisk_niveau"))
+test_that("inline-redigerbare felter er praecis hierarchy_edit_cols", {
+  org <- .prepare_hierarchy_inline_update(
+    fake_hierarchy_db()$list_nodes(), fake_hierarchy_db()$niveau_options(),
+    HIERARCHY_TABLES$org_struktur,
+    list(id = 2, field = "aktiv", value = "TRUE"))
+  expect_false(org$ok)                 # org-cfg har ingen aktiv-kolonne
+  expect_match(org$error, "felt", ignore.case = TRUE)
 })
 
 test_that("inline-opdatering bygger en komplet vaerdiliste", {
@@ -160,6 +159,58 @@ test_that("hierarchy_excel_data: NA-tekst vises tomt; tomt trae bevarer kolonner
   expect_equal(nrow(empty), 0L)
   expect_equal(names(empty), names(g))
 })
+
+# --- Aktiv-kolonne (cfg med aktiv_col, fx indikator-hierarki) ----------------
+
+.ih_cfg <- function() HIERARCHY_TABLES$indikator_hierarki
+
+test_that("hierarchy_grid_fields medtager Aktiv kun for cfg med aktiv_col", {
+  fm <- hierarchy_grid_fields(.ih_cfg())
+  expect_identical(fm[["Aktiv"]], "aktiv")
+  expect_false("Aktiv" %in% names(hierarchy_grid_fields(.hierarchy_cfg())))
+})
+
+test_that("hierarchy_excel_data/columns viser Aktiv som redigerbar checkbox", {
+  d <- hierarchy_order(fake_ih_nodes(), "id", "parent_id_raw",
+                       sort_col = "hierarki_navn")
+  g <- hierarchy_excel_data(d, .ih_cfg())
+  expect_true(is.logical(g$Aktiv))
+  expect_false(g$Aktiv[g$id == 3L])
+  cols <- hierarchy_excel_columns(.ih_cfg(), d, fake_ih_niveauer())
+  expect_identical(cols$type[cols$title == "Aktiv"], "checkbox")
+  expect_false(cols$readOnly[cols$title == "Aktiv"])
+  # samme kolonneorden i data og spec (excelR matcher positionelt)
+  expect_identical(names(g), cols$title)
+})
+
+test_that("inline aktiv-aendring parses som logical", {
+  ok <- .prepare_hierarchy_inline_update(
+    fake_ih_nodes(), fake_ih_niveauer(), .ih_cfg(),
+    list(id = 2, field = "aktiv", value = "FALSE"))
+  expect_true(ok$ok)
+  expect_false(ok$unchanged)
+  expect_identical(ok$values$aktiv, FALSE)
+  # jspreadsheet kan sende lowercase — accepteres, og uaendret detekteres
+  same <- .prepare_hierarchy_inline_update(
+    fake_ih_nodes(), fake_ih_niveauer(), .ih_cfg(),
+    list(id = 3, field = "aktiv", value = "false"))
+  expect_true(same$ok)
+  expect_true(same$unchanged)
+})
+
+test_that("inline aktiv-aendring afviser ugyldige vaerdier", {
+  bad <- .prepare_hierarchy_inline_update(
+    fake_ih_nodes(), fake_ih_niveauer(), .ih_cfg(),
+    list(id = 2, field = "aktiv", value = "maaske"))
+  expect_false(bad$ok)
+  expect_match(bad$error, "aktiv", ignore.case = TRUE)
+  empty <- .prepare_hierarchy_inline_update(
+    fake_ih_nodes(), fake_ih_niveauer(), .ih_cfg(),
+    list(id = 2, field = "aktiv", value = NULL))
+  expect_false(empty$ok)
+})
+
+# --- excelR-grid-byggere (fortsat) -------------------------------------------
 
 test_that("hierarchy_excel_columns: dropdowns med (rod)/(vælg), ukendte id'er bevares", {
   db <- fake_hierarchy_db()

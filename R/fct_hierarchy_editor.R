@@ -2,15 +2,6 @@
 # validering og HTML-generering fri af Shiny-serveren, saa begge dele kan
 # testes uden en browser eller database.
 
-#' Felter vist af organisationens inline-editor, mappet til lagringskolonner.
-#' @noRd
-.hierarchy_inline_fields <- function(cfg) {
-  fields <- vapply(cfg$fields, function(field) field$col, "")
-  stats::setNames(
-    c(fields, cfg$parent_col, cfg$level$col),
-    c("teknisk", "langt", "kort", "parent", "niveau"))
-}
-
 #' Udtræk en komplet, normaliseret lagringsrække fra et node-resultat.
 #' @noRd
 .hierarchy_row_values <- function(row, cfg) {
@@ -57,6 +48,18 @@
   if (is.na(parsed)) NULL else parsed
 }
 
+#' Konverter en checkbox-vaerdi til logical. excelR/jspreadsheet kan sende
+#' logical eller "TRUE"/"true"-strenge; alt andet er ugyldigt (NULL).
+#' @noRd
+.hierarchy_editor_logical <- function(value) {
+  if (is.null(value) || length(value) != 1 || is.na(value)) return(NULL)
+  if (is.logical(value)) return(value)
+  lv <- tolower(as.character(value))
+  if (lv %in% c("true", "1")) return(TRUE)
+  if (lv %in% c("false", "0")) return(FALSE)
+  NULL
+}
+
 #' Ensartet resultatform, ogsaa naar et inline-event afvises.
 #' @noRd
 .hierarchy_inline_result <- function(ok, unchanged = FALSE, id = NA_integer_,
@@ -86,7 +89,7 @@
   values <- .hierarchy_row_values(row, cfg)
 
   field <- event$field
-  allowed_fields <- unname(.hierarchy_inline_fields(cfg))
+  allowed_fields <- hierarchy_edit_cols(cfg)
   if (is.null(field) || length(field) != 1 || is.na(field) ||
       !(field %in% allowed_fields)) {
     return(reject("Ukendt felt", id, values))
@@ -99,6 +102,9 @@
     } else {
       value <- as.character(raw)
     }
+  } else if (!is.null(cfg$aktiv_col) && identical(field, cfg$aktiv_col)) {
+    value <- .hierarchy_editor_logical(event$value)
+    if (is.null(value)) return(reject("Ugyldig aktiv-vaerdi", id, values))
   } else {
     value <- .hierarchy_editor_integer(event$value, allow_empty = TRUE)
     if (is.null(value)) return(reject("Ugyldigt heltals-id", id, values))
@@ -140,11 +146,14 @@
 }
 
 #' Grid-titler → lagringskolonner for hierarki-grid'et (excelR).
+#' "Aktiv"-checkbox medtages kun for cfg'er med aktiv_col.
 #' @noRd
 hierarchy_grid_fields <- function(cfg) {
   stats::setNames(
-    c(vapply(cfg$fields, function(f) f$col, ""), cfg$parent_col, cfg$level$col),
-    c(vapply(cfg$fields, function(f) f$label, ""), "Forælder", "Niveau")
+    c(vapply(cfg$fields, function(f) f$col, ""), cfg$parent_col, cfg$level$col,
+      cfg$aktiv_col),   # NULL falder bort i c()
+    c(vapply(cfg$fields, function(f) f$label, ""), "Forælder", "Niveau",
+      if (!is.null(cfg$aktiv_col)) "Aktiv")
   )
 }
 
@@ -168,7 +177,7 @@ hierarchy_node_labels <- function(tree_df, cfg) {
 hierarchy_excel_data <- function(tree_df, cfg) {
   chr_or_empty <- function(x) ifelse(is.na(x), "", as.character(x))
   fm <- hierarchy_grid_fields(cfg)
-  field_titles <- setdiff(names(fm), c("Forælder", "Niveau"))
+  field_titles <- setdiff(names(fm), c("Forælder", "Niveau", "Aktiv"))
   out <- data.frame(id = tree_df$id, stringsAsFactors = FALSE,
                     check.names = FALSE)
   #   (non-breaking space): alm. mellemrum kollapses i HTML-celler
@@ -177,6 +186,12 @@ hierarchy_excel_data <- function(tree_df, cfg) {
   for (t in field_titles) out[[t]] <- chr_or_empty(tree_df[[fm[[t]]]])
   out[["Forælder"]] <- chr_or_empty(tree_df$parent_id_raw)
   out[["Niveau"]] <- chr_or_empty(tree_df$niveau_id)
+  if (!is.null(cfg$aktiv_col)) {
+    # list_sql aliaser aktiv_col AS aktiv; NA normaliseres til FALSE
+    aktiv <- if ("aktiv" %in% names(tree_df)) tree_df$aktiv else
+      tree_df[[cfg$aktiv_col]]
+    out[["Aktiv"]] <- aktiv %in% TRUE
+  }
   out
 }
 
@@ -202,16 +217,20 @@ hierarchy_excel_columns <- function(cfg, tree_df, niveauer) {
              sprintf("Ukendt niveau #%s", unknown_niv)),
     stringsAsFactors = FALSE)
   field_titles <- vapply(cfg$fields, function(f) f$label, "")
+  has_aktiv <- !is.null(cfg$aktiv_col)
   out <- data.frame(
-    title = c("id", "Struktur", field_titles, "Forælder", "Niveau"),
+    title = c("id", "Struktur", field_titles, "Forælder", "Niveau",
+              if (has_aktiv) "Aktiv"),
     # id: "hidden" — med i data/payload (pk-diff) men aldrig synlig
     type = c("hidden", "text", rep("text", length(field_titles)),
-             "dropdown", "dropdown"),
-    readOnly = c(TRUE, TRUE, rep(FALSE, length(field_titles)), FALSE, FALSE),
+             "dropdown", "dropdown", if (has_aktiv) "checkbox"),
+    readOnly = c(TRUE, TRUE, rep(FALSE, length(field_titles)), FALSE, FALSE,
+                 if (has_aktiv) FALSE),
     align = "left",
     stringsAsFactors = FALSE)
   out$source <- c(rep(list(NA), 2 + length(field_titles)),
-                  list(parent_src), list(niveau_src))
+                  list(parent_src), list(niveau_src),
+                  if (has_aktiv) list(NA))
   # Fraktil-baserede bredder (enkelte lange navne må ikke trække kolonnen
   # bred). Dropdown-kolonner måles på deres viste labels, ikke id'erne.
   disp <- hierarchy_excel_data(tree_df, cfg)
