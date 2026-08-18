@@ -53,7 +53,8 @@ INDIKATOR_MODAL_COLS <- c(
 
 # Danske felt-labels i modalen (col → vist tekst)
 INDIKATOR_MODAL_LABELS <- c(
-  indikator_navn = "Navn på indikator", indikator_hierarki = "Datasæt",
+  indikator_navn = "Navn på indikator",
+  indikator_hierarki = "Hierarki-placering",
   datakilde = "Datakilde", kontaktperson = "Kontaktperson",
   ønsket_tendens = "Ønsket retning", mål = "Generelt indikatormål",
   output_enhed = "Output-enhed",
@@ -144,8 +145,8 @@ mod_indikator_crud_ui <- function(id) {
   ch
 }
 
-#' Grid-dropdown-source for datasaet-kolonnen: aktive noder + BRUGTE inaktive
-#' ("(inaktiv)"-suffix) + helt ukendte id'er ("Ukendt datasæt #id") saa
+#' Grid-dropdown-source for hierarki-placerings-kolonnen: aktive noder + BRUGTE
+#' inaktive ("(inaktiv)"-suffix) + helt ukendte id'er ("Ukendt node #id") saa
 #' eksisterende celle-vaerdier hverken vises blankt eller tabes ved gem.
 #' @noRd
 .hierarki_src <- function(opts_df, used) {
@@ -172,20 +173,21 @@ mod_indikator_crud_ui <- function(id) {
   if (length(unknown) > 0) {
     src <- rbind(src, data.frame(
       id = unknown,
-      name = sprintf("Ukendt datasæt #%s", unknown), stringsAsFactors = FALSE
+      name = sprintf("Ukendt node #%s", unknown), stringsAsFactors = FALSE
     ))
   }
   src
 }
 
 # Grid-titler → tblIndikatorer-kolonner for inline-redigering (excelR).
-# Datapakke + Indikator-id vises readOnly (kontekst); resten redigeres
-# direkte. Lange felter (definitioner m.m.) + m2m-relationer + diagrammer
-# redigeres fortsat i modalen ("Åbn valgte").
+# Datapakke + Datasæt + Indikator-id vises readOnly (kontekst — niveau-udledte
+# forfader-navne); resten redigeres direkte. "Hierarki-placering" er selve
+# FK'en (typisk en indikatorsamling). Lange felter (definitioner m.m.) +
+# m2m-relationer + diagrammer redigeres fortsat i modalen ("Åbn valgte").
 .INDIKATOR_GRID_FIELDS <- c(
   "Aktiv" = "aktiv_indikator", "Nøgle" = "nøgleindikator",
   "Nulfyld" = "nulfyld_tomme_perioder",
-  "Datasæt" = "indikator_hierarki", "Navn" = "indikator_navn",
+  "Hierarki-placering" = "indikator_hierarki", "Navn" = "indikator_navn",
   "Mål" = "mål", "Output-enhed" = "output_enhed",
   "Ønsket tendens" = "ønsket_tendens", "Direkte link" = "direkte_link",
   "Kontaktperson" = "kontaktperson", "Datakilde" = "datakilde"
@@ -203,7 +205,8 @@ indikator_excel_data <- function(d) {
   out[["Nøgle"]] <- col_of("nøgleindikator") %in% TRUE
   out[["Nulfyld"]] <- col_of("nulfyld_tomme_perioder") %in% TRUE
   out[["Datapakke"]] <- chr_or_empty(col_of("label_datapakke"))
-  out[["Datasæt"]] <- chr_or_empty(col_of("indikator_hierarki"))
+  out[["Datasæt"]] <- chr_or_empty(col_of("label_datasaet"))
+  out[["Hierarki-placering"]] <- chr_or_empty(col_of("indikator_hierarki"))
   out[["Indikator-id"]] <- chr_or_empty(col_of("indikator_navn_teknisk"))
   out[["Navn"]] <- chr_or_empty(col_of("indikator_navn"))
   out[["Mål"]] <- chr_or_empty(col_of("mål"))
@@ -216,8 +219,8 @@ indikator_excel_data <- function(d) {
 }
 
 #' Kolonne-spec til indikator-grid'et: FK-felter som dropdowns med
-#' {id, name}-source (Datasæt/Kontaktperson med autocomplete — listerne er
-#' lange), output_enhed med kanonisk værdisæt, flag som checkbokse.
+#' {id, name}-source (Hierarki-placering/Kontaktperson med autocomplete —
+#' listerne er lange), output_enhed med kanonisk værdisæt, flag som checkbokse.
 #' Ukendte eksisterende id'er/legacy-værdier bevares i sourcen.
 #' @param fk db$fk_options(): named list col → data.frame(id, label)
 #' @noRd
@@ -251,10 +254,14 @@ indikator_excel_columns <- function(d, fk) {
   )
   titles <- c(
     "id", "Aktiv", "Nøgle", "Nulfyld", "Datapakke", "Datasæt",
-    "Indikator-id", "Navn", "Mål", "Output-enhed", "Ønsket tendens",
-    "Direkte link", "Kontaktperson", "Datakilde"
+    "Hierarki-placering", "Indikator-id", "Navn", "Mål",
+    "Output-enhed", "Ønsket tendens", "Direkte link",
+    "Kontaktperson", "Datakilde"
   )
-  dropdown_titles <- c("Datasæt", "Output-enhed", "Kontaktperson", "Datakilde")
+  dropdown_titles <- c(
+    "Hierarki-placering", "Output-enhed", "Kontaktperson",
+    "Datakilde"
+  )
   out <- data.frame(
     title = titles,
     type = ifelse(titles == "id", "hidden",
@@ -262,13 +269,13 @@ indikator_excel_columns <- function(d, fk) {
         ifelse(titles %in% dropdown_titles, "dropdown", "text")
       )
     ),
-    readOnly = titles %in% c("id", "Datapakke", "Indikator-id"),
+    readOnly = titles %in% c("id", "Datapakke", "Datasæt", "Indikator-id"),
     align = "left",
-    autocomplete = titles %in% c("Datasæt", "Kontaktperson"),
+    autocomplete = titles %in% c("Hierarki-placering", "Kontaktperson"),
     stringsAsFactors = FALSE
   )
   srcs <- list(
-    "Datasæt" = ds_src, "Output-enhed" = oe_src,
+    "Hierarki-placering" = ds_src, "Output-enhed" = oe_src,
     "Kontaktperson" = kp_src, "Datakilde" = dk_src
   )
   out$source <- lapply(titles, function(t) srcs[[t]] %||% NA)
@@ -332,8 +339,8 @@ mod_indikator_crud_server <- function(id, db) {
         lab <- INDIKATOR_MODAL_LABELS[[col]] %||% col
         if (col %in% req_cols) lab <- tagList(lab, tags$span(" *", class = "req"))
         fkc <- fk_choices
-        # Datasæt-dropdown: kun aktive hierarki-noder ved nyvalg; en
-        # eksisterende inaktiv værdi bevares med "(inaktiv)"-suffix.
+        # Hierarki-placerings-dropdown: kun aktive hierarki-noder ved nyvalg;
+        # en eksisterende inaktiv værdi bevares med "(inaktiv)"-suffix.
         if (identical(col, "indikator_hierarki")) {
           fkc$indikator_hierarki <- .hierarki_choices(
             fk$indikator_hierarki, vals$indikator_hierarki
@@ -669,7 +676,7 @@ mod_indikator_crud_server <- function(id, db) {
       }
       fds <- input$filter_datasaet
       if (!is.null(fds) && nzchar(fds)) {
-        d <- d[d$label_indikator_hierarki %in% fds, , drop = FALSE]
+        d <- d[d$label_datasaet %in% fds, , drop = FALSE]
       }
       d
     })
@@ -710,7 +717,9 @@ mod_indikator_crud_server <- function(id, db) {
       )
     })
 
-    # Datasæt-filter: kaskaderer på valgt datapakke (viser kun datasæt derunder)
+    # Datasæt-filter: kaskaderer på valgt datapakke (viser kun datasæt
+    # derunder). Bruger det NIVEAU-UDLEDTE datasæt (label_datasaet) — nodens
+    # eget navn kan være en indikatorsamling under datasættet.
     output$filter_datasaet_ui <- renderUI({
       ns <- session$ns
       d <- rows()
@@ -718,7 +727,7 @@ mod_indikator_crud_server <- function(id, db) {
       if (!is.null(fdp) && nzchar(fdp)) {
         d <- d[d$label_datapakke %in% fdp, , drop = FALSE]
       }
-      vals <- sort(unique(stats::na.omit(d[["label_indikator_hierarki"]])))
+      vals <- sort(unique(stats::na.omit(d[["label_datasaet"]])))
       choices <- c("Alle" = "", stats::setNames(vals, vals))
       selected <- .preserved_filter_selection(
         isolate(input$filter_datasaet), choices

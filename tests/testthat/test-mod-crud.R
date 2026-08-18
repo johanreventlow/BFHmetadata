@@ -17,6 +17,7 @@ fake_db <- function() {
     mål = NA_character_, ønsket_tendens = NA_character_,
     direkte_link = NA_character_,
     label_datapakke = "Pakke A",
+    label_datasaet = "Datasæt A",
     label_indikator_hierarki = "Inf.hyg",
     output_enhed = "pct", # legacy-fritekst (ej kanonisk)
     stringsAsFactors = FALSE
@@ -116,11 +117,13 @@ test_that("indikator-grid: skjult pk, checkbokse, FK-dropdowns, låst kontekst",
       expect_equal(types[titles == "Aktiv"], "checkbox")
       expect_equal(types[titles == "Nøgle"], "checkbox")
       expect_equal(types[titles == "Nulfyld"], "checkbox") # BFHddl-opt-in-flag
-      expect_equal(types[titles == "Datasæt"], "dropdown")
-      expect_true(isTRUE(cols[[which(titles == "Datasæt")]]$autocomplete))
+      expect_equal(types[titles == "Hierarki-placering"], "dropdown")
+      hp <- cols[[which(titles == "Hierarki-placering")]]
+      expect_true(isTRUE(hp$autocomplete))
       expect_equal(types[titles == "Kontaktperson"], "dropdown")
       expect_equal(types[titles == "Datakilde"], "dropdown")
       expect_true(ro[titles == "Datapakke"]) # kontekst låst
+      expect_true(ro[titles == "Datasæt"]) # niveau-udledt kontekst
       expect_true(ro[titles == "Indikator-id"])
       expect_false(ro[titles == "Navn"])
       expect_false(isTRUE(w$x$autoWidth))
@@ -137,7 +140,10 @@ test_that("dynamiske oversigtsfiltre bevarer kun gyldige valg", {
     nøgleindikator = c(FALSE, FALSE), indikator_hierarki = c(1L, 2L),
     kontaktperson = c(1L, 1L), datakilde = c(1L, 1L),
     label_datapakke = c("Pakke A", "Pakke B"),
-    label_indikator_hierarki = c("Datasæt A", "Datasæt B"),
+    # Datasæt-filteret læser det NIVEAU-UDLEDTE datasæt — ikke nodens eget
+    # navn (der kan være en indikatorsamling under datasættet)
+    label_datasaet = c("Datasæt A", "Datasæt B"),
+    label_indikator_hierarki = c("Samling A", "Samling B"),
     stringsAsFactors = FALSE
   )
   db$list_indikatorer <- function() initial_rows
@@ -149,6 +155,7 @@ test_that("dynamiske oversigtsfiltre bevarer kun gyldige valg", {
 
     expect_identical(selected_option_value(output$filter_datapakke_ui), "Pakke A")
     expect_identical(selected_option_value(output$filter_datasaet_ui), "Datasæt A")
+    expect_identical(tbl_rows()$id, 1L) # filtreret på label_datasaet
 
     session$setInputs(filter_datapakke = "Pakke B")
     session$flushReact()
@@ -237,10 +244,16 @@ test_that("inline FK-dropdown gemmer integer parent-id; tømt afvises", {
     )
   }
   testServer(mod_indikator_crud_server, args = list(db = db), {
-    session$setInputs(tbl = .ind_grid_edit(isolate(rows()), 1L, "Datasæt", "2"))
+    session$setInputs(tbl = .ind_grid_edit(
+      isolate(rows()), 1L,
+      "Hierarki-placering", "2"
+    ))
     u <- db$.calls()$updated
     expect_equal(u[[2]], list(indikator_hierarki = 2L))
-    session$setInputs(tbl = .ind_grid_edit(isolate(rows()), 1L, "Datasæt", NULL))
+    session$setInputs(tbl = .ind_grid_edit(
+      isolate(rows()), 1L,
+      "Hierarki-placering", NULL
+    ))
     expect_match(status_msg(), "Vælg en værdi")
     expect_equal(
       db$.calls()$updated[[2]],
@@ -284,6 +297,11 @@ test_that("inline-edit på readOnly kolonne ignoreres (klient-manipulation)", {
     session$setInputs(tbl = .ind_grid_edit(
       isolate(rows()), 1L,
       "Datapakke", "Hacket"
+    ))
+    expect_null(db$.calls()$updated)
+    session$setInputs(tbl = .ind_grid_edit(
+      isolate(rows()), 1L,
+      "Datasæt", "Hacket"
     ))
     expect_null(db$.calls()$updated)
   })

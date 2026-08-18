@@ -104,6 +104,17 @@
   Nyt batch-opslag af median-knæk (build_median_batch_sql +
   medians_by_diagram) med fallback til per-diagram ved fejl.
 
+## Bug fixes
+* Datapakke- og Datasæt-filtrene blandede niveauerne sammen: "Datapakke" og
+  "Datasæt" blev udledt som "noden FK'en peger på + dens forælder", men
+  indikatorerne peger på blandede niveauer (94 % på Indikatorsamling-noder),
+  så Datasæt-filteret viste samlingsnavne og Datapakke-filteret datasætnavne.
+  Begge udledes nu niveau-bevidst som forfaderen på niveauet 'Datapakke' hhv.
+  'Datasæt' (rekursiv CTE, delt af Indikator-oversigten, diagram-admin og
+  signal-gennemgangen). Indikator-grid'et viser nu Datapakke + Datasæt som
+  låst kontekst, og den redigerbare FK-kolonne hedder "Hierarki-placering"
+  (før misvisende "Datasæt" — værdien er typisk en indikatorsamling).
+
 # BFHmetadata 0.7.0
 
 ## Nye features

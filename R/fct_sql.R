@@ -4,6 +4,37 @@
 #' @noRd
 .fk_fields <- function() Filter(function(f) f$kind == "fk", INDIKATOR_FIELDS)
 
+#' CTE-snippet (indsættes efter WITH RECURSIVE): pr. hierarki-node navnet på
+#' forfaderen (inklusive noden selv) på niveau 'Datapakke' hhv. 'Datasæt'
+#' (h_lvl.label_datapakke/label_datasaet, join på h_lvl.start_id).
+#' Niveau-bevidst fordi indikatorernes FK peger på BLANDEDE niveauer (typisk
+#' Indikatorsamling under et datasæt) — nodens forælder er derfor IKKE altid
+#' datapakken. Niveau-navnene matcher tblIndikatorNiveauer og filtrene i
+#' HIERARCHY_TABLES$indikator_hierarki.
+#' @noRd
+.hierarki_niveau_cte <- function() {
+  paste0(
+    "h_anc AS (",
+    ' SELECT h."Id" AS start_id, h."parent_id", h."hierarki_navn",',
+    ' hn."indikator_niveau_navn" AS niveau_navn',
+    ' FROM "tblIndikatorHierarki" h',
+    ' LEFT JOIN "tblIndikatorNiveauer" hn ON hn."Id" = h."indikator_niveau"',
+    " UNION ALL",
+    ' SELECT a.start_id, p."parent_id", p."hierarki_navn",',
+    ' pn."indikator_niveau_navn"',
+    ' FROM h_anc a JOIN "tblIndikatorHierarki" p ON p."Id" = a."parent_id"',
+    ' LEFT JOIN "tblIndikatorNiveauer" pn ON pn."Id" = p."indikator_niveau"',
+    "), h_lvl AS (",
+    " SELECT start_id,",
+    ' max("hierarki_navn") FILTER (WHERE niveau_navn = \'Datapakke\')',
+    " AS label_datapakke,",
+    ' max("hierarki_navn") FILTER (WHERE niveau_navn = \'Datasæt\')',
+    " AS label_datasaet",
+    " FROM h_anc GROUP BY start_id",
+    ")"
+  )
+}
+
 #' SELECT med FK-labels (LEFT JOIN så NULL-FK bevares)
 #' @noRd
 build_list_sql <- function() {
@@ -21,15 +52,20 @@ build_list_sql <- function() {
       f$parent, al, al, f$col
     ))
   }
-  # Datapakke = forælder-hierarki til datasæt-hierarkiet (selv-join på parent_id).
-  # Afhænger af alias p_indikator_hierarki fra loopet (FK-felt i v1).
-  joins <- c(joins, paste0(
-    'LEFT JOIN "tblIndikatorHierarki" dp ',
-    'ON dp."Id" = p_indikator_hierarki."parent_id"'
-  ))
-  labels <- c(labels, 'dp."hierarki_navn" AS "label_datapakke"')
+  # Datapakke/Datasæt = forfader-navne på de navngivne niveauer (h_lvl-CTE) —
+  # label_indikator_hierarki fra loopet er fortsat nodens EGET navn (dropdown).
+  joins <- c(
+    joins,
+    'LEFT JOIN h_lvl ON h_lvl.start_id = i."indikator_hierarki"'
+  )
+  labels <- c(
+    labels,
+    'h_lvl.label_datapakke AS "label_datapakke"',
+    'h_lvl.label_datasaet AS "label_datasaet"'
+  )
   sprintf(
-    'SELECT %s, %s FROM "tblIndikatorer" i %s ORDER BY i."id"',
+    'WITH RECURSIVE %s SELECT %s, %s FROM "tblIndikatorer" i %s ORDER BY i."id"',
+    .hierarki_niveau_cte(),
     paste(base_cols, collapse = ", "), paste(labels, collapse = ", "),
     paste(joins, collapse = " ")
   )
@@ -144,7 +180,8 @@ build_lookup_refcount_sql <- function(child, col) {
 # --- Signal-gennemgang: diagram-indeks + median-knæk ------------------------
 
 #' Ét row pr. aktivt Seriediagram med resolvede labels til filtrering/visning.
-#' datapakke = forælder-hierarki (h.parent_id → dp). Org-niveauer (overafdeling=5/
+#' datapakke/datasaet = niveau-bevidst forfader-opslag (h_lvl-CTE, se
+#' .hierarki_niveau_cte). Org-niveauer (overafdeling=5/
 #' afdeling=6/afsnit=7) resolves via rekursiv ancestry (selv + forældre op ad
 #' parent_Id-træet) → fremtidssikret når diagrammer opstår på dybere niveauer.
 #' diagram_type=1 (Seriediagram) + diagram_aktivt.
@@ -163,20 +200,21 @@ build_diagram_index_sql <- function() {
     ' max("organisatorisk_navn_langt") FILTER (WHERE "organisatorisk_niveau" = 6) AS afdeling,',
     ' max("organisatorisk_navn_langt") FILTER (WHERE "organisatorisk_niveau" = 7) AS afsnit',
     " FROM anc GROUP BY start_id",
-    ") ",
+    "), ",
+    .hierarki_niveau_cte(),
+    " ",
     'SELECT d."id" AS diagram_id, d."periode_aggregering", ',
     'i."id" AS indikator_id, i."indikator_navn", i."indikator_navn_teknisk", ',
     # Nulfyld-flag med i indekset: scan_diagram spejler BFHddl's
     # fill_empty_periods, så signalet beregnes på samme serie som tegnes
     'i."nulfyld_tomme_perioder", ',
-    'h."hierarki_navn" AS datasaet, dp."hierarki_navn" AS datapakke, ',
+    "h_lvl.label_datasaet AS datasaet, h_lvl.label_datapakke AS datapakke, ",
     'o."Id" AS org_id, o."organisatorisk_navn_teknisk" AS org_teknisk, ',
     'o."organisatorisk_navn_langt" AS org_navn, o."organisatorisk_niveau" AS org_niveau, ',
     "lvl.overafdeling, lvl.afdeling, lvl.afsnit ",
     'FROM "tblDiagrammer" d ',
     'JOIN "tblIndikatorer" i ON i."id" = d."indikator" ',
-    'LEFT JOIN "tblIndikatorHierarki" h ON h."Id" = i."indikator_hierarki" ',
-    'LEFT JOIN "tblIndikatorHierarki" dp ON dp."Id" = h."parent_id" ',
+    'LEFT JOIN h_lvl ON h_lvl.start_id = i."indikator_hierarki" ',
     'LEFT JOIN "tblOrganisationStruktur" o ON o."Id" = d."organisatorisk_navn_teknisk" ',
     'LEFT JOIN lvl ON lvl.start_id = o."Id" ',
     'WHERE d."diagram_type" = 1 AND d."diagram_aktivt" ',
@@ -239,11 +277,12 @@ DIAGRAM_COLS <- c(
 )
 
 #' Alle diagrammer med resolvede labels — INGEN aktiv/type-filtre (admin).
-#' datasaet/datapakke resolves via samme hierarki-joins som
-#' build_diagram_index_sql (h → indikatorens hierarki, dp → dens forælder).
+#' datasaet/datapakke = niveau-bevidst forfader-opslag (h_lvl-CTE, samme som
+#' build_list_sql/build_diagram_index_sql).
 #' @noRd
 build_diagram_admin_sql <- function() {
   paste0(
+    "WITH RECURSIVE ", .hierarki_niveau_cte(), " ",
     'SELECT d."id" AS diagram_id, d."indikator", ',
     'd."organisatorisk_navn_teknisk", d."diagram_type", ',
     'd."periode_aggregering", d."indgaar_i_aggregering", ',
@@ -252,14 +291,13 @@ build_diagram_admin_sql <- function() {
     'COALESCE(o."organisatorisk_navn_langt", o."organisatorisk_navn_teknisk") ',
     "AS org_navn, ",
     't."diagram_type" AS type_navn, ',
-    'h."hierarki_navn" AS datasaet, dp."hierarki_navn" AS datapakke ',
+    "h_lvl.label_datasaet AS datasaet, h_lvl.label_datapakke AS datapakke ",
     'FROM "tblDiagrammer" d ',
     'LEFT JOIN "tblIndikatorer" i ON i."id" = d."indikator" ',
     'LEFT JOIN "tblOrganisationStruktur" o ',
     'ON o."Id" = d."organisatorisk_navn_teknisk" ',
     'LEFT JOIN "tblDiagramTyper" t ON t."Id" = d."diagram_type" ',
-    'LEFT JOIN "tblIndikatorHierarki" h ON h."Id" = i."indikator_hierarki" ',
-    'LEFT JOIN "tblIndikatorHierarki" dp ON dp."Id" = h."parent_id" ',
+    'LEFT JOIN h_lvl ON h_lvl.start_id = i."indikator_hierarki" ',
     'ORDER BY i."indikator_navn", org_navn'
   )
 }

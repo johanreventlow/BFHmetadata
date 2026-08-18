@@ -65,11 +65,18 @@ test_that("build_list_sql joiner alle 3 FK-parents med labels", {
   expect_match(sql, "datakilde_navn")
 })
 
-test_that("build_list_sql joiner datapakke (forælder-hierarki) som label", {
+test_that("build_list_sql udleder datapakke/datasæt niveau-bevidst (CTE)", {
   sql <- build_list_sql()
-  expect_match(sql, 'LEFT JOIN "tblIndikatorHierarki" dp')
-  expect_match(sql, 'dp."Id" = p_indikator_hierarki."parent_id"')
-  expect_match(sql, '"label_datapakke"')
+  # Forfader-opslag på NIVEAU-NAVN — ikke naiv "node + forælder": indikatorer
+  # peger på blandede niveauer (Indikatorsamling/Datasæt), så forælderen er
+  # IKKE altid en datapakke.
+  expect_match(sql, "^WITH RECURSIVE")
+  expect_match(sql, '"tblIndikatorNiveauer"', fixed = TRUE)
+  expect_match(sql, "'Datapakke'", fixed = TRUE)
+  expect_match(sql, "'Datasæt'", fixed = TRUE)
+  expect_match(sql, "label_datapakke", fixed = TRUE)
+  expect_match(sql, "label_datasaet", fixed = TRUE)
+  expect_no_match(sql, 'p_indikator_hierarki\\."parent_id"')
 })
 
 test_that("build_fk_options_sql bygger id+label select for parent", {
@@ -148,6 +155,10 @@ test_that("build_diagram_index_sql joiner indikator/hierarki/datapakke/org + org
   expect_match(sql, "overafdeling")
   expect_match(sql, "afdeling")
   expect_match(sql, "afsnit")
+  # Datapakke/datasæt via niveau-bevidst forfader-opslag (ikke node+forælder)
+  expect_match(sql, "'Datapakke'", fixed = TRUE)
+  expect_match(sql, "'Datasæt'", fixed = TRUE)
+  expect_no_match(sql, 'dp\\."hierarki_navn"')
 })
 
 test_that("median SQL-byggere er parametriserede", {
@@ -222,6 +233,11 @@ test_that("build_diagram_admin_sql joiner hierarki (datasaet/datapakke)", {
   expect_match(sql, "AS datasaet", fixed = TRUE)
   expect_match(sql, "AS datapakke", fixed = TRUE)
   expect_match(sql, '"tblIndikatorHierarki"', fixed = TRUE)
+  # Niveau-bevidst forfader-opslag (samme CTE som build_list_sql)
+  expect_match(sql, "^WITH RECURSIVE")
+  expect_match(sql, "'Datapakke'", fixed = TRUE)
+  expect_match(sql, "'Datasæt'", fixed = TRUE)
+  expect_no_match(sql, 'dp\\."hierarki_navn"')
 })
 
 test_that("build_diagram_insert_sql parametriserer alle kolonner + RETURNING", {
