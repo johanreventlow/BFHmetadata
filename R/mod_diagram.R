@@ -197,6 +197,49 @@ diagram_excel_columns <- function(d, opts, periode) {
   out
 }
 
+#' Per-række-filter på grid'ets Indikator-dropdown: kun indikatorer hvis
+#' niveau-udledte datasæt matcher rækkens Datasæt-celle. jexcel kalder
+#' column.filter ved editor-åbning; funktionen injiceres efter render via
+#' onRender (excelR kan ikke serialisere JS-funktioner i column-spec'en).
+#' Rækker uden datasæt får hele listen; rækkens nuværende værdi medtages
+#' altid, så visningen aldrig knækker. ind_opts uden datasæt-kolonne (fx
+#' ældre fake/DB-form) → uændret widget (intet filter).
+#' @param widget excelR-htmlwidget
+#' @param ind_opts df(id, label, datasaet) fra db$diagram_form_options()
+#' @param grid_names names(diagram_excel_data(d)) — kolonneindeks slås op her
+#' @noRd
+.diagram_attach_indikator_filter <- function(widget, ind_opts, grid_names) {
+  if (is.null(ind_opts) || !"datasaet" %in% names(ind_opts)) {
+    return(widget)
+  }
+  ds <- as.character(ind_opts$datasaet)
+  ok <- !is.na(ds) & nzchar(ds)
+  map <- stats::setNames(as.list(ds[ok]), as.character(ind_opts$id[ok]))
+  if (length(map) == 0) {
+    return(widget)
+  }
+  htmlwidgets::onRender(widget, paste0(
+    "function(el, x, data) {",
+    " var ex = el.excel;",
+    " if (!ex || !data || !data.map) return;",
+    " ex.options.columns[data.indikatorCol].filter =",
+    "  function(instance, cell, c, r, source) {",
+    "   var ds = ex.options.data[r][data.datasaetCol];",
+    "   if (!ds) return source;",
+    "   var cur = String(ex.options.data[r][c]);",
+    "   var out = source.filter(function(s) {",
+    "    return data.map[String(s.id)] === ds || String(s.id) === cur;",
+    "   });",
+    "   return out.length ? out : source;",
+    "  };",
+    "}"
+  ), data = list(
+    map = map,
+    datasaetCol = match("Datasæt", grid_names) - 1L,
+    indikatorCol = match("Indikator", grid_names) - 1L
+  ))
+}
+
 #' @noRd
 mod_diagram_ui <- function(id) {
   ns <- NS(id)
@@ -246,21 +289,42 @@ mod_diagram_server <- function(id, db) {
         showNotification(warn_msg(), type = "warning", duration = 8)
     }, ignoreInit = TRUE)
 
-    # Filter-valg afledt af admin-data (kun værdier der faktisk findes)
-    .filter_ui <- function(input_id, lab, col) {
+    # Filter-valg afledt af admin-data (kun værdier der faktisk findes).
+    # d kan være pre-filtreret: kaskaden lader dimensionerne OVENFOR
+    # (Datapakke → Datasæt → Indikator) begrænse valgene nedenfor.
+    # Ugyldiggjorte valg ryddes ved re-render (.preserved_filter_selection).
+    .filter_ui <- function(input_id, lab, col, d = admin()) {
       ns <- session$ns
-      vals <- sort(unique(stats::na.omit(admin()[[col]])))
+      vals <- sort(unique(stats::na.omit(d[[col]])))
       choices <- c("Alle" = "", stats::setNames(vals, vals))
       selected <- .preserved_filter_selection(
         isolate(input[[input_id]]), choices)
       selectInput(ns(input_id), lab, choices = choices, selected = selected)
     }
+    # Kaskade-basis: admin-rækker under valgt datapakke (hhv. + datasæt)
+    .under_pakke <- reactive({
+      d <- admin()
+      fdp <- input$filter_datapakke
+      if (!is.null(fdp) && nzchar(fdp)) {
+        d <- d[d$datapakke %in% fdp, , drop = FALSE]
+      }
+      d
+    })
+    .under_datasaet <- reactive({
+      d <- .under_pakke()
+      fds <- input$filter_datasaet
+      if (!is.null(fds) && nzchar(fds)) {
+        d <- d[d$datasaet %in% fds, , drop = FALSE]
+      }
+      d
+    })
     output$filter_indikator_ui <- renderUI(
-      .filter_ui("filter_indikator", "Indikator", "indikator_navn"))
+      .filter_ui("filter_indikator", "Indikator", "indikator_navn",
+                 .under_datasaet()))
     output$filter_datapakke_ui <- renderUI(
       .filter_ui("filter_datapakke", "Datapakke", "datapakke"))
     output$filter_datasaet_ui <- renderUI(
-      .filter_ui("filter_datasaet", "Datasæt", "datasaet"))
+      .filter_ui("filter_datasaet", "Datasæt", "datasaet", .under_pakke()))
 
     # Org-filter: hierarkisk dropdown over HELE org-træet (id-værdier), så
     # en overordnet enhed kan vælges selv om den ikke selv har diagrammer —
@@ -305,8 +369,9 @@ mod_diagram_server <- function(id, db) {
     output$tbl <- excelR::renderExcel({
       grid_refresh()
       d <- filtered()
-      excelR::excelTable(
-        data = diagram_excel_data(d),
+      grid_data <- diagram_excel_data(d)
+      w <- excelR::excelTable(
+        data = grid_data,
         columns = diagram_excel_columns(d, opts, opts$periode),
         autoColTypes = FALSE,
         # FALSE: ellers deaktiverer width:auto table-layout:fixed, og
@@ -321,6 +386,7 @@ mod_diagram_server <- function(id, db) {
         rowDrag = FALSE, columnDrag = FALSE,
         getSelectedData = TRUE
       )
+      .diagram_attach_indikator_filter(w, opts$indikator, names(grid_data))
     })
 
     # excelR sender BÅDE celle-ændringer og selektioner på input$tbl.

@@ -29,6 +29,16 @@
   grænse), så ingen knæk falder ud ved opgraderingen.
 
 ## Nye features
+* Kaskade-filtre på tværs af hierarki-dimensionerne: På Diagram-siden
+  begrænser et valgt Datapakke-filter nu både Datasæt- og
+  Indikator-valgene, og et valgt Datasæt begrænser Indikator-valgene.
+  Samme kaskade i Signal-gennemgangens sidebar (multi-select: valg der
+  stadig er gyldige bevares). Indikator-siden havde allerede
+  Datapakke → Datasæt-kaskaden.
+* Diagram-grid'ets Indikator-dropdown viser nu kun indikatorer under
+  rækkens registrerede datasæt (niveau-udledt), så et diagram ikke ved en
+  fejl kan flyttes til en indikator i et helt andet datasæt. Rækkens
+  nuværende værdi vises altid; rækker uden datasæt får hele listen.
 * Indikator-hierarkiet (datasæt/datapakker, `tblIndikatorHierarki`) kan nu
   redigeres direkte i appen: ny fane "Indikator-hierarki" med samme
   inline-trærediger som organisations-strukturen (dobbeltklik en celle,

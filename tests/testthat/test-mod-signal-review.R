@@ -1324,3 +1324,33 @@ test_that("sort_by_type sorterer visningen efter signal-type", {
     expect_equal(view_list()$signal_type, c("begge", "kryds"))
   })
 })
+
+test_that("signal-filtre kaskaderer datapakke -> datasaet -> indikator", {
+  base <- withr::local_tempdir()
+  idx <- data.frame(diagram_id = 1:3, indikator_id = 1:3,
+    indikator_navn = c("I1", "I2", "I3"),
+    indikator_navn_teknisk = c("i1", "i2", "i3"),
+    datasaet = c("D1", "D2", "D3"), datapakke = c("P1", "P1", "P2"),
+    org_id = 5L, org_teknisk = "E", org_navn = "E", org_niveau = 5L,
+    overafdeling = "OA", afdeling = NA, afsnit = NA,
+    stringsAsFactors = FALSE)
+  db <- make_fake_signal_db(base, idx)
+  updates <- list()
+  testthat::local_mocked_bindings(
+    updateSelectizeInput = function(session, inputId, choices = NULL,
+                                    selected = NULL, server = FALSE, ...) {
+      updates[[length(updates) + 1L]] <<- list(
+        inputId = inputId, choices = choices, selected = selected)
+    },
+    .package = "BFHmetadata")
+  shiny::testServer(mod_signal_review_server, args = list(db = db), {
+    session$setInputs(f_datapakke = "P1")
+    session$flushReact()
+  })
+  last_for <- function(id) {
+    u <- Filter(function(x) identical(x$inputId, id), updates)
+    u[[length(u)]]
+  }
+  expect_identical(last_for("f_datasaet")$choices, c("D1", "D2"))
+  expect_identical(last_for("f_indikator_navn")$choices, c("I1", "I2"))
+})

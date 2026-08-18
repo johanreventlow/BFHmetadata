@@ -23,6 +23,7 @@ Imports:
     jsonlite,
     BFHcharts,
     excelR (>= 0.4.0),
+    htmlwidgets,
     ggplot2,
     ggiraph
 Suggests:

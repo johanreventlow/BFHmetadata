@@ -207,13 +207,11 @@ make_db <- function(pool) {
       DBI::dbGetQuery(pool, build_diagram_periode_sql())[[1]]
     },
     # id+label-choices til diagram-formularens tre FK-dropdowns.
-    # tblIndikatorer har pk "id" (småt) → egen SQL frem for build_fk_options_sql.
+    # indikator medtager niveau-udledt datasaet (per-raekke-filtrering af
+    # diagram-grid'ets Indikator-dropdown).
     diagram_form_options = function() {
       list(
-        indikator = DBI::dbGetQuery(pool, paste0(
-          'SELECT "id" AS id, "indikator_navn" AS label ',
-          'FROM "tblIndikatorer" ORDER BY 2'
-        )),
+        indikator = DBI::dbGetQuery(pool, build_diagram_indikator_options_sql()),
         org = DBI::dbGetQuery(pool, build_fk_options_sql(
           "tblOrganisationStruktur",
           'COALESCE("organisatorisk_navn_langt","organisatorisk_navn_teknisk")'

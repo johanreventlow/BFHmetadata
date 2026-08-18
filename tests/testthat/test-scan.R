@@ -523,3 +523,23 @@ test_that("phase_stats_df taaler NULL, tom df og NA-vaerdier", {
   expect_equal(out[["Antal kryds"]], "– / min. –")
   expect_equal(out$Signal, "–")
 })
+
+test_that("signal_cascade_choices begraenser valg til dimensioner ovenfor", {
+  idx <- data.frame(
+    datapakke = c("P1", "P1", "P2"),
+    datasaet = c("D1", "D2", "D3"),
+    indikator_navn = c("I1", "I2", "I3"),
+    stringsAsFactors = FALSE)
+  ch <- signal_cascade_choices(idx, list(datapakke = "P1"))
+  expect_identical(ch$datasaet, c("D1", "D2"))
+  expect_identical(ch$indikator_navn, c("I1", "I2"))
+  # Egen dimension begraenses ALDRIG af sit eget valg
+  ch2 <- signal_cascade_choices(idx, list(datapakke = "P1", datasaet = "D2"))
+  expect_identical(ch2$datasaet, c("D1", "D2"))
+  expect_identical(ch2$indikator_navn, "I2")
+  # Ingen valg = alle; multi-select OR inden for dimensionen
+  ch3 <- signal_cascade_choices(idx, list())
+  expect_identical(ch3$datasaet, c("D1", "D2", "D3"))
+  ch4 <- signal_cascade_choices(idx, list(datasaet = c("D1", "D3")))
+  expect_identical(ch4$indikator_navn, c("I1", "I3"))
+})

@@ -349,3 +349,13 @@ test_that("build_aggregation_flags_sql henter flag pr. diagram-raekke UDEN aktiv
   expect_match(s, '"indgaar_i_aggregering" AS indgaar', fixed = TRUE)
   expect_no_match(s, "diagram_aktivt") # BFHddl laeser flag med active_only=FALSE
 })
+
+test_that("diagram-indikator-options medtager niveau-udledt datasaet", {
+  sql <- build_diagram_indikator_options_sql()
+  expect_match(sql, "^WITH RECURSIVE")
+  expect_match(sql, '"indikator_navn" AS label', fixed = TRUE)
+  expect_match(sql, "AS datasaet", fixed = TRUE)
+  expect_match(sql, "'Datasæt'", fixed = TRUE)
+  expect_match(sql, 'FROM "tblIndikatorer"', fixed = TRUE)
+  expect_match(sql, "ORDER BY 2", fixed = TRUE)
+})

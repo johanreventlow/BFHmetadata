@@ -30,7 +30,8 @@ fake_diagram_db <- function(dup_count = 0L, median_count = 0L) {
       indikator = data.frame(
         id = c(10L, 11L),
         label = c("Tryksår", "Inaktiv indikator"),
-        aktiv_indikator = c(TRUE, FALSE)),
+        aktiv_indikator = c(TRUE, FALSE),
+        datasaet = c("Tryksår-datasæt", "Fald-datasæt")),
       org = data.frame(
         id = c(19L, 20L, 21L, 22L),
         label = c("Hospital", "Kirurgi", "Medicin", "Onkologi")),
@@ -506,5 +507,61 @@ test_that("diagram: aendring der kun ankommer via fullData gemmes", {
     expect_false(is.null(u))
     expect_identical(u$id, 1L)
     expect_identical(u$values$periode_aggregering, "uge")
+  })
+})
+
+# Alle option-values i et renderet filter-select (uden "Alle"-tomvalget)
+filter_option_values <- function(tag) {
+  html <- htmltools::renderTags(tag)$html
+  opts <- regmatches(html, gregexpr('<option[^>]*value="[^"]*"', html,
+                                    perl = TRUE))[[1]]
+  vals <- sub('.*value="([^"]*)".*', "\\1", opts)
+  vals[nzchar(vals)]
+}
+
+test_that("diagram-filtre kaskaderer datapakke -> datasaet -> indikator", {
+  db <- fake_diagram_db()
+  adm <- data.frame(
+    diagram_id = 1:3, indikator = c(10L, 11L, 12L),
+    organisatorisk_navn_teknisk = 20L, diagram_type = 1L,
+    periode_aggregering = "måned", indgaar_i_aggregering = TRUE,
+    diagram_aktivt = TRUE, direktionens_tavle = FALSE,
+    indikator_navn = c("I1", "I2", "I3"), org_navn = "Kirurgi",
+    type_navn = "Seriediagram", datasaet = c("D1", "D2", "D3"),
+    datapakke = c("P1", "P1", "P2"), stringsAsFactors = FALSE)
+  db$list_diagrams_admin <- function() adm
+  testServer(mod_diagram_server, args = list(db = db), {
+    session$setInputs(filter_status = "alle")
+    expect_setequal(filter_option_values(output$filter_datasaet_ui),
+                    c("D1", "D2", "D3"))
+    session$setInputs(filter_datapakke = "P1")
+    expect_setequal(filter_option_values(output$filter_datasaet_ui),
+                    c("D1", "D2"))
+    expect_setequal(filter_option_values(output$filter_indikator_ui),
+                    c("I1", "I2"))
+    session$setInputs(filter_datasaet = "D2")
+    expect_identical(filter_option_values(output$filter_indikator_ui), "I2")
+    # Skift af datapakke goer gammelt datasaet-valg ugyldigt -> ryddes
+    session$setInputs(filter_datapakke = "P2")
+    expect_identical(filter_option_values(output$filter_datasaet_ui), "D3")
+    expect_identical(selected_option_value(output$filter_datasaet_ui), "")
+  })
+})
+
+test_that("diagram-grid: indikator-dropdown filtreres per raekke paa datasaet", {
+  db <- fake_diagram_db()
+  testServer(mod_diagram_server, args = list(db = db), {
+    w <- jsonlite::fromJSON(output$tbl, simplifyVector = FALSE)
+    hooks <- w$jsHooks$render
+    expect_true(length(hooks) >= 1)
+    h <- hooks[[length(hooks)]]
+    expect_match(h$code, "filter", fixed = TRUE)
+    # map: indikator-id -> niveau-udledt datasaet (fra diagram_form_options)
+    expect_identical(h$data$map[["10"]], "Tryksår-datasæt")
+    expect_identical(h$data$map[["11"]], "Fald-datasæt")
+    # 0-baserede kolonneindeks i grid-data:
+    # diagram_id, Datapakke, Datasæt, Indikator
+    expect_equal(h$data$datasaetCol, 2)
+    expect_equal(h$data$indikatorCol, 3)
   })
 })

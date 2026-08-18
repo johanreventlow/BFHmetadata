@@ -230,6 +230,23 @@ index_filter_choices <- function(index) {
   }), .SIGNAL_FILTER_DIMS)
 }
 
+#' Kaskade-valg til signal-filtrene: datasaet begraenses af valgt datapakke,
+#' indikator_navn af datapakke + datasaet. En dimension begraenses ALDRIG af
+#' sit eget valg (saa man kan skifte vaerdi uden at rydde foerst).
+#' @param filters named list af multi-select-vektorer (tom/NULL = alle)
+#' @return list(datasaet = chr, indikator_navn = chr) — sorterede unikke valg
+#' @noRd
+signal_cascade_choices <- function(index, filters) {
+  under <- function(dims) {
+    idx <- apply_index_filters(index, filters[intersect(dims, names(filters))])
+    index_filter_choices(idx)
+  }
+  list(
+    datasaet = under("datapakke")$datasaet,
+    indikator_navn = under(c("datapakke", "datasaet"))$indikator_navn
+  )
+}
+
 #' Subset diagram-indeks på et named filter (AND på tværs af dimensioner).
 #' Hver dimension kan have flere værdier (multi-select) = OR inden for
 #' dimensionen. Tomme/NULL-værdier ignoreres.

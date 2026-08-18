@@ -228,11 +228,12 @@ mod_signal_review_server <- function(id, db) {
       )
     })
 
-    # Populér filter-valg ved start
+    # Populér filter-valg ved start — kun dimensioner UDEN kaskade-forælder
+    # (datasaet/indikator_navn styres af kaskade-observerne nedenfor).
     observeEvent(index(),
       {
         ch <- index_filter_choices(index())
-        for (dim in names(ch)) {
+        for (dim in c("overafdeling", "afsnit", "datapakke")) {
           # Ingen ""-sentinel ved multiple=TRUE: tomt felt = alle (placeholder
           # viser "(alle)"), og en tom choice ville optræde som blank chip.
           updateSelectizeInput(session, paste0("f_", dim),
@@ -242,6 +243,27 @@ mod_signal_review_server <- function(id, db) {
       },
       once = TRUE
     )
+
+    # Kaskade: Datasæt begrænses af valgt Datapakke; Indikator af begge.
+    # Egne gyldige valg bevares (intersect). Eget input læses via isolate,
+    # så brugerens eget valg ikke re-renderer feltet under interaktion —
+    # kaskaden genberegner kun når dimensionerne OVENFOR ændrer sig.
+    observe({
+      ch <- signal_cascade_choices(index(),
+        list(datapakke = input$f_datapakke))
+      sel <- intersect(isolate(input$f_datasaet) %||% character(0),
+                       ch$datasaet)
+      updateSelectizeInput(session, "f_datasaet",
+        choices = ch$datasaet, selected = sel, server = FALSE)
+    })
+    observe({
+      ch <- signal_cascade_choices(index(),
+        list(datapakke = input$f_datapakke, datasaet = input$f_datasaet))
+      sel <- intersect(isolate(input$f_indikator_navn) %||% character(0),
+                       ch$indikator_navn)
+      updateSelectizeInput(session, "f_indikator_navn",
+        choices = ch$indikator_navn, selected = sel, server = FALSE)
+    })
 
     current_filters <- reactive(list(
       overafdeling = input$f_overafdeling, afsnit = input$f_afsnit,

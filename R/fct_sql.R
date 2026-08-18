@@ -276,6 +276,21 @@ DIAGRAM_COLS <- c(
   "diagram_aktivt", "direktionens_tavle"
 )
 
+#' Indikator-options til diagram-siden: id + label + niveau-udledt datasaet
+#' (h_lvl-CTE). datasaet driver per-raekke-filtrering af diagram-grid'ets
+#' Indikator-dropdown: kun indikatorer under raekkens registrerede datasaet.
+#' @noRd
+build_diagram_indikator_options_sql <- function() {
+  paste0(
+    "WITH RECURSIVE ", .hierarki_niveau_cte(), " ",
+    'SELECT i."id" AS id, i."indikator_navn" AS label, ',
+    "h_lvl.label_datasaet AS datasaet ",
+    'FROM "tblIndikatorer" i ',
+    'LEFT JOIN h_lvl ON h_lvl.start_id = i."indikator_hierarki" ',
+    "ORDER BY 2"
+  )
+}
+
 #' Alle diagrammer med resolvede labels — INGEN aktiv/type-filtre (admin).
 #' datasaet/datapakke = niveau-bevidst forfader-opslag (h_lvl-CTE, samme som
 #' build_list_sql/build_diagram_index_sql).
