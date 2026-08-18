@@ -92,3 +92,24 @@ test_that("org_subtree_ids: valgt enhed + alle underliggende; NULL-trae = kun se
   expect_setequal(org_subtree_ids(tree, 3L), c(3L, 4L))
   expect_identical(org_subtree_ids(NULL, 3L), 3L)
 })
+
+test_that("hierarchy_indent_options ordner depth-first med nbsp-indrykning", {
+  opts <- data.frame(
+    id = c(3L, 1L, 2L), label = c("Barn", "Rod", "Datasaet"),
+    aktiv = c(TRUE, TRUE, FALSE),
+    parent_id = c(2L, NA, 1L), stringsAsFactors = FALSE)
+  out <- hierarchy_indent_options(opts)
+  expect_identical(out$id, c(1L, 2L, 3L))
+  expect_identical(out$label,
+    c("Rod", paste0(strrep(" ", 2), "Datasaet"),
+      paste0(strrep(" ", 4), "Barn")))
+  expect_identical(out$aktiv, c(TRUE, FALSE, TRUE))  # oevrige kolonner foelger
+  expect_false("depth" %in% names(out))
+  # Orphan (parent findes ikke): vises fladt som rod — tabes aldrig
+  orphan <- data.frame(id = 5L, label = "O", parent_id = 99L)
+  expect_identical(hierarchy_indent_options(orphan)$label, "O")
+  # Uden parent_id-kolonne (flad fk-liste): uaendret passthrough
+  flat <- data.frame(id = 1:2, label = c("A", "B"))
+  expect_identical(hierarchy_indent_options(flat), flat)
+  expect_null(hierarchy_indent_options(NULL))
+})

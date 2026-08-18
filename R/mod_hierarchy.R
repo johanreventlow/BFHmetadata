@@ -275,8 +275,9 @@ mod_hierarchy_server <- function(id, db, cfg) {
     })
 
     .parent_choices <- function() {
-      d <- tree()
-      stats::setNames(d$id, .labels(d))
+      # Indrykket trae-visning (depth-first) — samme som grid'ets
+      # Foraelder-dropdown
+      hierarchy_parent_choices(tree(), cfg)
     }
 
     .niveau_choices <- function() {

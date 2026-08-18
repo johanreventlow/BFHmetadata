@@ -68,3 +68,11 @@ test_that("alle HIERARCHY_TABLES-entries har paakraevede felter", {
                       "label_expr") %in% names(cfg$level)), info = cfg$id)
   }
 })
+
+test_that("hierarkiske fk-felter har parent_col til indrykkede dropdowns", {
+  f <- Find(function(x) x$col == "indikator_hierarki", INDIKATOR_FIELDS)
+  expect_identical(f$parent_col, "parent_id")
+  pe <- Find(function(c) c$id == "personer", LOOKUP_TABLES)
+  fk <- Find(function(c) identical(c$type, "fk"), pe$cols)
+  expect_identical(fk$parent_col, "parent_Id")
+})

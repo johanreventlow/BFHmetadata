@@ -245,3 +245,20 @@ test_that("hierarchy_excel_columns: dropdowns med (rod)/(vælg), ukendte id'er b
   expect_equal(nv$name[nv$id == ""], "(vælg)")
   expect_true("Ukendt niveau #888" %in% nv$name)
 })
+
+test_that("Foraelder-dropdown og parent_choices indrykkes efter dybde", {
+  cfg <- .ih_cfg()
+  tree <- hierarchy_order(fake_ih_nodes(), "id", "parent_id_raw",
+                          sort_col = cfg$display_col)
+  cols <- hierarchy_excel_columns(cfg, tree, fake_ih_niveauer())
+  src <- cols$source[[which(cols$title == "Forælder")]]
+  expect_identical(src$name[src$id == "1"], "Rod")
+  expect_identical(src$name[src$id == "2"],
+                   paste0(strrep(" ", 2), "Datasaet A"))
+  expect_identical(src$name[src$id == "4"],
+                   paste0(strrep(" ", 4), "Samling"))
+  ch <- hierarchy_parent_choices(tree, cfg)
+  expect_identical(names(ch)[ch == 4L],
+                   paste0(strrep(" ", 4), "Samling"))
+  expect_identical(names(ch)[ch == 1L], "Rod")
+})

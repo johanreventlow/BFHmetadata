@@ -49,9 +49,11 @@ make_db <- function(pool) {
       stats::setNames(
         lapply(.fk_fields(), function(f) {
           sql <- if (is.null(f$aktiv_col)) {
-            build_fk_options_sql(f$parent, f$label)
+            build_fk_options_sql(f$parent, f$label,
+                                 parent_col = f$parent_col)
           } else {
-            build_fk_options_aktiv_sql(f$parent, f$label, f$aktiv_col)
+            build_fk_options_aktiv_sql(f$parent, f$label, f$aktiv_col,
+                                       parent_col = f$parent_col)
           }
           DBI::dbGetQuery(pool, sql)
         }),
@@ -283,13 +285,15 @@ make_lookup_db <- function(pool, cfg) {
         params = list(pk_val)
       )[[1]][1])
     },
-    # id+label for en FK-kolonnes dropdown (NULL hvis kolonnen ej er fk)
+    # id+label for en FK-kolonnes dropdown (NULL hvis kolonnen ej er fk).
+    # parent_col i cfg → parent_id medtages (indrykket trae-dropdown).
     fk_options = function(col) {
       fc <- Find(function(c) identical(c$type, "fk") && c$col == col, cfg$cols)
       if (is.null(fc)) {
         return(NULL)
       }
-      DBI::dbGetQuery(pool, build_fk_options_sql(fc$parent, fc$label_expr))
+      DBI::dbGetQuery(pool, build_fk_options_sql(fc$parent, fc$label_expr,
+                                                 parent_col = fc$parent_col))
     }
   )
 }

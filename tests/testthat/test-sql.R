@@ -359,3 +359,15 @@ test_that("diagram-indikator-options medtager niveau-udledt datasaet", {
   expect_match(sql, 'FROM "tblIndikatorer"', fixed = TRUE)
   expect_match(sql, "ORDER BY 2", fixed = TRUE)
 })
+
+test_that("fk-options-byggere kan medtage parent-kolonne til trae-dropdowns", {
+  sql <- build_fk_options_sql("tblOrganisationStruktur",
+    '"organisatorisk_navn_langt"', parent_col = "parent_Id")
+  expect_match(sql, '"parent_Id" AS parent_id', fixed = TRUE)
+  sqla <- build_fk_options_aktiv_sql("tblIndikatorHierarki",
+    '"hierarki_navn"', "aktiv", parent_col = "parent_id")
+  expect_match(sqla, '"parent_id" AS parent_id', fixed = TRUE)
+  expect_match(sqla, '"aktiv" AS aktiv', fixed = TRUE)
+  # Uden parent_col: uaendret form (bagudkompatibel)
+  expect_no_match(build_fk_options_sql("t", '"x"'), "parent_id")
+})

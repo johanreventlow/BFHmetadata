@@ -172,3 +172,13 @@ test_that("excel_event_df laeser grid-data fra begge payload-former", {
                                   fullData = list(data = list(list("1"))))))
   expect_null(excel_event_df(list(forSelectedVals = TRUE)))
 })
+
+test_that("lookup_excel_columns: fk-source med parent_id ordnes og indrykkes", {
+  fk <- list(enhed = data.frame(
+    id = c(20L, 10L), label = c("Barn", "Rod"),
+    parent_id = c(10L, NA), stringsAsFactors = FALSE))
+  cols <- lookup_excel_columns(.cfg_excel, c("Id", "enhed"), fk)
+  src <- cols$source[[2]]
+  expect_equal(src$id, c(10L, 20L))
+  expect_equal(src$name, c("Rod", paste0(strrep(" ", 2), "Barn")))
+})

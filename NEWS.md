@@ -29,6 +29,11 @@
   grænse), så ingen knæk falder ud ved opgraderingen.
 
 ## Nye features
+* Hierarki-dropdowns viser nu træstrukturen visuelt (depth-first-orden
+  med indrykning) i stedet for en flad alfabetisk liste:
+  Hierarki-placering på Indikator-siden (grid + modal), Forælder-dropdowns
+  på hierarki-siderne (grid + "Ny node") og Organisatorisk enhed på
+  Personer-tabellen. Autocomplete-søgning virker uændret.
 * Kaskade-filtre på tværs af hierarki-dimensionerne: På Diagram-siden
   begrænser et valgt Datapakke-filter nu både Datasæt- og
   Indikator-valgene, og et valgt Datasæt begrænser Indikator-valgene.

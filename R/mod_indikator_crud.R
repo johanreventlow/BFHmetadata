@@ -292,6 +292,9 @@ mod_indikator_crud_server <- function(id, db) {
     rows <- reactiveVal(db$list_indikatorer())
     status_msg <- reactiveVal("")
     fk <- db$fk_options()
+    # Hierarki-placering vises som indrykket træ (depth-first) i både
+    # grid-dropdown og modal — kræver parent_id fra fk_options (metadata.R)
+    fk$indikator_hierarki <- hierarchy_indent_options(fk$indikator_hierarki)
     fk_choices <- lapply(fk, function(d) stats::setNames(d$id, d$label))
 
     # Fejl-tolerant genindlæsning: et DB-udfald (Supabase lukker inaktive

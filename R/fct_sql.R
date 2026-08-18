@@ -71,19 +71,27 @@ build_list_sql <- function() {
   )
 }
 
-#' id + label for FK-dropdown
+#' id + label for FK-dropdown. parent_col (valgfri): medtag parent-FK'en
+#' AS parent_id, saa kalderen kan vise valgene som indrykket trae
+#' (hierarchy_indent_options).
 #' @noRd
-build_fk_options_sql <- function(parent, label_expr) {
-  sprintf('SELECT "Id" AS id, (%s) AS label FROM "%s" ORDER BY 2', label_expr, parent)
+build_fk_options_sql <- function(parent, label_expr, parent_col = NULL) {
+  pc <- if (is.null(parent_col)) "" else
+    sprintf(', "%s" AS parent_id', parent_col)
+  sprintf('SELECT "Id" AS id, (%s) AS label%s FROM "%s" ORDER BY 2',
+          label_expr, pc, parent)
 }
 
 #' id + label + aktiv-flag for FK-dropdown der skal kunne filtrere inaktive
 #' noder klient-side (uden at miste eksisterende vaerdier der peger paa dem)
 #' @noRd
-build_fk_options_aktiv_sql <- function(parent, label_expr, aktiv_col) {
+build_fk_options_aktiv_sql <- function(parent, label_expr, aktiv_col,
+                                       parent_col = NULL) {
+  pc <- if (is.null(parent_col)) "" else
+    sprintf(', "%s" AS parent_id', parent_col)
   sprintf(
-    'SELECT "Id" AS id, (%s) AS label, "%s" AS aktiv FROM "%s" ORDER BY 2',
-    label_expr, aktiv_col, parent
+    'SELECT "Id" AS id, (%s) AS label, "%s" AS aktiv%s FROM "%s" ORDER BY 2',
+    label_expr, aktiv_col, pc, parent
   )
 }
 

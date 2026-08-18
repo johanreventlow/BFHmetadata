@@ -107,7 +107,9 @@ lookup_excel_columns <- function(cfg, col_names, fk_sources = list(),
       # diff-matching, men brugeren behøver aldrig se den
       list(type = "hidden", readOnly = TRUE, source = NA)
     } else if (!is.null(m) && identical(m$type, "fk")) {
-      src <- fk_sources[[nm]]
+      # parent_id i sourcen → vis som indrykket trae (depth-first);
+      # flade fk-lister passerer uaendret igennem
+      src <- hierarchy_indent_options(fk_sources[[nm]])
       if (is.null(src) || !is.data.frame(src) || nrow(src) == 0) {
         list(type = "text", readOnly = TRUE, source = NA)
       } else {

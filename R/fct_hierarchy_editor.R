@@ -167,6 +167,18 @@ hierarchy_node_labels <- function(tree_df, cfg) {
   }, "")
 }
 
+#' Foraelder-choices (named vector label -> id) fra et hierarchy_order-
+#' ordnet trae — depth-first med nbsp-indrykning, saa dropdown'en viser
+#' traestrukturen visuelt (samme princip som org_hierarchy_choices).
+#' @noRd
+hierarchy_parent_choices <- function(tree_df, cfg) {
+  depth <- if ("depth" %in% names(tree_df)) tree_df$depth else 0L
+  stats::setNames(
+    tree_df$id,
+    paste0(strrep("  ", depth), hierarchy_node_labels(tree_df, cfg))
+  )
+}
+
 #' Grid-data til excelR fra et hierarchy_order-ordnet trae.
 #'
 #' Kolonner: id (pk, readOnly) + "Struktur" (indrykket label, readOnly —
@@ -207,7 +219,8 @@ hierarchy_excel_data <- function(tree_df, cfg) {
 #' @noRd
 hierarchy_excel_columns <- function(cfg, tree_df, niveauer,
                                     source_df = tree_df) {
-  labels <- hierarchy_node_labels(source_df, cfg)
+  # Indrykkede labels: Foraelder-dropdown'en viser traestrukturen visuelt
+  labels <- names(hierarchy_parent_choices(source_df, cfg))
   unknown_parents <- setdiff(stats::na.omit(source_df$parent_id_raw),
                              source_df$id)
   parent_src <- data.frame(

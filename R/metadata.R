@@ -93,7 +93,9 @@ INDIKATOR_FIELDS <- list(
   list(col="id",                       kind="pk"),
   # aktiv_col: fk_options medtager aktiv-flag → dropdowns kan filtrere
   # inaktive noder ved nyvalg (eksisterende vaerdier bevares med suffix)
-  list(col="indikator_hierarki",       kind="fk", parent="tblIndikatorHierarki", label="hierarki_navn", aktiv_col="aktiv"),
+  # parent_col: dropdown vises som indrykket trae (hierarchy_indent_options)
+  list(col="indikator_hierarki",       kind="fk", parent="tblIndikatorHierarki",
+       label="hierarki_navn", aktiv_col="aktiv", parent_col="parent_id"),
   list(col="indikator_navn",           kind="text"),
   list(col="indikator_navn_teknisk",   kind="text"),
   list(col="kontaktperson",            kind="fk", parent="tblPersoner",          label="fornavn||' '||efternavn"),
@@ -176,8 +178,10 @@ LOOKUP_TABLES <- list(
          list(col = "efternavn", type = "text", label = "Efternavn"),
          list(col = "titel",     type = "text", label = "Titel"),
          list(col = "email",     type = "text", label = "E-mail"),
+         # parent_col: dropdown vises som indrykket org-trae
          list(col = "organisatorisk_enhed", type = "fk", label = "Organisatorisk enhed",
               parent = "tblOrganisationStruktur", parent_pk = "Id",
+              parent_col = "parent_Id",
               label_expr = 'COALESCE("organisatorisk_navn_langt","organisatorisk_navn_teknisk")'))),
   # Oversættelse: navn-fra-data → organisatorisk enhed. Bruges af signal-scan
   # (enhed-varianter); sletning ufarlig (intet refererer til rækkerne).

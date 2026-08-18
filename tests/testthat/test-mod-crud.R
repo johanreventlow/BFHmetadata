@@ -41,7 +41,11 @@ fake_db <- function() {
     list_indikatorer = function() store,
     fk_options = function() {
       list(
-        indikator_hierarki = data.frame(id = 1L, label = "Inf.hyg"),
+        # parent_id: node 2 er rod (datasaet), node 1 barn (samling) —
+        # dropdown'en skal vise trae-orden med indrykning
+        indikator_hierarki = data.frame(
+          id = c(1L, 2L), label = c("Inf.hyg", "Datasaet X"),
+          parent_id = c(2L, NA), stringsAsFactors = FALSE),
         kontaktperson = data.frame(id = 1L, label = "Per Sen"),
         datakilde = data.frame(id = 1L, label = "SP")
       )
@@ -597,5 +601,18 @@ test_that("tekst-aendring der kun ankommer via selektionens fullData gemmes", {
     expect_equal(u[[1]], 1L)
     expect_equal(u[[2]], list(indikator_navn = "Nyt navn"))
     expect_identical(tbl_sel(), "1") # selektionen registreres stadig
+  })
+})
+
+test_that("Hierarki-placering-dropdown viser trae (depth-first + indrykning)", {
+  db <- fake_db()
+  testServer(mod_indikator_crud_server, args = list(db = db), {
+    w <- jsonlite::fromJSON(output$tbl, simplifyVector = FALSE)
+    cols <- w$x$columns
+    titles <- vapply(cols, function(c) c$title, "")
+    src <- cols[[which(titles == "Hierarki-placering")]]$source
+    expect_identical(vapply(src, function(s) s$id, ""), c("2", "1"))
+    expect_identical(vapply(src, function(s) s$name, ""),
+                     c("Datasaet X", paste0(strrep(" ", 2), "Inf.hyg")))
   })
 })

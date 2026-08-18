@@ -70,6 +70,26 @@ org_hierarchy_choices <- function(tree, labels) {
   out
 }
 
+#' Depth-first-ordnede, nbsp-indrykkede dropdown-options fra en options-df
+#' med parent_id (id, label, parent_id + evt. flere kolonner der foelger
+#' med uaendret). Uden parent_id-kolonne (flad fk-liste) returneres opts
+#' uaendret — kaldere behoever ikke skelne. Dybden beregnes paa HELE
+#' settet, saa en senere bortfiltrering (fx inaktive noder) bevarer korrekt
+#' indrykning for resten. Orphans vises fladt som roedder (tabes aldrig).
+#' @noRd
+hierarchy_indent_options <- function(opts) {
+  if (is.null(opts) || !is.data.frame(opts) || nrow(opts) == 0 ||
+      !"parent_id" %in% names(opts)) {
+    return(opts)
+  }
+  opts$label <- as.character(opts$label)
+  ord <- hierarchy_order(opts, "id", "parent_id", sort_col = "label")
+  # Non-breaking spaces: alm. mellemrum kollapses i <option>/dropdown-HTML
+  ord$label <- paste0(strrep("  ", ord$depth), ord$label)
+  ord$depth <- NULL
+  ord
+}
+
 #' Valgt org-enheds id + alle underliggende enheders ids. Uden trae (NULL/
 #' tomt, fx fejlet DB-hentning) degraderer filteret til kun enheden selv.
 #' @noRd
