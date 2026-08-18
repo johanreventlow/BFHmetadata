@@ -80,9 +80,11 @@ mod_lookup_table_server <- function(id, db, cfg) {
       p <- input$tbl
       if (isTRUE(p$forSelectedVals)) {
         sel_pk(excel_selected_pk(p))
-        return()
       }
-      new_df <- excel_payload_to_df(p)
+      # Diff også på selektions-payloads: markør-flytningen efter en
+      # celle-commit overskriver change-eventet i Shinys input-batch
+      # (se excel_event_df) — fullData bærer ændringen.
+      new_df <- excel_event_df(p)
       d <- rows()
       changes <- excel_diff_cells(d, new_df, cfg$pk)
       if (nrow(changes) == 0) {

@@ -767,7 +767,10 @@ mod_indikator_crud_server <- function(id, db) {
     # forSelectedVals skelner. Ændringer diffes mod den VISTE tabel (pk-match)
     # og skrives enkeltvis (update_indikator med KUN det ændrede felt);
     # readOnly-kolonner kan ikke redigeres i grid'et, men diffen guarder
-    # alligevel (klient-manipulation).
+    # alligevel (klient-manipulation). Diffen køres OGSÅ på selektions-
+    # payloads: markør-flytningen efter en celle-commit overskriver
+    # change-eventet i Shinys input-batch (se excel_event_df) — uden diff
+    # her ville tekst-redigeringer først gemmes ved næste checkbox-klik.
     .IND_FK_FIELDS <- c("indikator_hierarki", "kontaktperson", "datakilde")
     .IND_BOOL_FIELDS <- c(
       "aktiv_indikator", "nøgleindikator",
@@ -779,12 +782,11 @@ mod_indikator_crud_server <- function(id, db) {
         # pk læses fra payloadens fullData (grid'ets aktuelle — evt.
         # klient-sorterede — rækkefølge), aldrig fra positionen alene
         tbl_sel(excel_selected_pk(p))
-        return()
       }
       d <- tbl_rows()
       changes <- excel_diff_cells(
         indikator_excel_data(d),
-        excel_payload_to_df(p), "id"
+        excel_event_df(p), "id"
       )
       changes <- changes[changes$col %in% names(.INDIKATOR_GRID_FIELDS), ,
         drop = FALSE

@@ -257,10 +257,12 @@ mod_hierarchy_server <- function(id, db, cfg) {
         # pk fra payloadens fullData (samme mønster som de flade grids)
         pk <- excel_selected_pk(p)
         selected_id(if (is.null(pk)) NULL else as.integer(pk))
-        return()
       }
+      # Diff også på selektions-payloads: markør-flytningen efter en
+      # celle-commit overskriver change-eventet i Shinys input-batch
+      # (se excel_event_df) — fullData bærer ændringen.
       grid <- hierarchy_excel_data(d, cfg)
-      changes <- excel_diff_cells(grid, excel_payload_to_df(p), "id")
+      changes <- excel_diff_cells(grid, excel_event_df(p), "id")
       fm <- hierarchy_grid_fields(cfg)
       changes <- changes[changes$col %in% names(fm), , drop = FALSE]
       for (k in seq_len(nrow(changes))) {

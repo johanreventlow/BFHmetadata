@@ -569,3 +569,33 @@ test_that(".hierarki_src til grid: aktive + brugte inaktive + ukendte id'er", {
   src2 <- .hierarki_src(.ih_opts(), used = c(1L))
   expect_false("3" %in% src2$id)
 })
+
+# Regression: jexcel flytter markøren umiddelbart efter en celle-commit, og
+# selektions-eventet OVERSKRIVER change-eventet i Shinys input-batch (samme
+# input-id, ingen priority:event i excelR's JS). Ændringen ankommer derfor
+# ofte KUN via selektions-payloadens fullData — den skal stadig gemmes.
+.ind_grid_select_full <- function(d, id, column, value, row0 = 0L) {
+  edit <- .ind_grid_edit(d, id, column, value)
+  list(
+    forSelectedVals = TRUE,
+    selectedDataBoundary = list(
+      borderTop = row0, borderBottom = row0,
+      borderLeft = 0, borderRight = 0
+    ),
+    fullData = list(colHeaders = edit$colHeaders, data = edit$data)
+  )
+}
+
+test_that("tekst-aendring der kun ankommer via selektionens fullData gemmes", {
+  db <- fake_db()
+  testServer(mod_indikator_crud_server, args = list(db = db), {
+    session$setInputs(tbl = .ind_grid_select_full(
+      isolate(rows()), 1L, "Navn", "Nyt navn"
+    ))
+    u <- db$.calls()$updated
+    expect_false(is.null(u))
+    expect_equal(u[[1]], 1L)
+    expect_equal(u[[2]], list(indikator_navn = "Nyt navn"))
+    expect_identical(tbl_sel(), "1") # selektionen registreres stadig
+  })
+})

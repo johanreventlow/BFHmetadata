@@ -155,3 +155,20 @@ test_that("excel_diff_cells: ukendt pk-række og NULL-input ignoreres roligt", {
   expect_equal(nrow(excel_diff_cells(old, NULL, "Id")), 0L)
   expect_equal(nrow(excel_diff_cells(NULL, new, "Id")), 0L)
 })
+
+test_that("excel_event_df laeser grid-data fra begge payload-former", {
+  chg <- list(colHeaders = list("id", "Navn"),
+              data = list(list("1", "A")), forSelectedVals = FALSE)
+  sel <- list(forSelectedVals = TRUE,
+              selectedDataBoundary = list(borderTop = 0, borderBottom = 0,
+                                          borderLeft = 0, borderRight = 0),
+              fullData = list(colHeaders = list("id", "Navn"),
+                              data = list(list("1", "B"))))
+  expect_identical(excel_event_df(chg)$Navn, "A")
+  expect_identical(excel_event_df(sel)$Navn, "B")
+  # Selektions-payload uden colHeaders i fullData (test-helpers/aeldre form)
+  # -> NULL, dvs. ingen diff — aldrig fejl
+  expect_null(excel_event_df(list(forSelectedVals = TRUE,
+                                  fullData = list(data = list(list("1"))))))
+  expect_null(excel_event_df(list(forSelectedVals = TRUE)))
+})

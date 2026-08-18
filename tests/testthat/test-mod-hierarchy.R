@@ -327,3 +327,23 @@ test_that("identiske status- og advarselsbeskeder udloeser nye events", {
       expect_identical(warn_event()$nonce, 2L)
     })
 })
+
+test_that("hierarki: aendring der kun ankommer via fullData gemmes", {
+  # Samme excelR-batch-clobbering som indikator-grid'et: markør-flytningen
+  # efter celle-commit overskriver change-eventet — fullData baerer aendringen.
+  db <- fake_hierarchy_db()
+  testServer(mod_hierarchy_server,
+    args = list(db = db, cfg = .hierarchy_cfg()), {
+      edit <- .hierarchy_grid_edit(
+        isolate(tree()), .hierarchy_cfg(), 2L, "Langt navn", "Barn B ny")
+      session$setInputs(tbl = list(
+        forSelectedVals = TRUE,
+        selectedDataBoundary = list(borderTop = 1, borderBottom = 1,
+                                    borderLeft = 0, borderRight = 0),
+        fullData = list(colHeaders = edit$colHeaders, data = edit$data)))
+      upd <- tail(db$.calls()$updates, 1)[[1]]
+      expect_identical(upd$id, 2L)
+      expect_identical(upd$values$organisatorisk_navn_langt, "Barn B ny")
+      expect_identical(selected_id(), 2L)   # selektionen registreres stadig
+    })
+})

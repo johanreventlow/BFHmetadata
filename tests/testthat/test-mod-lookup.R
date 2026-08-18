@@ -217,3 +217,20 @@ test_that("fk-kolonne renderes som dropdown med {id, name}-source", {
     expect_equal(fk_col$source[[3]]$name, "E30")
   })
 })
+
+test_that("lookup: aendring der kun ankommer via selektionens fullData gemmes", {
+  db <- fake_lookup_db()
+  testServer(mod_lookup_table_server, args = list(db = db, cfg = cfg_test), {
+    session$setInputs(tbl = list(
+      forSelectedVals = TRUE,
+      selectedDataBoundary = list(borderTop = 0, borderBottom = 0,
+                                  borderLeft = 0, borderRight = 0),
+      fullData = list(colHeaders = list("Id", "navn", "niveau"),
+                      data = list(list(1, "A aendret", 1), list(2, "B", 2)))))
+    u <- db$.calls()$updated
+    expect_false(is.null(u))
+    expect_equal(u$col, "navn")
+    expect_equal(u$value, "A aendret")
+    expect_equal(u$pk, 1L)
+  })
+})

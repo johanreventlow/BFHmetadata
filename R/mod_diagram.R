@@ -332,11 +332,13 @@ mod_diagram_server <- function(id, db) {
       if (isTRUE(p$forSelectedVals)) {
         # pk fra payloadens fullData — robust under klient-side sortering
         grid_sel(excel_selected_pk(p))
-        return()
       }
+      # Diff også på selektions-payloads: markør-flytningen efter en
+      # celle-commit overskriver change-eventet i Shinys input-batch
+      # (se excel_event_df) — fullData bærer ændringen.
       d <- filtered()
       changes <- excel_diff_cells(diagram_excel_data(d),
-                                  excel_payload_to_df(p), "diagram_id")
+                                  excel_event_df(p), "diagram_id")
       changes <- changes[changes$col %in% names(.DIAGRAM_GRID_FIELDS), ,
                          drop = FALSE]
       if (nrow(changes) == 0) {

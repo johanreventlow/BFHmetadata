@@ -105,6 +105,14 @@
   medians_by_diagram) med fallback til per-diagram ved fejl.
 
 ## Bug fixes
+* Inline-redigeringer i grid'ene (Indikatorer, Indikator-hierarki,
+  Organisation, opslagstabeller, Diagrammer) gik tabt, medmindre man
+  bagefter klikkede i en checkbox: excelR sender celle-ændringer og
+  selektioner på samme Shiny-input uden event-prioritet, og jexcels
+  markør-flytning umiddelbart efter en celle-commit overskrev
+  ændrings-payloaden i Shinys input-batch. Serveren diffar nu også
+  selektions-payloadens fullData (som bærer hele grid'ets indhold), så
+  den overskrevne ændring altid gemmes alligevel.
 * Datapakke- og Datasæt-filtrene blandede niveauerne sammen: "Datapakke" og
   "Datasæt" blev udledt som "noden FK'en peger på + dens forælder", men
   indikatorerne peger på blandede niveauer (94 % på Indikatorsamling-noder),

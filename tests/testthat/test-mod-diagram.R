@@ -491,3 +491,20 @@ test_that(".collect_diagram_form koercer typer og tomme til NA", {
   expect_false(vals$direktionens_tavle)
   expect_identical(names(vals), DIAGRAM_COLS)
 })
+
+test_that("diagram: aendring der kun ankommer via fullData gemmes", {
+  db <- fake_diagram_db()
+  testServer(mod_diagram_server, args = list(db = db), {
+    session$setInputs(filter_status = "alle")
+    edit <- diagram_grid_edit(isolate(filtered()), 1L, "Periode", "uge")
+    session$setInputs(tbl = list(
+      forSelectedVals = TRUE,
+      selectedDataBoundary = list(borderTop = 0, borderBottom = 0,
+                                  borderLeft = 0, borderRight = 0),
+      fullData = list(colHeaders = edit$colHeaders, data = edit$data)))
+    u <- db$.calls()$updated
+    expect_false(is.null(u))
+    expect_identical(u$id, 1L)
+    expect_identical(u$values$periode_aggregering, "uge")
+  })
+})

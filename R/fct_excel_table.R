@@ -184,6 +184,27 @@ excel_payload_to_df <- function(payload) {
   df
 }
 
+#' Grid'ets fulde indhold fra ET excelR-event — uanset payload-form.
+#'
+#' excelR's JS sender baade onchange- og onselection-payloads paa SAMME
+#' Shiny-input UDEN priority:"event". Naar en celle-commit straks foelges af
+#' en markoer-flytning (Enter/klik — jexcel kalder begge i samme JS-task),
+#' OVERSKRIVER selektions-payloaden aendrings-payloaden i Shinys input-batch,
+#' og serveren ser aldrig aendringen. Selektions-payloadens fullData baerer
+#' dog hele grid'ets aktuelle indhold — saa diff'es der ogsaa paa
+#' selektions-events (via denne helper), reddes den klobrede aendring.
+#'
+#' @return data.frame som excel_payload_to_df, eller NULL (payload uden
+#'   colHeaders, fx aeldre/partielle fullData-former → ingen diff)
+#' @noRd
+excel_event_df <- function(p) {
+  if (isTRUE(p$forSelectedVals)) {
+    excel_payload_to_df(p$fullData)
+  } else {
+    excel_payload_to_df(p)
+  }
+}
+
 #' pk-værdien for den valgte række i et excelR onSelection-payload.
 #'
 #' Læses fra payloadens fullData — grid'ets AKTUELLE rækkefølge — og IKKE
