@@ -1,31 +1,46 @@
 test_that("lookup-byggere bruger pk-kolonne (Id) korrekt parametriseret", {
-  expect_match(build_lookup_list_sql("tblFaggrupper", "Id"),
-    'SELECT \\* FROM "tblFaggrupper" ORDER BY "Id"')
-  expect_match(build_lookup_update_sql("tblFaggrupper", "Id", "faggruppe"),
-    'UPDATE "tblFaggrupper" SET "faggruppe" = \\$1 WHERE "Id" = \\$2')
-  expect_no_match(build_lookup_update_sql("tblFaggrupper", "Id", "faggruppe"),
-    'WHERE "id"')   # MÅ ej bruge lille-bogstav id
-  expect_match(build_lookup_insert_sql("tblFaggrupper", "Id"),
-    'INSERT INTO "tblFaggrupper" DEFAULT VALUES RETURNING "Id"')
-  expect_match(build_lookup_delete_sql("tblFaggrupper", "Id"),
-    'DELETE FROM "tblFaggrupper" WHERE "Id" = \\$1')
-  expect_match(build_lookup_refcount_sql("tblIndikatorer", "datakilde"),
-    'FROM "tblIndikatorer" WHERE "datakilde" = \\$1')
+  expect_match(
+    build_lookup_list_sql("tblFaggrupper", "Id"),
+    'SELECT \\* FROM "tblFaggrupper" ORDER BY "Id"'
+  )
+  expect_match(
+    build_lookup_update_sql("tblFaggrupper", "Id", "faggruppe"),
+    'UPDATE "tblFaggrupper" SET "faggruppe" = \\$1 WHERE "Id" = \\$2'
+  )
+  expect_no_match(
+    build_lookup_update_sql("tblFaggrupper", "Id", "faggruppe"),
+    'WHERE "id"'
+  ) # MÅ ej bruge lille-bogstav id
+  expect_match(
+    build_lookup_insert_sql("tblFaggrupper", "Id"),
+    'INSERT INTO "tblFaggrupper" DEFAULT VALUES RETURNING "Id"'
+  )
+  expect_match(
+    build_lookup_delete_sql("tblFaggrupper", "Id"),
+    'DELETE FROM "tblFaggrupper" WHERE "Id" = \\$1'
+  )
+  expect_match(
+    build_lookup_refcount_sql("tblIndikatorer", "datakilde"),
+    'FROM "tblIndikatorer" WHERE "datakilde" = \\$1'
+  )
 })
 
 test_that("LOOKUP_TABLES har pk=Id + datakilder-refcheck + personer-fk", {
   expect_gte(length(LOOKUP_TABLES), 7)
   for (cfg in LOOKUP_TABLES) {
     expect_true(all(c("id", "table", "pk", "label", "cols") %in% names(cfg)),
-                info = cfg$id)
+      info = cfg$id
+    )
     expect_equal(cfg$pk, "Id")
     expect_true(length(cfg$cols) >= 1)
     for (c in cfg$cols) {
       expect_true(all(c("col", "type", "label") %in% names(c)),
-                  info = paste(cfg$id, c$col))
+        info = paste(cfg$id, c$col)
+      )
       if (identical(c$type, "fk")) {
         expect_true(all(c("parent", "parent_pk", "label_expr") %in% names(c)),
-                    info = paste(cfg$id, c$col))
+          info = paste(cfg$id, c$col)
+        )
       }
     }
   }
@@ -90,22 +105,28 @@ test_that("INDIKATOR_JUNCTIONS har 3 relationer med påkrævede felter", {
 
 test_that("junction-byggere bygger parametriseret SQL", {
   j <- INDIKATOR_JUNCTIONS$faggrupper
-  expect_match(build_junction_select_sql(j),
-    'SELECT "faggruppe_id" FROM "tblForbindIndikatorerFaggrupper" WHERE "indikator_id" = \\$1')
-  expect_match(build_junction_delete_sql(j),
-    'DELETE FROM "tblForbindIndikatorerFaggrupper" WHERE "indikator_id" = \\$1')
+  expect_match(
+    build_junction_select_sql(j),
+    'SELECT "faggruppe_id" FROM "tblForbindIndikatorerFaggrupper" WHERE "indikator_id" = \\$1'
+  )
+  expect_match(
+    build_junction_delete_sql(j),
+    'DELETE FROM "tblForbindIndikatorerFaggrupper" WHERE "indikator_id" = \\$1'
+  )
   # 2 parent-ids → $1 (indikator) genbrugt, $2+$3 = parents
   ins <- build_junction_insert_sql(j, 2)
   expect_match(ins, 'INSERT INTO "tblForbindIndikatorerFaggrupper" \\("indikator_id", "faggruppe_id"\\)')
-  expect_match(ins, 'VALUES \\(\\$1, \\$2\\), \\(\\$1, \\$3\\)')
+  expect_match(ins, "VALUES \\(\\$1, \\$2\\), \\(\\$1, \\$3\\)")
   opt <- build_junction_options_sql(j)
   expect_match(opt, '"Id" AS id')
   expect_match(opt, 'FROM "tblFaggrupper"')
 })
 
 test_that("organisation-options bruger COALESCE-label", {
-  expect_match(build_junction_options_sql(INDIKATOR_JUNCTIONS$organisation),
-    "COALESCE")
+  expect_match(
+    build_junction_options_sql(INDIKATOR_JUNCTIONS$organisation),
+    "COALESCE"
+  )
 })
 
 test_that("build_diagram_index_sql joiner indikator/hierarki/datapakke/org + org-niveauer", {
@@ -116,7 +137,7 @@ test_that("build_diagram_index_sql joiner indikator/hierarki/datapakke/org + org
   expect_match(sql, '"tblIndikatorer"')
   expect_match(sql, '"tblIndikatorHierarki"')
   expect_match(sql, '"tblOrganisationStruktur"')
-  expect_match(sql, "datapakke")       # forælder-hierarki
+  expect_match(sql, "datapakke") # forælder-hierarki
   expect_match(sql, "datasaet")
   expect_match(sql, "indikator_navn_teknisk")
   # Perioden STYRER signalberegningen (aggregering før signal) — uden den
@@ -130,15 +151,23 @@ test_that("build_diagram_index_sql joiner indikator/hierarki/datapakke/org + org
 })
 
 test_that("median SQL-byggere er parametriserede", {
-  expect_match(build_median_list_sql(),
-    'FROM "tblDiagrammerMedian" WHERE "diagram" = \\$1')
+  expect_match(
+    build_median_list_sql(),
+    'FROM "tblDiagrammerMedian" WHERE "diagram" = \\$1'
+  )
   # aggregering gemmes med: uden den kan et knæk ikke valideres senere
   # (samme dato = forskellig fase-position ved forskellig periode)
-  expect_match(build_median_insert_sql(),
-    paste0('INSERT INTO "tblDiagrammerMedian" \\("diagram", "laas_median", ',
-           '"aggregering"\\) VALUES \\(\\$1, \\$2, \\$3\\) RETURNING "id"'))
-  expect_match(build_median_delete_sql(),
-    'DELETE FROM "tblDiagrammerMedian" WHERE "id" = \\$1')
+  expect_match(
+    build_median_insert_sql(),
+    paste0(
+      'INSERT INTO "tblDiagrammerMedian" \\("diagram", "laas_median", ',
+      '"aggregering"\\) VALUES \\(\\$1, \\$2, \\$3\\) RETURNING "id"'
+    )
+  )
+  expect_match(
+    build_median_delete_sql(),
+    'DELETE FROM "tblDiagrammerMedian" WHERE "id" = \\$1'
+  )
 })
 
 test_that("build_median_batch_sql henter medians for MANGE diagrammer i ét kald", {
@@ -150,12 +179,12 @@ test_that("build_median_batch_sql henter medians for MANGE diagrammer i ét kald
   # N gange", og hvert kald fik så ét nøgent tal til en array-parameter
   # ("malformed array literal: 1727", set i produktion).
   expect_match(sql, 'WHERE "diagram" = ANY\\(\\$1::int\\[\\]\\)', fixed = FALSE)
-  expect_match(sql, 'ORDER BY')
+  expect_match(sql, "ORDER BY")
 })
 
 test_that("pg_int_array: R-vektor → Postgres array-literal", {
   expect_equal(pg_int_array(c(1L, 2L, 3L)), "{1,2,3}")
-  expect_equal(pg_int_array(1727L), "{1727}")        # ét element virker også
+  expect_equal(pg_int_array(1727L), "{1727}") # ét element virker også
   expect_equal(pg_int_array(integer(0)), "{}")
   # Ikke-heltal og NA må aldrig ende i literalen (SQL-sikkerhed + gyldighed)
   expect_equal(pg_int_array(c(1L, NA, 2L)), "{1,2}")
@@ -170,9 +199,9 @@ test_that("build_org_enhed_variants_sql joiner org + oversaettelse på int-FK", 
   # ov."organisatorisk_navn_teknisk" er INTEGER FK til tblOrganisationStruktur."Id"
   # (trods det forvirrende kolonnenavn) → joines på o."Id", ikke på et strengnavn.
   expect_match(sql, 'ov\\."organisatorisk_navn_teknisk" = o\\."Id"')
-  expect_match(sql, 'organisatorisk_navn_fra_data')
-  expect_match(sql, 'organisatorisk_navn_kort')
-  expect_match(sql, 'LEFT JOIN')   # org uden oversaettelse bevares
+  expect_match(sql, "organisatorisk_navn_fra_data")
+  expect_match(sql, "organisatorisk_navn_kort")
+  expect_match(sql, "LEFT JOIN") # org uden oversaettelse bevares
 })
 
 # --- Diagram-CRUD (Fase B) ---------------------------------------------------
@@ -184,7 +213,7 @@ test_that("build_diagram_admin_sql joiner labels og har intet aktiv-filter", {
   expect_match(sql, '"tblOrganisationStruktur"', fixed = TRUE)
   expect_match(sql, '"tblDiagramTyper"', fixed = TRUE)
   expect_match(sql, '"periode_aggregering"', fixed = TRUE)
-  expect_no_match(sql, "diagram_aktivt\\s*(=|AND)")  # admin ser ALT
+  expect_no_match(sql, "diagram_aktivt\\s*(=|AND)") # admin ser ALT
   expect_no_match(sql, 'WHERE d\\."diagram_type"')
 })
 
@@ -198,24 +227,26 @@ test_that("build_diagram_admin_sql joiner hierarki (datasaet/datapakke)", {
 test_that("build_diagram_insert_sql parametriserer alle kolonner + RETURNING", {
   sql <- build_diagram_insert_sql()
   for (col in DIAGRAM_COLS) expect_match(sql, sprintf('"%s"', col), fixed = TRUE)
-  expect_match(sql, "\\$7")           # 7 kolonner -> $1..$7
+  expect_match(sql, "\\$7") # 7 kolonner -> $1..$7
   expect_match(sql, 'RETURNING "id"', fixed = TRUE)
 })
 
 test_that("build_diagram_update_sql saetter alle kolonner, id sidst", {
   sql <- build_diagram_update_sql()
   expect_match(sql, 'UPDATE "tblDiagrammer" SET', fixed = TRUE)
-  expect_match(sql, '"id" = \\$8')    # 7 kolonner + id
+  expect_match(sql, '"id" = \\$8') # 7 kolonner + id
 })
 
 test_that("build_diagram_delete_sql og duplicate/periode-byggere", {
-  expect_identical(build_diagram_delete_sql(),
-                   'DELETE FROM "tblDiagrammer" WHERE "id" = $1')
+  expect_identical(
+    build_diagram_delete_sql(),
+    'DELETE FROM "tblDiagrammer" WHERE "id" = $1'
+  )
   dup <- build_diagram_duplicate_sql()
   expect_match(dup, '"indikator" = \\$1')
   expect_match(dup, '"organisatorisk_navn_teknisk" = \\$2')
   expect_match(dup, '"diagram_type" = \\$3')
-  expect_match(dup, '"id" <> \\$4')   # ekskludér egen række ved update
+  expect_match(dup, '"id" <> \\$4') # ekskludér egen række ved update
   per <- build_diagram_periode_sql()
   expect_match(per, "DISTINCT", fixed = TRUE)
   expect_match(per, "IS NOT NULL", fixed = TRUE)
@@ -233,22 +264,26 @@ test_that("build_hierarchy_list_sql normaliserer aliaser og joiner niveau", {
   expect_match(sql, '"tblOrganisationNiveauer"', fixed = TRUE)
   expect_match(sql, "AS niveau_num")
   expect_match(sql, "AS niveau_navn")
-  expect_match(sql, "LEFT JOIN")     # noder uden niveau bevares
+  expect_match(sql, "LEFT JOIN") # noder uden niveau bevares
 })
 
 test_that("hierarchy insert/update/delete parametriserer alle edit-kolonner", {
   cfg <- HIERARCHY_TABLES$org_struktur
-  cols <- hierarchy_edit_cols(cfg)   # 3 felter + parent + niveau = 5
+  cols <- hierarchy_edit_cols(cfg) # 3 felter + parent + niveau = 5
   expect_length(cols, 5)
   ins <- build_hierarchy_insert_sql(cfg)
   for (col in cols) expect_match(ins, sprintf('"%s"', col), fixed = TRUE)
   expect_match(ins, 'RETURNING "Id"', fixed = TRUE)
   upd <- build_hierarchy_update_sql(cfg)
-  expect_match(upd, '"Id" = \\$6')   # 5 kolonner + id
-  expect_identical(build_hierarchy_delete_sql(cfg),
-    'DELETE FROM "tblOrganisationStruktur" WHERE "Id" = $1')
-  expect_identical(build_hierarchy_child_count_sql(cfg),
-    'SELECT count(*) AS n FROM "tblOrganisationStruktur" WHERE "parent_Id" = $1')
+  expect_match(upd, '"Id" = \\$6') # 5 kolonner + id
+  expect_identical(
+    build_hierarchy_delete_sql(cfg),
+    'DELETE FROM "tblOrganisationStruktur" WHERE "Id" = $1'
+  )
+  expect_identical(
+    build_hierarchy_child_count_sql(cfg),
+    'SELECT count(*) AS n FROM "tblOrganisationStruktur" WHERE "parent_Id" = $1'
+  )
 })
 
 test_that("hierarki-SQL for indikator_hierarki medtager aktiv-kolonnen", {
@@ -258,19 +293,23 @@ test_that("hierarki-SQL for indikator_hierarki medtager aktiv-kolonnen", {
   expect_match(sql, 'h."parent_id" AS parent_id_raw', fixed = TRUE)
   expect_match(sql, 'h."aktiv" AS aktiv', fixed = TRUE)
   expect_match(sql, '"tblIndikatorNiveauer"', fixed = TRUE)
-  cols <- hierarchy_edit_cols(cfg)   # 5 felter + parent + niveau + aktiv = 8
+  cols <- hierarchy_edit_cols(cfg) # 5 felter + parent + niveau + aktiv = 8
   expect_length(cols, 8)
   ins <- build_hierarchy_insert_sql(cfg)
   for (col in cols) expect_match(ins, sprintf('"%s"', col), fixed = TRUE)
   upd <- build_hierarchy_update_sql(cfg)
-  expect_match(upd, '"Id" = \\$9')   # 8 kolonner + id
-  expect_identical(build_hierarchy_child_count_sql(cfg),
-    'SELECT count(*) AS n FROM "tblIndikatorHierarki" WHERE "parent_id" = $1')
+  expect_match(upd, '"Id" = \\$9') # 8 kolonner + id
+  expect_identical(
+    build_hierarchy_child_count_sql(cfg),
+    'SELECT count(*) AS n FROM "tblIndikatorHierarki" WHERE "parent_id" = $1'
+  )
 })
 
 test_that("build_fk_options_aktiv_sql medtager aktiv-kolonnen", {
-  sql <- build_fk_options_aktiv_sql("tblIndikatorHierarki",
-                                    '"hierarki_navn"', "aktiv")
+  sql <- build_fk_options_aktiv_sql(
+    "tblIndikatorHierarki",
+    '"hierarki_navn"', "aktiv"
+  )
   expect_match(sql, '"Id" AS id', fixed = TRUE)
   expect_match(sql, '("hierarki_navn") AS label', fixed = TRUE)
   expect_match(sql, '"aktiv" AS aktiv', fixed = TRUE)
@@ -292,5 +331,5 @@ test_that("build_aggregation_flags_sql henter flag pr. diagram-raekke UDEN aktiv
   expect_match(s, '"organisatorisk_navn_teknisk" AS org_id', fixed = TRUE)
   expect_match(s, '"indikator" AS indikator_id', fixed = TRUE)
   expect_match(s, '"indgaar_i_aggregering" AS indgaar', fixed = TRUE)
-  expect_no_match(s, "diagram_aktivt")   # BFHddl laeser flag med active_only=FALSE
+  expect_no_match(s, "diagram_aktivt") # BFHddl laeser flag med active_only=FALSE
 })

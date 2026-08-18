@@ -1,45 +1,67 @@
 selected_option_value <- function(tag) {
   html <- htmltools::renderTags(tag)$html
   option <- regmatches(html, regexpr(
-    '<option[^>]* selected(?:="selected")?[^>]*>', html, perl = TRUE))
-  sub('.*value="([^"]*)".*', '\\1', option)
+    '<option[^>]* selected(?:="selected")?[^>]*>', html,
+    perl = TRUE
+  ))
+  sub('.*value="([^"]*)".*', "\\1", option)
 }
 
 fake_db <- function() {
-  store <- data.frame(id = 1L, indikator_navn = "A",
-                      indikator_navn_teknisk = "a",
-                      aktiv_indikator = TRUE, nøgleindikator = FALSE,
-                      nulfyld_tomme_perioder = FALSE,
-                      indikator_hierarki = 1L, kontaktperson = 1L, datakilde = 1L,
-                      mål = NA_character_, ønsket_tendens = NA_character_,
-                      direkte_link = NA_character_,
-                      label_datapakke = "Pakke A",
-                      label_indikator_hierarki = "Inf.hyg",
-                      output_enhed = "pct",  # legacy-fritekst (ej kanonisk)
-                      stringsAsFactors = FALSE)
-  calls <- list(created = NULL, updated = NULL, deleted = NULL, junction = list(),
-                diagram_created = NULL, diagram_updated = NULL)
+  store <- data.frame(
+    id = 1L, indikator_navn = "A",
+    indikator_navn_teknisk = "a",
+    aktiv_indikator = TRUE, nøgleindikator = FALSE,
+    nulfyld_tomme_perioder = FALSE,
+    indikator_hierarki = 1L, kontaktperson = 1L, datakilde = 1L,
+    mål = NA_character_, ønsket_tendens = NA_character_,
+    direkte_link = NA_character_,
+    label_datapakke = "Pakke A",
+    label_indikator_hierarki = "Inf.hyg",
+    output_enhed = "pct", # legacy-fritekst (ej kanonisk)
+    stringsAsFactors = FALSE
+  )
+  calls <- list(
+    created = NULL, updated = NULL, deleted = NULL, junction = list(),
+    diagram_created = NULL, diagram_updated = NULL
+  )
   diagrams <- data.frame(
     diagram_id = 7L, indikator = 1L, organisatorisk_navn_teknisk = 20L,
     diagram_type = 1L, periode_aggregering = "måned",
     indgaar_i_aggregering = TRUE, diagram_aktivt = TRUE,
     direktionens_tavle = FALSE, indikator_navn = "A", org_navn = "Kirurgi",
-    type_navn = "Seriediagram", stringsAsFactors = FALSE)
-  jstore <- list(faggrupper = c(1L, 2L), dataprodukter = integer(0),
-                 organisation = integer(0))
+    type_navn = "Seriediagram", stringsAsFactors = FALSE
+  )
+  jstore <- list(
+    faggrupper = c(1L, 2L), dataprodukter = integer(0),
+    organisation = integer(0)
+  )
   list(
     list_indikatorer = function() store,
-    fk_options = function() list(
-      indikator_hierarki = data.frame(id = 1L, label = "Inf.hyg"),
-      kontaktperson = data.frame(id = 1L, label = "Per Sen"),
-      datakilde = data.frame(id = 1L, label = "SP")),
-    create_indikator = function(values) { calls$created <<- values; 99L },
-    update_indikator = function(id, values) { calls$updated <<- list(id, values); 1L },
-    soft_delete = function(id, active = FALSE) { calls$deleted <<- list(id, active); 1L },
+    fk_options = function() {
+      list(
+        indikator_hierarki = data.frame(id = 1L, label = "Inf.hyg"),
+        kontaktperson = data.frame(id = 1L, label = "Per Sen"),
+        datakilde = data.frame(id = 1L, label = "SP")
+      )
+    },
+    create_indikator = function(values) {
+      calls$created <<- values
+      99L
+    },
+    update_indikator = function(id, values) {
+      calls$updated <<- list(id, values)
+      1L
+    },
+    soft_delete = function(id, active = FALSE) {
+      calls$deleted <<- list(id, active)
+      1L
+    },
     get_junction = function(indikator_id, key) jstore[[key]],
     junction_options = function(key) data.frame(id = c(1L, 2L), label = c("X", "Y")),
     set_junction = function(indikator_id, key, parent_ids) {
-      calls$junction[[key]] <<- parent_ids; invisible(TRUE)
+      calls$junction[[key]] <<- parent_ids
+      invisible(TRUE)
     },
     save_indikator = function(id, values, picks) {
       calls$updated <<- list(id, values)
@@ -47,19 +69,27 @@ fake_db <- function() {
       invisible(TRUE)
     },
     create_indikator_full = function(values, picks) {
-      calls$created <<- list(values, picks); 99L
+      calls$created <<- list(values, picks)
+      99L
     },
     # Diagram-accessors (bruges af Diagrammer-sektionen i modalen)
     list_diagrams_admin = function() diagrams,
-    diagram_form_options = function() list(
-      indikator = data.frame(id = 1L, label = "A"),
-      org = data.frame(id = 20L, label = "Kirurgi"),
-      type = data.frame(id = 1L, label = "Seriediagram")),
+    diagram_form_options = function() {
+      list(
+        indikator = data.frame(id = 1L, label = "A"),
+        org = data.frame(id = 20L, label = "Kirurgi"),
+        type = data.frame(id = 1L, label = "Seriediagram")
+      )
+    },
     diagram_periode_choices = function() c("måned", "uge"),
     diagram_duplicate_count = function(indikator, org, type, exclude_id = -1L) 0L,
-    create_diagram = function(values) { calls$diagram_created <<- values; 88L },
+    create_diagram = function(values) {
+      calls$diagram_created <<- values
+      88L
+    },
     update_diagram = function(id, values) {
-      calls$diagram_updated <<- list(id = id, values = values); 1L
+      calls$diagram_updated <<- list(id = id, values = values)
+      1L
     },
     .calls = function() calls
   )
@@ -75,26 +105,28 @@ test_that("modul indlæser data ved start", {
 test_that("indikator-grid: skjult pk, checkbokse, FK-dropdowns, låst kontekst", {
   db <- fake_db()
   testServer(mod_indikator_crud_server,
-    args = list(id = "indik", db = db), {
-    w <- jsonlite::fromJSON(output$tbl, simplifyVector = FALSE)
-    cols <- w$x$columns
-    titles <- vapply(cols, function(c) c$title, "")
-    ro <- vapply(cols, function(c) isTRUE(c$readOnly), logical(1))
-    types <- vapply(cols, function(c) c$type, "")
-    expect_equal(types[titles == "id"], "hidden")        # pk aldrig synlig
-    expect_equal(types[titles == "Aktiv"], "checkbox")
-    expect_equal(types[titles == "Nøgle"], "checkbox")
-    expect_equal(types[titles == "Nulfyld"], "checkbox") # BFHddl-opt-in-flag
-    expect_equal(types[titles == "Datasæt"], "dropdown")
-    expect_true(isTRUE(cols[[which(titles == "Datasæt")]]$autocomplete))
-    expect_equal(types[titles == "Kontaktperson"], "dropdown")
-    expect_equal(types[titles == "Datakilde"], "dropdown")
-    expect_true(ro[titles == "Datapakke"])               # kontekst låst
-    expect_true(ro[titles == "Indikator-id"])
-    expect_false(ro[titles == "Navn"])
-    expect_false(isTRUE(w$x$autoWidth))
-    expect_false(isTRUE(w$x$allowInsertRow))
-  })
+    args = list(id = "indik", db = db),
+    {
+      w <- jsonlite::fromJSON(output$tbl, simplifyVector = FALSE)
+      cols <- w$x$columns
+      titles <- vapply(cols, function(c) c$title, "")
+      ro <- vapply(cols, function(c) isTRUE(c$readOnly), logical(1))
+      types <- vapply(cols, function(c) c$type, "")
+      expect_equal(types[titles == "id"], "hidden") # pk aldrig synlig
+      expect_equal(types[titles == "Aktiv"], "checkbox")
+      expect_equal(types[titles == "Nøgle"], "checkbox")
+      expect_equal(types[titles == "Nulfyld"], "checkbox") # BFHddl-opt-in-flag
+      expect_equal(types[titles == "Datasæt"], "dropdown")
+      expect_true(isTRUE(cols[[which(titles == "Datasæt")]]$autocomplete))
+      expect_equal(types[titles == "Kontaktperson"], "dropdown")
+      expect_equal(types[titles == "Datakilde"], "dropdown")
+      expect_true(ro[titles == "Datapakke"]) # kontekst låst
+      expect_true(ro[titles == "Indikator-id"])
+      expect_false(ro[titles == "Navn"])
+      expect_false(isTRUE(w$x$autoWidth))
+      expect_false(isTRUE(w$x$allowInsertRow))
+    }
+  )
 })
 
 test_that("dynamiske oversigtsfiltre bevarer kun gyldige valg", {
@@ -106,7 +138,8 @@ test_that("dynamiske oversigtsfiltre bevarer kun gyldige valg", {
     kontaktperson = c(1L, 1L), datakilde = c(1L, 1L),
     label_datapakke = c("Pakke A", "Pakke B"),
     label_indikator_hierarki = c("Datasæt A", "Datasæt B"),
-    stringsAsFactors = FALSE)
+    stringsAsFactors = FALSE
+  )
   db$list_indikatorer <- function() initial_rows
 
   testServer(mod_indikator_crud_server, args = list(db = db), {
@@ -128,10 +161,14 @@ test_that("dynamiske oversigtsfiltre bevarer kun gyldige valg", {
 # excelR-selektion: borderTop er 0-baseret række; fullData bærer grid'ets
 # aktuelle rækkefølge (pk i første kolonne)
 .tbl_select <- function(row0, pks = "1") {
-  list(forSelectedVals = TRUE,
-       selectedDataBoundary = list(borderTop = row0, borderBottom = row0,
-                                   borderLeft = 0, borderRight = 0),
-       fullData = list(data = lapply(pks, function(p) list(p))))
+  list(
+    forSelectedVals = TRUE,
+    selectedDataBoundary = list(
+      borderTop = row0, borderBottom = row0,
+      borderLeft = 0, borderRight = 0
+    ),
+    fullData = list(data = lapply(pks, function(p) list(p)))
+  )
 }
 
 # excelR onChange-payload: bygget fra den ægte grid-data-helper med én
@@ -146,7 +183,8 @@ test_that("dynamiske oversigtsfiltre bevarer kun gyldige valg", {
         if (length(v) == 1 && is.na(v)) NULL else if (is.logical(v)) v else as.character(v)
       })
     }),
-    forSelectedVals = FALSE)
+    forSelectedVals = FALSE
+  )
 }
 
 test_that("inline-tømt Navn afvises uden update (obligatorisk)", {
@@ -161,7 +199,7 @@ test_that("inline-tømt Navn afvises uden update (obligatorisk)", {
 test_that("soft_delete kalder db.soft_delete med active=FALSE", {
   db <- fake_db()
   testServer(mod_indikator_crud_server, args = list(db = db), {
-    session$setInputs(tbl = .tbl_select(0))   # selektion FØR knap (egen flush)
+    session$setInputs(tbl = .tbl_select(0)) # selektion FØR knap (egen flush)
     session$setInputs(soft_delete = 1)
     expect_equal(db$.calls()$deleted[[2]], FALSE)
   })
@@ -173,7 +211,7 @@ test_that("inline-edit på tekstfelt diffes og kalder update med korrekt id", {
     session$setInputs(tbl = .ind_grid_edit(isolate(rows()), 1L, "Navn", "Nyt navn"))
     u <- db$.calls()$updated
     expect_false(is.null(u))
-    expect_equal(u[[1]], 1L)                       # rid fra pk-match
+    expect_equal(u[[1]], 1L) # rid fra pk-match
     expect_equal(u[[2]], list(indikator_navn = "Nyt navn"))
   })
 })
@@ -191,18 +229,23 @@ test_that("inline checkbox-ændring gemmer logical", {
 
 test_that("inline FK-dropdown gemmer integer parent-id; tømt afvises", {
   db <- fake_db()
-  db$fk_options <- function() list(
-    indikator_hierarki = data.frame(id = c(1L, 2L), label = c("Inf.hyg", "Andet")),
-    kontaktperson = data.frame(id = 1L, label = "Per Sen"),
-    datakilde = data.frame(id = 1L, label = "SP"))
+  db$fk_options <- function() {
+    list(
+      indikator_hierarki = data.frame(id = c(1L, 2L), label = c("Inf.hyg", "Andet")),
+      kontaktperson = data.frame(id = 1L, label = "Per Sen"),
+      datakilde = data.frame(id = 1L, label = "SP")
+    )
+  }
   testServer(mod_indikator_crud_server, args = list(db = db), {
     session$setInputs(tbl = .ind_grid_edit(isolate(rows()), 1L, "Datasæt", "2"))
     u <- db$.calls()$updated
     expect_equal(u[[2]], list(indikator_hierarki = 2L))
     session$setInputs(tbl = .ind_grid_edit(isolate(rows()), 1L, "Datasæt", NULL))
     expect_match(status_msg(), "Vælg en værdi")
-    expect_equal(db$.calls()$updated[[2]],
-                 list(indikator_hierarki = 2L))    # ingen NY update
+    expect_equal(
+      db$.calls()$updated[[2]],
+      list(indikator_hierarki = 2L)
+    ) # ingen NY update
   })
 })
 
@@ -217,15 +260,17 @@ test_that("output_enhed er dropdown med kanoniske værdier + bevaret legacy", {
     names_in_src <- vapply(oe$source, function(s) s$name, "")
     expect_true(all(OUTPUT_ENHED_CHOICES %in% names_in_src))
     expect_true("(ingen)" %in% names_in_src)
-    expect_true("pct" %in% names_in_src)   # legacy-værdi tabes ikke
+    expect_true("pct" %in% names_in_src) # legacy-værdi tabes ikke
   })
 })
 
 test_that("inline-valg af output_enhed kalder update med kanonisk værdi", {
   db <- fake_db()
   testServer(mod_indikator_crud_server, args = list(db = db), {
-    session$setInputs(tbl = .ind_grid_edit(isolate(rows()), 1L,
-                                           "Output-enhed", "Procent"))
+    session$setInputs(tbl = .ind_grid_edit(
+      isolate(rows()), 1L,
+      "Output-enhed", "Procent"
+    ))
     u <- db$.calls()$updated
     expect_false(is.null(u))
     expect_equal(u[[1]], 1L)
@@ -236,15 +281,19 @@ test_that("inline-valg af output_enhed kalder update med kanonisk værdi", {
 test_that("inline-edit på readOnly kolonne ignoreres (klient-manipulation)", {
   db <- fake_db()
   testServer(mod_indikator_crud_server, args = list(db = db), {
-    session$setInputs(tbl = .ind_grid_edit(isolate(rows()), 1L,
-                                           "Datapakke", "Hacket"))
+    session$setInputs(tbl = .ind_grid_edit(
+      isolate(rows()), 1L,
+      "Datapakke", "Hacket"
+    ))
     expect_null(db$.calls()$updated)
   })
 })
 
 test_that(".collect_form med prefix læser præfiksede inputs", {
-  fields <- list(list(col = "indikator_navn", kind = "text"),
-                 list(col = "aktiv_indikator", kind = "bool"))
+  fields <- list(
+    list(col = "indikator_navn", kind = "text"),
+    list(col = "aktiv_indikator", kind = "bool")
+  )
   input <- list(m_indikator_navn = "Test", m_aktiv_indikator = TRUE)
   vals <- .collect_form(input, fields, prefix = "m_")
   expect_equal(vals$indikator_navn, "Test")
@@ -252,9 +301,13 @@ test_that(".collect_form med prefix læser præfiksede inputs", {
 })
 
 test_that(".collect_form: tom dato og tomt choice-valg → NA (aldrig dags dato)", {
-  fields <- list(list(col = "periode_fra", kind = "date"),
-                 list(col = "output_enhed", kind = "choice",
-                      choices = OUTPUT_ENHED_CHOICES))
+  fields <- list(
+    list(col = "periode_fra", kind = "date"),
+    list(
+      col = "output_enhed", kind = "choice",
+      choices = OUTPUT_ENHED_CHOICES
+    )
+  )
   # Tom dateInput leverer en Date af længde 0 — må ikke ende som dags dato
   input <- list(m_periode_fra = as.Date(character(0)), m_output_enhed = "")
   vals <- .collect_form(input, fields, prefix = "m_")
@@ -265,19 +318,23 @@ test_that(".collect_form: tom dato og tomt choice-valg → NA (aldrig dags dato)
 test_that(".field_input: tom dato renderes TOM (ikke dags dato)", {
   f <- list(col = "periode_fra", kind = "date")
   html <- as.character(htmltools::renderTags(
-    .field_input(NS("x"), f, values = list(periode_fra = NA)))$html)
+    .field_input(NS("x"), f, values = list(periode_fra = NA))
+  )$html)
   # dateInput(value = NULL) ville skrive dags dato i data-initial-date
   expect_false(grepl(format(Sys.Date(), "%Y-%m-%d"), html, fixed = TRUE))
 })
 
 test_that(".field_input: choice-felt er dropdown med kanoniske + legacy-værdi", {
-  f <- list(col = "output_enhed", kind = "choice",
-            choices = OUTPUT_ENHED_CHOICES)
+  f <- list(
+    col = "output_enhed", kind = "choice",
+    choices = OUTPUT_ENHED_CHOICES
+  )
   html <- as.character(htmltools::renderTags(
-    .field_input(NS("x"), f, values = list(output_enhed = "pct")))$html)
+    .field_input(NS("x"), f, values = list(output_enhed = "pct"))
+  )$html)
   expect_match(html, "<select", fixed = TRUE)
   expect_match(html, ">Procent<", fixed = TRUE)
-  expect_match(html, 'value="pct"', fixed = TRUE)     # legacy bevares + valgt
+  expect_match(html, 'value="pct"', fixed = TRUE) # legacy bevares + valgt
   expect_match(html, "(ingen)", fixed = TRUE)
 })
 
@@ -286,11 +343,13 @@ test_that("modal-gem inkluderer output_enhed", {
   testServer(mod_indikator_crud_server, args = list(db = db), {
     session$setInputs(tbl = .tbl_select(0))
     session$setInputs(open_selected = 1)
-    session$setInputs(m_indikator_navn = "Nyt", m_output_enhed = "Procent",
-                      m_j_faggrupper = character(0),
-                      m_j_dataprodukter = character(0),
-                      m_j_organisation = character(0),
-                      modal_save = 1)
+    session$setInputs(
+      m_indikator_navn = "Nyt", m_output_enhed = "Procent",
+      m_j_faggrupper = character(0),
+      m_j_dataprodukter = character(0),
+      m_j_organisation = character(0),
+      modal_save = 1
+    )
     u <- db$.calls()$updated
     expect_false(is.null(u))
     expect_identical(u[[2]]$output_enhed, "Procent")
@@ -313,11 +372,13 @@ test_that("modal-gem kalder update + set_junction ×3", {
     session$setInputs(tbl = .tbl_select(0))
 
     session$setInputs(open_selected = 1)
-    session$setInputs(m_indikator_navn = "Nyt", m_aktiv_indikator = TRUE,
-                      m_j_faggrupper = c("1", "2"),
-                      m_j_dataprodukter = character(0),
-                      m_j_organisation = character(0),
-                      modal_save = 1)
+    session$setInputs(
+      m_indikator_navn = "Nyt", m_aktiv_indikator = TRUE,
+      m_j_faggrupper = c("1", "2"),
+      m_j_dataprodukter = character(0),
+      m_j_organisation = character(0),
+      modal_save = 1
+    )
     expect_false(is.null(db$.calls()$updated))
     expect_equal(db$.calls()$junction$faggrupper, c(1L, 2L))
     expect_true("organisation" %in% names(db$.calls()$junction))
@@ -329,11 +390,13 @@ test_that("modal-gem med tomt navn validerer, ingen update", {
   testServer(mod_indikator_crud_server, args = list(db = db), {
     session$setInputs(tbl = .tbl_select(0))
     session$setInputs(open_selected = 1)
-    session$setInputs(m_indikator_navn = "",
-                      m_j_faggrupper = character(0),
-                      m_j_dataprodukter = character(0),
-                      m_j_organisation = character(0),
-                      modal_save = 1)
+    session$setInputs(
+      m_indikator_navn = "",
+      m_j_faggrupper = character(0),
+      m_j_dataprodukter = character(0),
+      m_j_organisation = character(0),
+      modal_save = 1
+    )
     expect_match(status_msg(), "indikator_navn")
     expect_null(db$.calls()$updated)
   })
@@ -351,10 +414,10 @@ test_that("Åbn valgte uden selektion beder om valg", {
 test_that("Ny indikator nulstiller editing_id (opret-tilstand)", {
   db <- fake_db()
   testServer(mod_indikator_crud_server, args = list(db = db), {
-    session$setInputs(tbl = .tbl_select(0))          # vælg eksisterende
+    session$setInputs(tbl = .tbl_select(0)) # vælg eksisterende
     session$setInputs(open_selected = 1)
     expect_equal(editing_id(), 1L)
-    session$setInputs(new_modal = 1)         # skift til ny
+    session$setInputs(new_modal = 1) # skift til ny
     expect_null(editing_id())
   })
 })
@@ -363,13 +426,15 @@ test_that("Ny + Gem kalder create_indikator_full, ikke update", {
   db <- fake_db()
   testServer(mod_indikator_crud_server, args = list(db = db), {
     session$setInputs(new_modal = 1)
-    session$setInputs(m_indikator_navn = "Helt ny", m_aktiv_indikator = TRUE,
-                      m_j_faggrupper = c("1"),
-                      m_j_dataprodukter = character(0),
-                      m_j_organisation = character(0),
-                      modal_save = 1)
-    expect_false(is.null(db$.calls()$created))   # create-stien ramt
-    expect_null(db$.calls()$updated)             # ikke update
+    session$setInputs(
+      m_indikator_navn = "Helt ny", m_aktiv_indikator = TRUE,
+      m_j_faggrupper = c("1"),
+      m_j_dataprodukter = character(0),
+      m_j_organisation = character(0),
+      modal_save = 1
+    )
+    expect_false(is.null(db$.calls()$created)) # create-stien ramt
+    expect_null(db$.calls()$updated) # ikke update
     expect_match(status_msg(), "Oprettet")
   })
 })
@@ -383,7 +448,7 @@ test_that("m_diagram_edit gemmer retur-id og aabner diagram-formular", {
 
     session$setInputs(open_selected = 1)
     session$setInputs(m_diagram_edit = 7)
-    expect_equal(return_ind(), 1L)          # husker indikator til genaabning
+    expect_equal(return_ind(), 1L) # husker indikator til genaabning
   })
 })
 
@@ -394,16 +459,18 @@ test_that("diagram-gem fra modal kalder update_diagram og vender tilbage", {
 
     session$setInputs(open_selected = 1)
     session$setInputs(m_diagram_edit = 7)
-    session$setInputs(d_indikator = "1", d_organisatorisk_navn_teknisk = "20",
-                      d_diagram_type = "1", d_periode_aggregering = "uge",
-                      d_indgaar_i_aggregering = TRUE, d_diagram_aktivt = TRUE,
-                      d_direktionens_tavle = FALSE, m_diagram_save = 1)
+    session$setInputs(
+      d_indikator = "1", d_organisatorisk_navn_teknisk = "20",
+      d_diagram_type = "1", d_periode_aggregering = "uge",
+      d_indgaar_i_aggregering = TRUE, d_diagram_aktivt = TRUE,
+      d_direktionens_tavle = FALSE, m_diagram_save = 1
+    )
     upd <- db$.calls()$diagram_updated
     expect_false(is.null(upd))
     expect_identical(upd$id, 7L)
     expect_identical(upd$values$periode_aggregering, "uge")
-    expect_null(return_ind())               # retur gennemfoert + nulstillet
-    expect_equal(editing_id(), 1L)          # indikator-modal genaabnet
+    expect_null(return_ind()) # retur gennemfoert + nulstillet
+    expect_equal(editing_id(), 1L) # indikator-modal genaabnet
   })
 })
 
@@ -415,10 +482,12 @@ test_that("m_diagram_new opretter med laast indikator og vender tilbage", {
     session$setInputs(open_selected = 1)
     session$setInputs(m_diagram_new = 1)
     expect_equal(return_ind(), 1L)
-    session$setInputs(d_indikator = "1", d_organisatorisk_navn_teknisk = "20",
-                      d_diagram_type = "1", d_periode_aggregering = "",
-                      d_indgaar_i_aggregering = FALSE, d_diagram_aktivt = TRUE,
-                      d_direktionens_tavle = FALSE, m_diagram_save = 1)
+    session$setInputs(
+      d_indikator = "1", d_organisatorisk_navn_teknisk = "20",
+      d_diagram_type = "1", d_periode_aggregering = "",
+      d_indgaar_i_aggregering = FALSE, d_diagram_aktivt = TRUE,
+      d_direktionens_tavle = FALSE, m_diagram_save = 1
+    )
     created <- db$.calls()$diagram_created
     expect_false(is.null(created))
     expect_identical(created$indikator, 1L)
@@ -444,11 +513,14 @@ test_that("Tilbage-knap genaabner indikator-modal uden db-kald", {
 
 # --- Aktiv-filtrering af datasaet-dropdown (Fase D) --------------------------
 
-.ih_opts <- function() data.frame(
-  id = c(1L, 2L, 3L),
-  label = c("Aktiv A", "Aktiv B", "Inaktiv C"),
-  aktiv = c(TRUE, TRUE, FALSE),
-  stringsAsFactors = FALSE)
+.ih_opts <- function() {
+  data.frame(
+    id = c(1L, 2L, 3L),
+    label = c("Aktiv A", "Aktiv B", "Inaktiv C"),
+    aktiv = c(TRUE, TRUE, FALSE),
+    stringsAsFactors = FALSE
+  )
+}
 
 test_that(".hierarki_choices filtrerer inaktive ved nyvalg", {
   ch <- .hierarki_choices(.ih_opts(), current_id = NULL)

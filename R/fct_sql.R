@@ -45,8 +45,10 @@ build_fk_options_sql <- function(parent, label_expr) {
 #' noder klient-side (uden at miste eksisterende vaerdier der peger paa dem)
 #' @noRd
 build_fk_options_aktiv_sql <- function(parent, label_expr, aktiv_col) {
-  sprintf('SELECT "Id" AS id, (%s) AS label, "%s" AS aktiv FROM "%s" ORDER BY 2',
-          label_expr, aktiv_col, parent)
+  sprintf(
+    'SELECT "Id" AS id, (%s) AS label, "%s" AS aktiv FROM "%s" ORDER BY 2',
+    label_expr, aktiv_col, parent
+  )
 }
 
 #' Parametriseret UPDATE; cols → $1..$n, id → $(n+1)
@@ -353,8 +355,10 @@ build_org_enhed_variants_sql <- function() {
 #' Kolonner formularen redigerer (raekkefoelge = parameter-orden).
 #' @noRd
 hierarchy_edit_cols <- function(cfg) {
-  c(vapply(cfg$fields, function(f) f$col, ""), cfg$parent_col, cfg$level$col,
-    cfg$aktiv_col)   # aktiv_col er NULL for org → falder bort i c()
+  c(
+    vapply(cfg$fields, function(f) f$col, ""), cfg$parent_col, cfg$level$col,
+    cfg$aktiv_col
+  ) # aktiv_col er NULL for org → falder bort i c()
 }
 
 #' Alle noder med normaliserede aliaser (id/parent_id_raw) + niveau-join.
@@ -362,8 +366,11 @@ hierarchy_edit_cols <- function(cfg) {
 #' @noRd
 build_hierarchy_list_sql <- function(cfg) {
   fcols <- vapply(cfg$fields, function(f) sprintf('h."%s"', f$col), "")
-  aktiv <- if (is.null(cfg$aktiv_col)) "" else
+  aktiv <- if (is.null(cfg$aktiv_col)) {
+    ""
+  } else {
     sprintf('h."%s" AS aktiv, ', cfg$aktiv_col)
+  }
   paste0(
     'SELECT h."', cfg$pk, '" AS id, h."', cfg$parent_col,
     '" AS parent_id_raw, ', paste(fcols, collapse = ", "), ", ", aktiv,
@@ -372,7 +379,8 @@ build_hierarchy_list_sql <- function(cfg) {
     'n."', cfg$level$name_col, '" AS niveau_navn ',
     'FROM "', cfg$table, '" h ',
     'LEFT JOIN "', cfg$level$parent, '" n ON n."', cfg$level$parent_pk,
-    '" = h."', cfg$level$col, '"')
+    '" = h."', cfg$level$col, '"'
+  )
 }
 
 #' @noRd
@@ -380,17 +388,23 @@ build_hierarchy_insert_sql <- function(cfg) {
   cols <- hierarchy_edit_cols(cfg)
   ph <- paste(sprintf("$%d", seq_along(cols)), collapse = ", ")
   qcols <- paste(sprintf('"%s"', cols), collapse = ", ")
-  sprintf('INSERT INTO "%s" (%s) VALUES (%s) RETURNING "%s"',
-          cfg$table, qcols, ph, cfg$pk)
+  sprintf(
+    'INSERT INTO "%s" (%s) VALUES (%s) RETURNING "%s"',
+    cfg$table, qcols, ph, cfg$pk
+  )
 }
 
 #' @noRd
 build_hierarchy_update_sql <- function(cfg) {
   cols <- hierarchy_edit_cols(cfg)
-  sets <- vapply(seq_along(cols),
-                 function(i) sprintf('"%s" = $%d', cols[i], i), "")
-  sprintf('UPDATE "%s" SET %s WHERE "%s" = $%d',
-          cfg$table, paste(sets, collapse = ", "), cfg$pk, length(cols) + 1)
+  sets <- vapply(
+    seq_along(cols),
+    function(i) sprintf('"%s" = $%d', cols[i], i), ""
+  )
+  sprintf(
+    'UPDATE "%s" SET %s WHERE "%s" = $%d',
+    cfg$table, paste(sets, collapse = ", "), cfg$pk, length(cols) + 1
+  )
 }
 
 #' @noRd
@@ -401,6 +415,8 @@ build_hierarchy_delete_sql <- function(cfg) {
 #' Antal boern (slet-guard: noder med boern kan ikke slettes)
 #' @noRd
 build_hierarchy_child_count_sql <- function(cfg) {
-  sprintf('SELECT count(*) AS n FROM "%s" WHERE "%s" = $1',
-          cfg$table, cfg$parent_col)
+  sprintf(
+    'SELECT count(*) AS n FROM "%s" WHERE "%s" = $1',
+    cfg$table, cfg$parent_col
+  )
 }
