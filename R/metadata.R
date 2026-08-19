@@ -137,6 +137,10 @@ INDIKATOR_JUNCTIONS <- list(
                        label = 'COALESCE("organisatorisk_navn_langt","organisatorisk_navn_teknisk")')
 )
 
+# Adskiller mellem sammensatte dele af en dropdown-label (fx teknisk navn og
+# langt navn). Holdes som konstant saa label_expr og tests deler definition.
+LABEL_SEPARATOR <- " — "
+
 # --- Simple opslagstabeller (Class A) til generisk inline-redigering ----------
 # Hver: id (modul-namespace/nav-value), table, pk ("Id" for alle), label (vist),
 # cols (ordnet: col/type/label; type "int" coerces + valideres). ref_check kun
@@ -190,10 +194,20 @@ LOOKUP_TABLES <- list(
        cols = list(
          list(col = "organisatorisk_navn_fra_data", type = "text",
               label = "Navn fra data"),
+         # parent_col: dropdown vises som indrykket trae, saa den hierarkiske
+         # placering fremgaar. Label = teknisk navn (det brugeren genkender)
+         # + separator + langt navn; det lange navn udelades hvis det mangler
+         # eller er identisk med det tekniske (CONCAT_WS springer NULL over).
          list(col = "organisatorisk_navn_teknisk", type = "fk",
               label = "Organisatorisk enhed",
               parent = "tblOrganisationStruktur", parent_pk = "Id",
-              label_expr = 'COALESCE("organisatorisk_navn_langt","organisatorisk_navn_teknisk")')))
+              parent_col = "parent_Id",
+              label_expr = sprintf(
+                paste0("CONCAT_WS('%s', ",
+                       "NULLIF(\"organisatorisk_navn_teknisk\", ''), ",
+                       "NULLIF(\"organisatorisk_navn_langt\", ",
+                       "\"organisatorisk_navn_teknisk\"))"),
+                LABEL_SEPARATOR))))
 )
 
 # --- Hierarki-tabeller (traeer med parent-FK) til generisk mod_hierarchy ------

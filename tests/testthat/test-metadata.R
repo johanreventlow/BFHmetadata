@@ -16,6 +16,19 @@ test_that("org_oversaettelse-entry findes med korrekte kolonner", {
   expect_true(grepl("organisatorisk_navn_langt", fk$label_expr))
 })
 
+test_that("org_oversaettelse-dropdown viser teknisk navn + langt navn i trae", {
+  ids <- vapply(LOOKUP_TABLES, function(x) x$id, "")
+  cfg <- LOOKUP_TABLES[[which(ids == "org_oversaettelse")]]
+  fk <- Filter(function(c) identical(c$type, "fk"), cfg$cols)[[1]]
+  # parent_col => hierarchy_indent_options kan indrykke valgene
+  expect_identical(fk$parent_col, "parent_Id")
+  # teknisk navn foerst, derefter separator + langt navn
+  expect_true(grepl("organisatorisk_navn_teknisk", fk$label_expr))
+  expect_lt(regexpr("organisatorisk_navn_teknisk", fk$label_expr, fixed = TRUE),
+            regexpr("organisatorisk_navn_langt", fk$label_expr, fixed = TRUE))
+  expect_true(grepl(LABEL_SEPARATOR, fk$label_expr, fixed = TRUE))
+})
+
 # --- HIERARCHY_TABLES (Fase C/D) ---------------------------------------------
 
 test_that("org_struktur-entry har korrekte kolonner og parent-casing", {
