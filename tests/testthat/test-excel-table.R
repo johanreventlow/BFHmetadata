@@ -12,14 +12,26 @@ test_that("lookup_excel_columns: pk skjules, typer mappes, fk får dropdown-sour
   fk <- list(enhed = data.frame(id = c(10L, 20L), label = c("E10", "E20")))
   cols <- lookup_excel_columns(.cfg_excel, c("Id", "navn", "niveau", "enhed"), fk)
   expect_equal(cols$title, c("Id", "navn", "niveau", "enhed"))
-  # pk er "hidden": med i data/payload (diff-match) men aldrig synlig
-  expect_equal(cols$type, c("hidden", "text", "numeric", "dropdown"))
+  # pk er "hidden": med i data/payload (diff-match) men aldrig synlig.
+  # fk er "autocomplete" = dropdown med skriv-for-at-soege (jexcel-type)
+  expect_equal(cols$type, c("hidden", "text", "numeric", "autocomplete"))
   expect_equal(cols$readOnly, c(TRUE, FALSE, FALSE, FALSE))
   expect_true(all(cols$align == "left"))   # jexcel centrerer ellers
   # dropdown-source er {id, name}-objekter (vises som label, gemmes som id)
   src <- cols$source[[4]]
   expect_equal(src$id, c(10L, 20L))
   expect_equal(src$name, c("E10", "E20"))
+})
+
+test_that("lookup_excel_columns: fk-kolonner er soegbare (autocomplete)", {
+  # 500+ org-enheder gør ren scroll ubrugelig — jexcel-typen "autocomplete"
+  # er samme dropdown, men med tekstfelt der filtrerer valgene.
+  fk <- list(enhed = data.frame(id = c(10L, 20L), label = c("E10", "E20")))
+  cols <- lookup_excel_columns(.cfg_excel, c("Id", "enhed"), fk)
+  expect_identical(cols$type[2], "autocomplete")
+  expect_false(cols$readOnly[2])
+  # source-formatet er uændret — værdien der gemmes er stadig id'et
+  expect_equal(cols$source[[2]]$id, c(10L, 20L))
 })
 
 test_that("lookup_excel_columns: kolonner uden cfg-meta (ej pk) er readOnly text", {

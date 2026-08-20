@@ -113,7 +113,10 @@ lookup_excel_columns <- function(cfg, col_names, fk_sources = list(),
       if (is.null(src) || !is.data.frame(src) || nrow(src) == 0) {
         list(type = "text", readOnly = TRUE, source = NA)
       } else {
-        list(type = "dropdown", readOnly = FALSE,
+        # "autocomplete" er jexcels dropdown MED tekst-filter: brugeren kan
+        # skrive en del af navnet i stedet for at scrolle (org-traeet er
+        # 500+ enheder). Samme {id, name}-source og samme gemte vaerdi.
+        list(type = "autocomplete", readOnly = FALSE,
           source = data.frame(id = src$id, name = as.character(src$label),
             stringsAsFactors = FALSE))
       }
@@ -137,7 +140,9 @@ lookup_excel_columns <- function(cfg, col_names, fk_sources = list(),
     disp <- data[, intersect(col_names, names(data)), drop = FALSE]
     for (i in seq_along(col_names)) {
       src <- out$source[[i]]
-      if (identical(out$type[i], "dropdown") && is.data.frame(src) &&
+      # Baade "dropdown" og "autocomplete" viser labels frem for id'er —
+      # begge maales paa label-laengden (ellers bliver kolonnen id-smal).
+      if (out$type[i] %in% c("dropdown", "autocomplete") && is.data.frame(src) &&
         col_names[i] %in% names(disp)) {
         disp[[col_names[i]]] <- .excel_dropdown_display(
           disp[[col_names[i]]], src)

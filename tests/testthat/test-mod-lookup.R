@@ -207,12 +207,13 @@ test_that("fk-dropdown-ændring gemmer integer parent-id", {
   })
 })
 
-test_that("fk-kolonne renderes som dropdown med {id, name}-source", {
+test_that("fk-kolonne renderes som soegbar dropdown med {id, name}-source", {
   db <- fake_fk_db()
   testServer(mod_lookup_table_server, args = list(db = db, cfg = cfg_fk), {
     w <- jsonlite::fromJSON(output$tbl, simplifyVector = FALSE)
     fk_col <- w$x$columns[[3]]
-    expect_equal(fk_col$type, "dropdown")
+    # "autocomplete": jexcel-dropdown med skriv-for-at-filtrere
+    expect_equal(fk_col$type, "autocomplete")
     expect_equal(fk_col$source[[3]]$id, 30L)
     expect_equal(fk_col$source[[3]]$name, "E30")
   })
