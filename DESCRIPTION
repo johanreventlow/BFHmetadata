@@ -7,7 +7,6 @@ License: file LICENSE
 Encoding: UTF-8
 Imports:
     shiny,
-    golem,
     bslib,
     DT,
     DBI,
@@ -23,6 +22,7 @@ Imports:
     BFHcharts,
     excelR (>= 0.4.0),
     htmlwidgets,
+    htmltools,
     ggplot2,
     ggiraph
 Suggests:
@@ -30,4 +30,4 @@ Suggests:
     withr,
     arrow
 Config/testthat/edition: 3
-RoxygenNote: 7.3.1
+Config/roxygen2/version: 8.0.0

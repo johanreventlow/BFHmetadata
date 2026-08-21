@@ -360,7 +360,7 @@ phase_stats_df <- function(summary) {
   if (is.null(summary) || !is.data.frame(summary) || nrow(summary) == 0) {
     return(NULL)
   }
-  fmt <- function(x) ifelse(is.na(x), "–", as.character(x))
+  fmt <- function(x) ifelse(is.na(x), "\u2013", as.character(x))
   out <- data.frame(
     Fase = as.integer(summary$fase),
     check.names = FALSE, stringsAsFactors = FALSE
@@ -369,7 +369,7 @@ phase_stats_df <- function(summary) {
     "%s (%s anv.)", fmt(summary$antal_observationer),
     fmt(summary$anvendelige_observationer)
   )
-  out[["Serielængde"]] <- sprintf(
+  out[["Seriel\u00E6ngde"]] <- sprintf(
     "%s / maks. %s",
     fmt(summary$laengste_loeb), fmt(summary$laengste_loeb_max)
   )
@@ -378,7 +378,7 @@ phase_stats_df <- function(summary) {
     fmt(summary$antal_kryds), fmt(summary$antal_kryds_min)
   )
   out[["Signal"]] <- ifelse(summary$anhoej_signal %in% TRUE,
-    "⚠ signal", "–"
+    "\u26A0 signal", "\u2013"
   )
   out
 }

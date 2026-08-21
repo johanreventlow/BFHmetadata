@@ -20,7 +20,7 @@ db_config <- function(path = NULL) {
   if (!is.list(cfg) || !all(required %in% names(cfg)) ||
       any(vapply(cfg[required], function(x) length(x) != 1L || is.na(x),
                  logical(1)))) {
-    stop("DB-konfigurationen er ufuldstændig", call. = FALSE)
+    stop("DB-konfigurationen er ufuldst\u00E6ndig", call. = FALSE)
   }
   cfg[required]
 }
@@ -36,8 +36,8 @@ write_enabled <- function() {
 #' @noRd
 assert_write_enabled <- function() {
   if (!write_enabled()) {
-    stop("DB-skrivning er deaktiveret. Sæt BFHMETA_WRITE=1 eller ",
-      "options(bfhmeta.write_enabled=TRUE) efter at have bekræftet target.",
+    stop("DB-skrivning er deaktiveret. S\u00E6t BFHMETA_WRITE=1 eller ",
+      "options(bfhmeta.write_enabled=TRUE) efter at have bekr\u00E6ftet target.",
       call. = FALSE
     )
   }

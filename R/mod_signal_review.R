@@ -32,13 +32,13 @@ mod_signal_review_ui <- function(id) {
       selectizeInput(ns("f_datapakke"), "Datapakke", NULL,
         multiple = TRUE, options = list(placeholder = "(alle)", plugins = list("remove_button"))
       ),
-      selectizeInput(ns("f_datasaet"), "Datasæt", NULL,
+      selectizeInput(ns("f_datasaet"), "Datas\u00E6t", NULL,
         multiple = TRUE, options = list(placeholder = "(alle)", plugins = list("remove_button"))
       ),
       selectizeInput(ns("f_indikator_navn"), "Indikator", NULL,
         multiple = TRUE, options = list(placeholder = "(alle)", plugins = list("remove_button"))
       ),
-      checkboxInput(ns("force_refresh"), "Ignorér dags-cache (genindlæs data)",
+      checkboxInput(ns("force_refresh"), "Ignor\u00E9r dags-cache (genindl\u00E6s data)",
         value = FALSE
       ),
       actionButton(ns("scan"), "Scan", class = "btn-primary w-100"),
@@ -47,15 +47,15 @@ mod_signal_review_ui <- function(id) {
       ),
       uiOutput(ns("scan_summary")),
       hr(),
-      checkboxInput(ns("show_no_signal"), "Vis også diagrammer uden signal",
+      checkboxInput(ns("show_no_signal"), "Vis ogs\u00E5 diagrammer uden signal",
         value = FALSE
       ),
       checkboxInput(ns("show_breaks"),
-        "Vis også uden signal, men med median-knæk",
+        "Vis ogs\u00E5 uden signal, men med median-kn\u00E6k",
         value = FALSE
       ),
       checkboxInput(ns("sort_by_type"),
-        "Sortér efter signal-type (serie/kryds)",
+        "Sort\u00E9r efter signal-type (serie/kryds)",
         value = FALSE
       ),
       bslib::accordion(
@@ -69,8 +69,8 @@ mod_signal_review_ui <- function(id) {
       uiOutput(ns("nav_label")),
       div(
         class = "btn-group",
-        actionButton(ns("prev"), "‹ Forrige", class = "btn-outline-secondary btn-sm"),
-        actionButton(ns("next_"), "Næste ›", class = "btn-outline-secondary btn-sm")
+        actionButton(ns("prev"), "\u2039 Forrige", class = "btn-outline-secondary btn-sm"),
+        actionButton(ns("next_"), "N\u00E6ste \u203A", class = "btn-outline-secondary btn-sm")
       )
     ),
     uiOutput(ns("agg_badge")),
@@ -81,14 +81,14 @@ mod_signal_review_ui <- function(id) {
     div(
       class = "d-flex gap-2 align-items-center flex-wrap",
       uiOutput(ns("selected_label")),
-      actionButton(ns("preview"), "Forhåndsvis faseskift", class = "btn-outline-primary btn-sm"),
+      actionButton(ns("preview"), "Forh\u00E5ndsvis faseskift", class = "btn-outline-primary btn-sm"),
       actionButton(ns("save_break"), "Gem faseskift", class = "btn-success btn-sm")
     ),
     div(
       class = "mt-3",
-      h6("Eksisterende median-knæk"),
+      h6("Eksisterende median-kn\u00E6k"),
       DT::DTOutput(ns("breaks_tbl")),
-      actionButton(ns("delete_break"), "Fjern valgt knæk", class = "btn-outline-danger btn-sm mt-1")
+      actionButton(ns("delete_break"), "Fjern valgt kn\u00E6k", class = "btn-outline-danger btn-sm mt-1")
     )
   )
 }
@@ -198,7 +198,7 @@ mod_signal_review_server <- function(
       tags$div(
         class = "list-group list-group-flush small",
         lapply(seq_len(nrow(vl)), function(i) {
-          icon <- if (isTRUE(vl$signal[i])) "⚠" else "✓"
+          icon <- if (isTRUE(vl$signal[i])) "\u26A0" else "\u2713"
           # Mærkning: hvilken regel udløste signalet — eller "(knæk)" for
           # diagrammer der kun vises pga. eksisterende median-knæk
           suffix <- if (isTRUE(vl$signal[i])) {
@@ -212,7 +212,7 @@ mod_signal_review_server <- function(
               )
             }
           } else if ("has_breaks" %in% names(vl) && isTRUE(vl$has_breaks[i])) {
-            " (knæk)"
+            " (kn\u00E6k)"
           } else {
             ""
           }
@@ -226,7 +226,7 @@ mod_signal_review_server <- function(
               "Shiny.setInputValue('%s', %s, {priority: 'event'}); return false;",
               session$ns("goto_diagram"), vl$diagram_id[i]
             ),
-            sprintf("%s %s · %s%s", icon, vl$indikator_navn[i], vl$org_navn[i], suffix)
+            sprintf("%s %s \u00B7 %s%s", icon, vl$indikator_navn[i], vl$org_navn[i], suffix)
           )
         })
       )
@@ -428,7 +428,7 @@ mod_signal_review_server <- function(
         availability(list(
           state = "laesefejl",
           message = sprintf(
-            "%d diagram%s kunne ikke læses; øvrige resultater kan stadig gennemgås.",
+            "%d diagram%s kunne ikke l\u00E6ses; \u00F8vrige resultater kan stadig gennemg\u00E5s.",
             p$fejl, if (identical(p$fejl, 1L)) "" else "mer"
           )
         ))
@@ -480,7 +480,7 @@ mod_signal_review_server <- function(
       # bevidst valg (konsistens inden for ét scan vejer tungere end friskhed;
       # en gruppe diagrammer der deler org-træ skal alle se samme udgave af
       # det, ellers kan to scans af samme session give modstridende resultater).
-      agg_os <- safe_operation("hent org-træ", db$org_struct(), fallback = NULL)
+      agg_os <- safe_operation("hent org-tr\u00E6", db$org_struct(), fallback = NULL)
       agg_fl <- safe_operation("hent aggregerings-flag",
         db$aggregation_flags(),
         fallback = NULL
@@ -528,7 +528,7 @@ mod_signal_review_server <- function(
       }
       scan_gen(scan_gen() + 1L) # invalidér ventende callbacks (stale-guard)
       scan_running(FALSE)
-      showNotification("Scan stoppet — fundne signaler kan gennemgås")
+      showNotification("Scan stoppet \u2014 fundne signaler kan gennemg\u00E5s")
     })
 
     current_diagram <- reactive({
@@ -573,16 +573,16 @@ mod_signal_review_server <- function(
       }
       if (nrow(sl) == 0) {
         txt <- if (isTRUE(scan_running())) {
-          "Scanner — endnu ingen signaler"
+          "Scanner \u2014 endnu ingen signaler"
         } else {
-          "Scannet — 0 diagrammer i visningen"
+          "Scannet \u2014 0 diagrammer i visningen"
         }
         return(span(txt, class = "text-muted"))
       }
       cd <- current_diagram()
-      suffix <- if (isTRUE(scan_running())) " (scanner…)" else ""
+      suffix <- if (isTRUE(scan_running())) " (scanner\u2026)" else ""
       strong(sprintf(
-        "%d/%d%s — %s · %s", cursor(), nrow(sl), suffix,
+        "%d/%d%s \u2014 %s \u00B7 %s", cursor(), nrow(sl), suffix,
         cd$indikator_navn, cd$org_navn
       ))
     })
@@ -601,9 +601,9 @@ mod_signal_review_server <- function(
       unit <- if (length(periods) == 1L) {
         switch(periods,
           week = "uger",
-          month = "måneder",
+          month = "m\u00E5neder",
           quarter = "kvartaler",
-          year = "år",
+          year = "\u00E5r",
           day = "dage",
           periods
         )
@@ -620,7 +620,7 @@ mod_signal_review_server <- function(
       }
       txt <- if (isTRUE(scan_running())) {
         sprintf(
-          "Scanner… %d/%d indikatorer — %d med signal",
+          "Scanner\u2026 %d/%d indikatorer \u2014 %d med signal",
           p$done, p$total, p$found
         )
       } else {
@@ -645,12 +645,12 @@ mod_signal_review_server <- function(
         class = "small text-muted mt-2", txt,
         if (skipped > 0) {
           tagList(br(), sprintf(
-            "%d uden data, %d med læsefejl (ej vurderet)",
+            "%d uden data, %d med l\u00E6sefejl (ej vurderet)",
             p$ingen_data %||% 0L, p$fejl %||% 0L
           ))
         },
         if (agg_disabled) {
-          tagList(br(), "⚠ Oprulning deaktiveret (org-træ/flag kunne ikke hentes)")
+          tagList(br(), "\u26A0 Oprulning deaktiveret (org-tr\u00E6/flag kunne ikke hentes)")
         }
       )
     })
@@ -672,12 +672,12 @@ mod_signal_review_server <- function(
     .refresh_diagram <- function(cd) {
       # Medians hentes FØR cachen røres: fejler DB'en (udfald/pool-recovery)
       # beholdes det cachede scan-resultat, og sessionen overlever.
-      meds <- safe_operation("hent median-knæk (refresh)",
+      meds <- safe_operation("hent median-kn\u00E6k (refresh)",
         db$diagram_medians(cd$diagram_id),
         fallback = NULL)
       if (is.null(meds)) {
         showNotification(
-          "Databasen svarer ikke — diagrammet er ikke genberegnet",
+          "Databasen svarer ikke \u2014 diagrammet er ikke genberegnet",
           type = "warning", session = session)
         return(invisible())
       }
@@ -789,7 +789,7 @@ mod_signal_review_server <- function(
         # validate-tekst vises i grafens plads (grå besked, ingen crash)
         validate(need(
           FALSE,
-          "Diagrammet kan ikke tegnes (ingen tegnbare datapunkter) — se log for detaljer."
+          "Diagrammet kan ikke tegnes (ingen tegnbare datapunkter) \u2014 se log for detaljer."
         ))
       }
       g
@@ -838,9 +838,9 @@ mod_signal_review_server <- function(
         class = "alert alert-warning py-1 px-2 small mb-2",
         sprintf(
           paste(
-            "%d median-knæk indgår ikke: de blev sat under en anden",
+            "%d median-kn\u00E6k indg\u00E5r ikke: de blev sat under en anden",
             "aggregering end diagrammet bruger nu. Se tabellen",
-            "nedenfor — fjern og gensæt dem for at bruge dem igen."
+            "nedenfor \u2014 fjern og gens\u00E6t dem for at bruge dem igen."
           ),
           n
         )
@@ -860,7 +860,7 @@ mod_signal_review_server <- function(
       sel <- valid_selected_date()
       sc <- .scan_of_current()
       if (is.null(sel) || is.null(sc) || is.null(sc$slice)) {
-        showNotification("Vælg en observation på dette diagram", type = "warning")
+        showNotification("V\u00E6lg en observation p\u00E5 dette diagram", type = "warning")
         return()
       }
       parts <- resolve_median_breaks(
@@ -871,7 +871,7 @@ mod_signal_review_server <- function(
         ), sc$slice$dato
       )
       if (is.null(parts)) {
-        showNotification("Kan ikke lave faseskift her (første/ugyldig observation)",
+        showNotification("Kan ikke lave faseskift her (f\u00F8rste/ugyldig observation)",
           type = "warning"
         )
         return()
@@ -885,7 +885,7 @@ mod_signal_review_server <- function(
       cd <- current_diagram()
       sc <- .scan_of_current()
       if (is.null(sel) || is.null(cd) || is.null(sc$slice)) {
-        showNotification("Vælg en observation på dette diagram", type = "warning")
+        showNotification("V\u00E6lg en observation p\u00E5 dette diagram", type = "warning")
         return()
       }
       # Valider at det er et lovligt knæk (ikke første obs / uden for data)
@@ -895,7 +895,7 @@ mod_signal_review_server <- function(
         sc$slice$dato
       )
       if (is.null(parts)) {
-        showNotification("Kan ikke lave faseskift her (første/ugyldig observation)",
+        showNotification("Kan ikke lave faseskift her (f\u00F8rste/ugyldig observation)",
           type = "warning"
         )
         return()
@@ -926,7 +926,7 @@ mod_signal_review_server <- function(
       if (is.null(cd)) {
         return(DT::datatable(data.frame()))
       }
-      m <- safe_operation("hent median-knæk", db$diagram_medians(cd$diagram_id),
+      m <- safe_operation("hent median-kn\u00E6k", db$diagram_medians(cd$diagram_id),
         fallback = NULL
       )
       if (is.null(m)) {
@@ -938,7 +938,7 @@ mod_signal_review_server <- function(
       if (is.data.frame(m) && nrow(m) > 0 && "aggregering" %in% names(m)) {
         keep_ids <- filter_medians_by_period(m, cd$periode_aggregering)$id
         m$status <- ifelse(m$id %in% keep_ids, "anvendes",
-          sprintf("⚠ sat under %s — ignoreres nu", m$aggregering)
+          sprintf("\u26A0 sat under %s \u2014 ignoreres nu", m$aggregering)
         )
       }
       DT::datatable(
@@ -957,10 +957,10 @@ mod_signal_review_server <- function(
       }
       sel <- input$breaks_tbl_rows_selected
       if (is.null(sel)) {
-        showNotification("Vælg et knæk først", type = "warning")
+        showNotification("V\u00E6lg et kn\u00E6k f\u00F8rst", type = "warning")
         return()
       }
-      m <- safe_operation("hent median-knæk", db$diagram_medians(cd$diagram_id),
+      m <- safe_operation("hent median-kn\u00E6k", db$diagram_medians(cd$diagram_id),
         fallback = NULL
       )
       if (is.null(m)) {
@@ -981,7 +981,7 @@ mod_signal_review_server <- function(
       }
       .refresh_diagram(cd) # re-scan så grafen opdateres (ej blank) efter fjern
       preview_parts(NULL)
-      showNotification("Knæk fjernet")
+      showNotification("Kn\u00E6k fjernet")
     })
 
     # Eksponér til test

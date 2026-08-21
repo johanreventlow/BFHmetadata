@@ -19,7 +19,7 @@ parquet_indicator_path <- function(base_path, indikator_navn_teknisk) {
 .require_arrow <- function(available = requireNamespace("arrow", quietly = TRUE)) {
   if (!isTRUE(available)) {
     cond <- simpleError(
-      "Signal-gennemgang kræver R-pakken 'arrow'. Database-CRUD kan bruges uden."
+      "Signal-gennemgang kr\u00E6ver R-pakken 'arrow'. Database-CRUD kan bruges uden."
     )
     class(cond) <- c("bfhmeta_arrow_unavailable", class(cond))
     stop(cond)
@@ -92,7 +92,7 @@ signal_data_capability <- function(
     return(list(
       state = "arrow_mangler",
       message = paste(
-        "Signal-gennemgang kræver R-pakken 'arrow'.",
+        "Signal-gennemgang kr\u00E6ver R-pakken 'arrow'.",
         "Database-CRUD virker fortsat."
       )
     ))

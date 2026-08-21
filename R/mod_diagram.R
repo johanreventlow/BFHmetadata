@@ -8,7 +8,7 @@
 #' @noRd
 .diagram_indicator_initial_choices <- function(indicators, selected = NULL) {
   selected <- suppressWarnings(as.integer(selected))
-  empty <- c("(vælg)" = "")
+  empty <- c("(v\u00E6lg)" = "")
   if (length(selected) != 1L || is.na(selected)) return(empty)
 
   idx <- match(selected, indicators$id)
@@ -64,16 +64,16 @@
   tagList(
     ind_sel,
     selectInput(ns("d_organisatorisk_navn_teknisk"), "Organisatorisk enhed",
-      choices = c("(vælg)" = "", ch(opts$org)),
+      choices = c("(v\u00E6lg)" = "", ch(opts$org)),
       selected = v("organisatorisk_navn_teknisk") %||% ""),
     selectInput(ns("d_diagram_type"), "Diagramtype",
-      choices = c("(vælg)" = "", ch(opts$type)),
+      choices = c("(v\u00E6lg)" = "", ch(opts$type)),
       selected = v("diagram_type") %||% ""),
     selectInput(ns("d_periode_aggregering"), "Periode-aggregering",
       choices = c("(ingen)" = "", opts$periode),
       selected = v("periode_aggregering") %||% ""),
     div(class = "d-flex flex-wrap gap-4 pt-1",
-      checkboxInput(ns("d_indgaar_i_aggregering"), "Indgår i aggregering",
+      checkboxInput(ns("d_indgaar_i_aggregering"), "Indg\u00E5r i aggregering",
         value = isTRUE(v("indgaar_i_aggregering"))),
       checkboxInput(ns("d_diagram_aktivt"), "Diagram aktivt",
         value = isTRUE(v("diagram_aktivt", default = TRUE))),
@@ -141,7 +141,7 @@ diagram_excel_data <- function(d) {
   out <- data.frame(diagram_id = d$diagram_id, stringsAsFactors = FALSE,
                     check.names = FALSE)
   out[["Datapakke"]] <- chr_or_empty(d$datapakke)
-  out[["Datasæt"]] <- chr_or_empty(d$datasaet)
+  out[["Datas\u00E6t"]] <- chr_or_empty(d$datasaet)
   out[["Indikator"]] <- chr_or_empty(d$indikator)
   out[["Enhed"]] <- chr_or_empty(d$organisatorisk_navn_teknisk)
   out[["Type"]] <- chr_or_empty(d$diagram_type)
@@ -175,7 +175,7 @@ diagram_excel_columns <- function(d, opts, periode) {
     stats::na.omit(as.character(d$periode_aggregering))))
   per_src <- data.frame(id = c("", per_vals), name = c("(ingen)", per_vals),
                         stringsAsFactors = FALSE)
-  titles <- c("diagram_id", "Datapakke", "Datasæt", names(.DIAGRAM_GRID_FIELDS))
+  titles <- c("diagram_id", "Datapakke", "Datas\u00E6t", names(.DIAGRAM_GRID_FIELDS))
   out <- data.frame(
     title = titles,
     type = c("hidden", "text", "text", rep("dropdown", 4),
@@ -235,7 +235,7 @@ diagram_excel_columns <- function(d, opts, periode) {
     "}"
   ), data = list(
     map = map,
-    datasaetCol = match("Datasæt", grid_names) - 1L,
+    datasaetCol = match("Datas\u00E6t", grid_names) - 1L,
     indikatorCol = match("Indikator", grid_names) - 1L
   ))
 }
@@ -246,7 +246,7 @@ mod_diagram_ui <- function(id) {
   div(class = "mt-2",
     div(class = "d-flex justify-content-end gap-2 mb-2",
       actionButton(ns("new_diagram"), "Nyt diagram", class = "btn-success"),
-      actionButton(ns("delete_row"), "Slet valgte række",
+      actionButton(ns("delete_row"), "Slet valgte r\u00E6kke",
                    class = "btn-outline-danger")),
     bslib::layout_columns(
       col_widths = c(2, 2, 3, 3, 2),
@@ -259,7 +259,7 @@ mod_diagram_ui <- function(id) {
                     "Kun inaktive" = "inaktive"),
         selected = "aktive")),
     p(class = "text-muted small",
-      "Dobbeltklik en celle for at redigere. Klik en række og tryk Slet."),
+      "Dobbeltklik en celle for at redigere. Klik en r\u00E6kke og tryk Slet."),
     excelR::excelOutput(ns("tbl"), width = "100%", height = "auto"))
 }
 
@@ -276,8 +276,8 @@ mod_diagram_server <- function(id, db) {
     # Fejl-tolerant genindlæsning: DB-udfald må aldrig vælte sessionen —
     # behold senest hentede rækker og sig det højt.
     reload <- function() {
-      safe_operation("genindlæs diagrammer", admin(db$list_diagrams_admin()),
-        fallback = status_msg("Databasen svarer ikke — viser senest hentede data"))
+      safe_operation("genindl\u00E6s diagrammer", admin(db$list_diagrams_admin()),
+        fallback = status_msg("Databasen svarer ikke \u2014 viser senest hentede data"))
     }
 
     # Flydende notifikationer (synlige over modal, jf. mod_indikator_crud)
@@ -324,13 +324,13 @@ mod_diagram_server <- function(id, db) {
     output$filter_datapakke_ui <- renderUI(
       .filter_ui("filter_datapakke", "Datapakke", "datapakke"))
     output$filter_datasaet_ui <- renderUI(
-      .filter_ui("filter_datasaet", "Datasæt", "datasaet", .under_pakke()))
+      .filter_ui("filter_datasaet", "Datas\u00E6t", "datasaet", .under_pakke()))
 
     # Org-filter: hierarkisk dropdown over HELE org-træet (id-værdier), så
     # en overordnet enhed kan vælges selv om den ikke selv har diagrammer —
     # filtreringen medtager alle underliggende enheder (se filtered()).
     # NULL ved fejlet trae-hentning → flad liste + kun-enheden-selv-filter.
-    org_tree <- safe_operation("hent org-træ", db$org_struct(), fallback = NULL)
+    org_tree <- safe_operation("hent org-tr\u00E6", db$org_struct(), fallback = NULL)
     output$filter_org_ui <- renderUI({
       ns <- session$ns
       admin() # re-render ved reload som de øvrige filtre (bevar valg eksplicit)
@@ -422,7 +422,7 @@ mod_diagram_server <- function(id, db) {
                          "diagram_type")) {
           iv <- suppressWarnings(as.integer(val))
           if (is.na(iv)) { # tømt/ugyldig FK-celle → afvis + snap tilbage
-            status_msg("Vælg en værdi fra listen")
+            status_msg("V\u00E6lg en v\u00E6rdi fra listen")
             revert <- TRUE
             next
           }
@@ -466,15 +466,15 @@ mod_diagram_server <- function(id, db) {
       d <- filtered()
       j <- if (is.null(sel)) NA_integer_ else match(sel, as.character(d$diagram_id))
       if (is.na(j)) {
-        status_msg("Vælg en række først")
+        status_msg("V\u00E6lg en r\u00E6kke f\u00F8rst")
         return()
       }
       rid <- d$diagram_id[j]
       # Pre-check: median-knæk gør sletning destruktiv → venlig blokering
       n <- db$diagram_median_count(rid)
       if (n > 0) {
-        warn_msg(sprintf(paste("Diagrammet har %d median-knæk — deaktivér i",
-                               "stedet, eller slet knækkene først."), n))
+        warn_msg(sprintf(paste("Diagrammet har %d median-kn\u00E6k \u2014 deaktiv\u00E9r i",
+                               "stedet, eller slet kn\u00E6kkene f\u00F8rst."), n))
         return()
       }
       safe_operation("diagram-slet", {
@@ -494,7 +494,7 @@ mod_diagram_server <- function(id, db) {
         size = "m", easyClose = FALSE,
         .diagram_form_ui(ns, NULL, opts),
         footer = div(class = "d-flex justify-content-end gap-2 w-100",
-          modalButton("Annullér"),
+          modalButton("Annull\u00E9r"),
           actionButton(ns("d_save"), "Gem", class = "btn-primary"))))
       session$onFlushed(function() {
         .update_diagram_indicator(session, opts$indikator, "")

@@ -1,4 +1,6 @@
 #' Kør CRUD-appen (kun lokalt — host 127.0.0.1)
+#' @param ... Additional options passed to [shiny::shinyApp()].
+#' @return A shiny app object.
 #' @export
 run_app <- function(...) {
   # Windows: arrow's mimalloc-allokator korrumperer heapen under parquet-scan

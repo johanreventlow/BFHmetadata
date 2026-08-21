@@ -44,28 +44,28 @@
 # styres i .build_modal.
 INDIKATOR_MODAL_COLS <- c(
   "indikator_navn", "indikator_hierarki", "datakilde", "kontaktperson",
-  "ønsket_tendens", "mål", "output_enhed", "sp_rapport_id", "direkte_link",
-  "definition_kort", "definition_dataportal", "tæller_beskrivelse",
-  "nævner_beskrivelse", "indikator_ukompatibel_med", "antal_observationer",
-  "periode_fra", "aktiv_indikator", "nøgleindikator",
+  "\u00F8nsket_tendens", "m\u00E5l", "output_enhed", "sp_rapport_id", "direkte_link",
+  "definition_kort", "definition_dataportal", "t\u00E6ller_beskrivelse",
+  "n\u00E6vner_beskrivelse", "indikator_ukompatibel_med", "antal_observationer",
+  "periode_fra", "aktiv_indikator", "n\u00F8gleindikator",
   "nulfyld_tomme_perioder", "tillad_auto_opdatering"
 )
 
 # Danske felt-labels i modalen (col → vist tekst)
 INDIKATOR_MODAL_LABELS <- c(
-  indikator_navn = "Navn på indikator",
+  indikator_navn = "Navn p\u00E5 indikator",
   indikator_hierarki = "Hierarki-placering",
   datakilde = "Datakilde", kontaktperson = "Kontaktperson",
-  ønsket_tendens = "Ønsket retning", mål = "Generelt indikatormål",
+  "\u00f8nsket_tendens" = "\u00D8nsket retning", "m\u00e5l" = "Generelt indikatorm\u00E5l",
   output_enhed = "Output-enhed",
   sp_rapport_id = "Evt. SP rapport id", direkte_link = "Evt. direkte link",
   definition_kort = "Kort definition", definition_dataportal = "Definition til dataportal",
-  tæller_beskrivelse = "Beskrivelse af tæller", nævner_beskrivelse = "Beskrivelse af nævner",
+  "t\u00e6ller_beskrivelse" = "Beskrivelse af t\u00E6ller", "n\u00e6vner_beskrivelse" = "Beskrivelse af n\u00E6vner",
   indikator_ukompatibel_med = "Kommentarer vedr. anvendelse",
   antal_observationer = "Antal observationer", periode_fra = "Periode fra",
-  aktiv_indikator = "Aktiv indikator", nøgleindikator = "Nøgleindikator",
+  aktiv_indikator = "Aktiv indikator", "n\u00f8gleindikator" = "N\u00F8gleindikator",
   nulfyld_tomme_perioder = "Nulfyld tomme perioder",
-  tillad_auto_opdatering = "Auto-opdatér rosa felter"
+  tillad_auto_opdatering = "Auto-opdat\u00E9r rosa felter"
 )
 
 #' @noRd
@@ -76,10 +76,10 @@ mod_indikator_crud_ui <- function(id) {
     div(
       class = "d-flex justify-content-end gap-2 mb-2",
       actionButton(ns("new_modal"), "Ny indikator", class = "btn-success"),
-      actionButton(ns("open_selected"), "Åbn valgte",
+      actionButton(ns("open_selected"), "\u00C5bn valgte",
         class = "btn-outline-primary"
       ),
-      actionButton(ns("soft_delete"), "Deaktivér valgte",
+      actionButton(ns("soft_delete"), "Deaktiv\u00E9r valgte",
         class = "btn-warning"
       )
     ),
@@ -91,15 +91,15 @@ mod_indikator_crud_ui <- function(id) {
         choices = c(
           "Alle" = "alle", "Kun aktive" = "aktiv",
           "Kun inaktive" = "inaktiv",
-          "Nøgleindikatorer" = "noegle"
+          "N\u00F8gleindikatorer" = "noegle"
         ),
         selected = "alle"
       )
     ),
     p(class = "text-muted small", paste(
       "Dobbeltklik en celle for at redigere direkte.",
-      "Klik en række og brug 'Åbn valgte' for definitioner, relationer",
-      "og diagrammer — eller 'Deaktivér valgte'."
+      "Klik en r\u00E6kke og brug '\u00C5bn valgte' for definitioner, relationer",
+      "og diagrammer \u2014 eller 'Deaktiv\u00E9r valgte'."
     )),
     excelR::excelOutput(ns("tbl"), width = "100%", height = "auto"),
     verbatimTextOutput(ns("status"))
@@ -185,11 +185,11 @@ mod_indikator_crud_ui <- function(id) {
 # FK'en (typisk en indikatorsamling). Lange felter (definitioner m.m.) +
 # m2m-relationer + diagrammer redigeres fortsat i modalen ("Åbn valgte").
 .INDIKATOR_GRID_FIELDS <- c(
-  "Aktiv" = "aktiv_indikator", "Nøgle" = "nøgleindikator",
+  "Aktiv" = "aktiv_indikator", "N\u00F8gle" = "n\u00F8gleindikator",
   "Nulfyld" = "nulfyld_tomme_perioder",
   "Hierarki-placering" = "indikator_hierarki", "Navn" = "indikator_navn",
-  "Mål" = "mål", "Output-enhed" = "output_enhed",
-  "Ønsket tendens" = "ønsket_tendens", "Direkte link" = "direkte_link",
+  "M\u00E5l" = "m\u00E5l", "Output-enhed" = "output_enhed",
+  "\u00D8nsket tendens" = "\u00F8nsket_tendens", "Direkte link" = "direkte_link",
   "Kontaktperson" = "kontaktperson", "Datakilde" = "datakilde"
 )
 
@@ -202,16 +202,16 @@ indikator_excel_data <- function(d) {
   chr_or_empty <- function(x) ifelse(is.na(x), "", as.character(x))
   out <- data.frame(id = d$id, stringsAsFactors = FALSE, check.names = FALSE)
   out[["Aktiv"]] <- col_of("aktiv_indikator") %in% TRUE
-  out[["Nøgle"]] <- col_of("nøgleindikator") %in% TRUE
+  out[["N\u00F8gle"]] <- col_of("n\u00F8gleindikator") %in% TRUE
   out[["Nulfyld"]] <- col_of("nulfyld_tomme_perioder") %in% TRUE
   out[["Datapakke"]] <- chr_or_empty(col_of("label_datapakke"))
-  out[["Datasæt"]] <- chr_or_empty(col_of("label_datasaet"))
+  out[["Datas\u00E6t"]] <- chr_or_empty(col_of("label_datasaet"))
   out[["Hierarki-placering"]] <- chr_or_empty(col_of("indikator_hierarki"))
   out[["Indikator-id"]] <- chr_or_empty(col_of("indikator_navn_teknisk"))
   out[["Navn"]] <- chr_or_empty(col_of("indikator_navn"))
-  out[["Mål"]] <- chr_or_empty(col_of("mål"))
+  out[["M\u00E5l"]] <- chr_or_empty(col_of("m\u00E5l"))
   out[["Output-enhed"]] <- chr_or_empty(col_of("output_enhed"))
-  out[["Ønsket tendens"]] <- chr_or_empty(col_of("ønsket_tendens"))
+  out[["\u00D8nsket tendens"]] <- chr_or_empty(col_of("\u00F8nsket_tendens"))
   out[["Direkte link"]] <- chr_or_empty(col_of("direkte_link"))
   out[["Kontaktperson"]] <- chr_or_empty(col_of("kontaktperson"))
   out[["Datakilde"]] <- chr_or_empty(col_of("datakilde"))
@@ -253,9 +253,9 @@ indikator_excel_columns <- function(d, fk) {
     stringsAsFactors = FALSE
   )
   titles <- c(
-    "id", "Aktiv", "Nøgle", "Nulfyld", "Datapakke", "Datasæt",
-    "Hierarki-placering", "Indikator-id", "Navn", "Mål",
-    "Output-enhed", "Ønsket tendens", "Direkte link",
+    "id", "Aktiv", "N\u00F8gle", "Nulfyld", "Datapakke", "Datas\u00E6t",
+    "Hierarki-placering", "Indikator-id", "Navn", "M\u00E5l",
+    "Output-enhed", "\u00D8nsket tendens", "Direkte link",
     "Kontaktperson", "Datakilde"
   )
   dropdown_titles <- c(
@@ -265,11 +265,11 @@ indikator_excel_columns <- function(d, fk) {
   out <- data.frame(
     title = titles,
     type = ifelse(titles == "id", "hidden",
-      ifelse(titles %in% c("Aktiv", "Nøgle", "Nulfyld"), "checkbox",
+      ifelse(titles %in% c("Aktiv", "N\u00F8gle", "Nulfyld"), "checkbox",
         ifelse(titles %in% dropdown_titles, "dropdown", "text")
       )
     ),
-    readOnly = titles %in% c("id", "Datapakke", "Datasæt", "Indikator-id"),
+    readOnly = titles %in% c("id", "Datapakke", "Datas\u00E6t", "Indikator-id"),
     align = "left",
     autocomplete = titles %in% c("Hierarki-placering", "Kontaktperson"),
     stringsAsFactors = FALSE
@@ -301,8 +301,8 @@ mod_indikator_crud_server <- function(id, db) {
     # forbindelser; pool-recovery kan fejle ved netværksbortfald) må ALDRIG
     # vælte sessionen — behold senest hentede rækker og sig det højt.
     reload <- function() {
-      safe_operation("genindlæs indikatorer", rows(db$list_indikatorer()),
-        fallback = status_msg("Databasen svarer ikke — viser senest hentede data")
+      safe_operation("genindl\u00E6s indikatorer", rows(db$list_indikatorer()),
+        fallback = status_msg("Databasen svarer ikke \u2014 viser senest hentede data")
       )
     }
 
@@ -335,7 +335,7 @@ mod_indikator_crud_server <- function(id, db) {
         as.list(row)
       }
       req_cols <- c("indikator_navn", "indikator_hierarki", "definition_kort")
-      rosa_cols <- c("definition_dataportal", "tæller_beskrivelse", "nævner_beskrivelse")
+      rosa_cols <- c("definition_dataportal", "t\u00E6ller_beskrivelse", "n\u00E6vner_beskrivelse")
       # Skalar/FK-felt med dansk label + evt. required-* + rosa-wrap
       fin <- function(col) {
         f <- Find(function(x) x$col == col, INDIKATOR_FIELDS)
@@ -385,7 +385,7 @@ mod_indikator_crud_server <- function(id, db) {
       # omdøbning ville bryde koblingen til datafilerne). Disabled input
       # sender ingen værdi, og kolonnen er ikke i INDIKATOR_MODAL_COLS.
       teknisk_vis <- if (!is_new) {
-        w <- textInput(ns("m_vis_teknisk"), "Indikator-id (teknisk navn — låst)",
+        w <- textInput(ns("m_vis_teknisk"), "Indikator-id (teknisk navn \u2014 l\u00E5st)",
           value = vals$indikator_navn_teknisk %||% ""
         )
         htmltools::tagQuery(w)$find("input")$addAttrs(disabled = NA)$allTags()
@@ -397,10 +397,10 @@ mod_indikator_crud_server <- function(id, db) {
         teknisk_vis,
         fin("indikator_hierarki"),
         two_up(fin("datakilde"), fin("kontaktperson")),
-        two_up(fin("ønsket_tendens"), fin("mål")),
+        two_up(fin("\u00F8nsket_tendens"), fin("m\u00E5l")),
         two_up(fin("output_enhed"), fin("sp_rapport_id")),
         sect("Relationer"),
-        mfin("dataprodukter", "Indgår i dataprodukter"),
+        mfin("dataprodukter", "Indg\u00E5r i dataprodukter"),
         mfin("faggrupper", "Relevant for faggrupper"),
         mfin("organisation", "Relevant for afdelinger"),
         fin("direkte_link"),
@@ -408,7 +408,7 @@ mod_indikator_crud_server <- function(id, db) {
         if (is_new) {
           p(
             class = "text-muted small",
-            "Gem indikatoren først for at tilføje diagrammer."
+            "Gem indikatoren f\u00F8rst for at tilf\u00F8je diagrammer."
           )
         } else {
           tagList(
@@ -424,20 +424,20 @@ mod_indikator_crud_server <- function(id, db) {
         sect("Definitioner & beskrivelser", "rosa felter auto-opdateres"),
         fin("definition_kort"),
         fin("definition_dataportal"),
-        fin("tæller_beskrivelse"),
-        fin("nævner_beskrivelse"),
+        fin("t\u00E6ller_beskrivelse"),
+        fin("n\u00E6vner_beskrivelse"),
         fin("indikator_ukompatibel_med"),
         sect("Datagrundlag & status"),
         two_up(fin("antal_observationer"), fin("periode_fra")),
         div(
           class = "d-flex flex-wrap gap-4 pt-1",
-          fin("aktiv_indikator"), fin("nøgleindikator"),
+          fin("aktiv_indikator"), fin("n\u00F8gleindikator"),
           fin("nulfyld_tomme_perioder"), fin("tillad_auto_opdatering")
         )
       )
 
       modalDialog(
-        title = if (is_new) "Ny indikator" else "Redigér indikator",
+        title = if (is_new) "Ny indikator" else "Redig\u00E9r indikator",
         size = "xl", easyClose = FALSE,
         tags$style(HTML(paste0(
           ".modal-dialog{margin-top:24px;}",
@@ -466,7 +466,7 @@ mod_indikator_crud_server <- function(id, db) {
           )),
           div(
             class = "d-flex gap-2",
-            modalButton("Annullér"),
+            modalButton("Annull\u00E9r"),
             actionButton(ns("modal_save"), "Gem og luk", class = "btn-primary")
           )
         )
@@ -478,7 +478,7 @@ mod_indikator_crud_server <- function(id, db) {
     observeEvent(input$open_selected, {
       rid <- selected_id()
       if (is.null(rid)) {
-        status_msg("Vælg en række først")
+        status_msg("V\u00E6lg en r\u00E6kke f\u00F8rst")
         return()
       }
       row <- rows()[rows()[["id"]] == rid, , drop = FALSE]
@@ -580,7 +580,7 @@ mod_indikator_crud_server <- function(id, db) {
       return_ind(editing_id())
       removeModal()
       showModal(modalDialog(
-        title = if (is_new) "Nyt diagram" else "Redigér diagram",
+        title = if (is_new) "Nyt diagram" else "Redig\u00E9r diagram",
         easyClose = FALSE,
         .diagram_form_ui(ns, vals, opts, lock_indikator = TRUE),
         footer = div(
@@ -671,7 +671,7 @@ mod_indikator_crud_server <- function(id, db) {
         d <- d[!(d$aktiv_indikator %in% TRUE), , drop = FALSE]
       }
       if (identical(status, "noegle")) {
-        d <- d[d$nøgleindikator %in% TRUE, , drop = FALSE]
+        d <- d[d[["n\u00f8gleindikator"]] %in% TRUE, , drop = FALSE]
       }
       fdp <- input$filter_datapakke
       if (!is.null(fdp) && nzchar(fdp)) {
@@ -735,7 +735,7 @@ mod_indikator_crud_server <- function(id, db) {
       selected <- .preserved_filter_selection(
         isolate(input$filter_datasaet), choices
       )
-      selectInput(ns("filter_datasaet"), "Datasæt",
+      selectInput(ns("filter_datasaet"), "Datas\u00E6t",
         choices = choices, selected = selected
       )
     })
@@ -753,7 +753,7 @@ mod_indikator_crud_server <- function(id, db) {
     observeEvent(input$soft_delete, {
       sid <- selected_id()
       if (is.null(sid)) {
-        status_msg("Vælg en række først")
+        status_msg("V\u00E6lg en r\u00E6kke f\u00F8rst")
         return()
       }
       safe_operation("soft-delete",
@@ -776,7 +776,7 @@ mod_indikator_crud_server <- function(id, db) {
     # her ville tekst-redigeringer først gemmes ved næste checkbox-klik.
     .IND_FK_FIELDS <- c("indikator_hierarki", "kontaktperson", "datakilde")
     .IND_BOOL_FIELDS <- c(
-      "aktiv_indikator", "nøgleindikator",
+      "aktiv_indikator", "n\u00F8gleindikator",
       "nulfyld_tomme_perioder"
     )
     observeEvent(input$tbl, {
@@ -806,7 +806,7 @@ mod_indikator_crud_server <- function(id, db) {
           # FK-dropdowns har intet tom-valg: tømt/ugyldig celle → afvis
           iv <- suppressWarnings(as.integer(val))
           if (is.na(iv)) {
-            status_msg("Vælg en værdi fra listen")
+            status_msg("V\u00E6lg en v\u00E6rdi fra listen")
             revert <- TRUE
             next
           }
@@ -814,7 +814,7 @@ mod_indikator_crud_server <- function(id, db) {
         } else if (field %in% .IND_BOOL_FIELDS) {
           val <- identical(val, "TRUE")
         } else if (identical(field, "indikator_navn") && is.na(val)) {
-          status_msg("Navn på indikator er obligatorisk")
+          status_msg("Navn p\u00E5 indikator er obligatorisk")
           revert <- TRUE
           next
         }

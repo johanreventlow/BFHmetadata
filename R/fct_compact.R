@@ -182,7 +182,7 @@ run_compaction <- function(base_path, progress = NULL) {
   now <- format(Sys.time(), "%Y-%m-%d %H:%M:%S")
   for (i in seq_len(nrow(todo))) {
     if (!is.null(progress)) progress(i, nrow(todo), todo$rel[i])
-    res <- safe_operation(paste("kompaktér", todo$rel[i]),
+    res <- safe_operation(paste("kompakt\u00E9r", todo$rel[i]),
       compact_indicator(todo$src[i], compact_dest_path(base_path, todo$rel[i])),
       fallback = list(status = "fejl"))
     if (res$status == "ok") {

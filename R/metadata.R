@@ -20,7 +20,7 @@ map_odbc_type <- function(code) {
   )
   key <- as.character(code)
   if (!key %in% names(m)) {
-    stop(sprintf("Ukendt ODBC-typekode '%s' — tilføj mapping i map_odbc_type()", key),
+    stop(sprintf("Ukendt ODBC-typekode '%s' \u2014 tilf\u00F8j mapping i map_odbc_type()", key),
          call. = FALSE)
   }
   unname(m[key])
@@ -102,20 +102,20 @@ INDIKATOR_FIELDS <- list(
   list(col="sp_rapport_id",            kind="text"),
   list(col="tillad_auto_opdatering",   kind="bool"),
   list(col="aktiv_indikator",          kind="bool"),
-  list(col="nøgleindikator",           kind="bool"),
+  list(col="n\u00F8gleindikator",           kind="bool"),
   # Opt-in: nulfyld tomme perioder i hændelsestællinger (BFHddl
   # fill_empty_periods, DATA_CONVENTIONS §3b). Kræver migration
   # 04_add_nulfyld_tomme_perioder.sql i Supabase.
   list(col="nulfyld_tomme_perioder",   kind="bool"),
   list(col="definition_kort",          kind="textarea"),
   list(col="definition_dataportal",    kind="textarea"),
-  list(col="tæller_beskrivelse",       kind="textarea"),
-  list(col="nævner_beskrivelse",       kind="textarea"),
+  list(col="t\u00E6ller_beskrivelse",       kind="textarea"),
+  list(col="n\u00E6vner_beskrivelse",       kind="textarea"),
   list(col="indikator_ukompatibel_med",kind="textarea"),
-  list(col="mål",                      kind="text"),
+  list(col="m\u00E5l",                      kind="text"),
   list(col="datakilde",                kind="fk", parent="tblDatakilder",        label="datakilde_navn"),
   list(col="direkte_link",             kind="text"),
-  list(col="ønsket_tendens",           kind="text"),
+  list(col="\u00F8nsket_tendens",           kind="text"),
   list(col="antal_observationer",      kind="int"),
   list(col="periode_fra",              kind="date"),
   list(col="output_enhed",             kind="choice", choices=OUTPUT_ENHED_CHOICES)
@@ -139,7 +139,7 @@ INDIKATOR_JUNCTIONS <- list(
 
 # Adskiller mellem sammensatte dele af en dropdown-label (fx teknisk navn og
 # langt navn). Holdes som konstant saa label_expr og tests deler definition.
-LABEL_SEPARATOR <- " — "
+LABEL_SEPARATOR <- " \u2014 "
 
 # --- Simple opslagstabeller (Class A) til generisk inline-redigering ----------
 # Hver: id (modul-namespace/nav-value), table, pk ("Id" for alle), label (vist),
@@ -190,7 +190,7 @@ LOOKUP_TABLES <- list(
   # Oversættelse: navn-fra-data → organisatorisk enhed. Bruges af signal-scan
   # (enhed-varianter); sletning ufarlig (intet refererer til rækkerne).
   list(id = "org_oversaettelse", table = "tblOrganisationOversaettelse",
-       pk = "Id", label = "Organisations-oversættelse",
+       pk = "Id", label = "Organisations-overs\u00E6ttelse",
        cols = list(
          list(col = "organisatorisk_navn_fra_data", type = "text",
               label = "Navn fra data"),
@@ -242,7 +242,7 @@ HIERARCHY_TABLES <- list(
     # grenen under noden. Opt-in — org-instansen har ingen filtre.
     filters = list(
       list(id = "datapakke", label = "Datapakke", niveau_navn = "Datapakke"),
-      list(id = "datasaet", label = "Datasæt", niveau_navn = "Datasæt")),
+      list(id = "datasaet", label = "Datas\u00E6t", niveau_navn = "Datas\u00E6t")),
     fields = list(
       list(col = "hierarki_navn", type = "text", label = "Navn"),
       list(col = "hierarki_navn_kort", type = "text", label = "Kort navn"),

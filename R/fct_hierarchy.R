@@ -63,7 +63,7 @@ org_hierarchy_choices <- function(tree, labels) {
   df$label[is.na(df$label)] <- as.character(df$id[is.na(df$label)])
   ord <- hierarchy_order(df, "id", "parent_id", sort_col = "label")
   # Non-breaking spaces: alm. mellemrum kollapses af browseren i <option>
-  indent <- strrep("  ", ord$depth)
+  indent <- strrep("\u00A0\u00A0", ord$depth)
   out <- stats::setNames(as.character(ord$id), paste0(indent, ord$label))
   missing <- labels[!(labels$id %in% df$id), , drop = FALSE]
   if (nrow(missing) > 0) out <- c(out, flat(missing))
@@ -85,7 +85,7 @@ hierarchy_indent_options <- function(opts) {
   opts$label <- as.character(opts$label)
   ord <- hierarchy_order(opts, "id", "parent_id", sort_col = "label")
   # Non-breaking spaces: alm. mellemrum kollapses i <option>/dropdown-HTML
-  ord$label <- paste0(strrep("  ", ord$depth), ord$label)
+  ord$label <- paste0(strrep("\u00A0\u00A0", ord$depth), ord$label)
   ord$depth <- NULL
   ord
 }
