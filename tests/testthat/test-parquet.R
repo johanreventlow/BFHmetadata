@@ -86,3 +86,27 @@ test_that("parquet_limit_observations beholder seneste N unikke datoer", {
   expect_equal(max(parquet_limit_observations(d, 3)$dato), max(d$dato))
   expect_equal(nrow(parquet_limit_observations(d, NULL)), 10)
 })
+
+test_that("signal_data_capability skelner manglende, tom, Arrow og klar", {
+  expect_equal(signal_data_capability("", FALSE)$state, "ingen_data")
+
+  base <- withr::local_tempdir()
+  expect_equal(signal_data_capability(base, FALSE)$state, "ingen_data")
+
+  part <- file.path(base, "ind", "dato=2026-01-01")
+  dir.create(part, recursive = TRUE)
+  writeBin(charToRaw("availability ser kun filnavnet"),
+           file.path(part, "part-0.parquet"))
+
+  expect_equal(signal_data_capability(base, FALSE)$state, "arrow_mangler")
+  expect_equal(signal_data_capability(base, TRUE)$state, "klar")
+})
+
+test_that("capability-scan er begrænset til understøttet mappedybde", {
+  base <- withr::local_tempdir()
+  too_deep <- file.path(base, "gruppe", "ekstra", "ind", "dato=2026-01-01")
+  dir.create(too_deep, recursive = TRUE)
+  writeBin(charToRaw("x"), file.path(too_deep, "part-0.parquet"))
+
+  expect_equal(signal_data_capability(base, TRUE)$state, "ingen_data")
+})

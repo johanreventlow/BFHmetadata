@@ -1354,3 +1354,37 @@ test_that("signal-filtre kaskaderer datapakke -> datasaet -> indikator", {
   expect_identical(last_for("f_datasaet")$choices, c("D1", "D2"))
   expect_identical(last_for("f_indikator_navn")$choices, c("I1", "I2"))
 })
+
+test_that("scan uden lokale data stopper før scan-DB-kald", {
+  base <- withr::local_tempdir()
+  idx <- data.frame(
+    diagram_id = 1L, indikator_id = 1L, indikator_navn = "A",
+    indikator_navn_teknisk = "a", datasaet = "d", datapakke = "p",
+    org_id = 5L, org_teknisk = "E", org_navn = "E", org_niveau = 5L,
+    overafdeling = "OA", afdeling = NA, afsnit = NA,
+    stringsAsFactors = FALSE
+  )
+  calls <- new.env(parent = emptyenv())
+  calls$medians <- 0L
+  db <- make_fake_signal_db(base, idx)
+  db$diagram_medians_batch <- function(ids) {
+    calls$medians <- calls$medians + 1L
+    data.frame(id = integer(), diagram = integer(),
+               laas_median = as.Date(character()))
+  }
+
+  shiny::testServer(
+    mod_signal_review_server,
+    args = list(db = db, arrow_available = function() FALSE),
+    {
+      session$setInputs(parquet_dir = base, window_mode = "all", window_n = 36,
+        f_overafdeling = character(), f_afsnit = character(),
+        f_datapakke = character(), f_datasaet = character(),
+        f_indikator_navn = character(), scan = 1)
+      expect_equal(availability()$state, "ingen_data")
+      expect_false(scan_running())
+      expect_equal(calls$medians, 0L)
+      expect_null(scanned_list())
+    }
+  )
+})

@@ -8,6 +8,7 @@ mod_signal_review_ui <- function(id) {
     sidebar = bslib::sidebar(
       width = 320, open = TRUE,
       textInput(ns("parquet_dir"), "Parquet-mappe", placeholder = "/sti/til/parquet"),
+      uiOutput(ns("availability")),
       div(
         class = "d-flex gap-2 align-items-end",
         radioButtons(ns("window_mode"), "Datavindue",
@@ -93,8 +94,11 @@ mod_signal_review_ui <- function(id) {
 }
 
 #' @noRd
-mod_signal_review_server <- function(id, db) {
+mod_signal_review_server <- function(
+    id, db,
+    arrow_available = function() requireNamespace("arrow", quietly = TRUE)) {
   moduleServer(id, function(input, output, session) {
+    availability <- reactiveVal(signal_data_capability("", arrow_available()))
     index <- reactiveVal(db$list_active_seriediagrammer())
     variants <- reactiveVal(db$org_enhed_variants())
     cache <- reactiveVal(list()) # nøgle "<diagram_id>|<window>" → scan-res
@@ -282,6 +286,21 @@ mod_signal_review_server <- function(id, db) {
     # Ryd forældede dags-cache-filer én gang pr. session (aldrig blokerende)
     safe_operation("cache-prune", slice_cache_prune(), fallback = NULL)
 
+    observeEvent(input$parquet_dir, {
+      availability(signal_data_capability(input$parquet_dir, arrow_available()))
+    }, ignoreInit = FALSE)
+
+    output$availability <- renderUI({
+      cap <- availability()
+      if (identical(cap$state, "klar")) return(NULL)
+      css <- if (identical(cap$state, "arrow_mangler")) {
+        "alert alert-warning py-2 small"
+      } else {
+        "alert alert-info py-2 small"
+      }
+      div(class = css, cap$message)
+    })
+
     # Prefill parquet-mappen fra sidste session, så brugeren ikke skal taste
     # stien hver gang (gemmes ved scan; læses også af startup-kompaktering).
     prev_dir <- last_parquet_dir_read()
@@ -407,8 +426,10 @@ mod_signal_review_server <- function(id, db) {
 
     observeEvent(input$scan, {
       base <- input$parquet_dir
-      if (is.null(base) || !nzchar(base) || !dir.exists(base)) {
-        showNotification("Angiv en eksisterende parquet-mappe", type = "warning")
+      cap <- signal_data_capability(base, arrow_available())
+      availability(cap)
+      if (!identical(cap$state, "klar")) {
+        showNotification(cap$message, type = "warning", session = session)
         return()
       }
       cand <- apply_index_filters(index(), current_filters())
@@ -953,6 +974,7 @@ mod_signal_review_server <- function(id, db) {
       view_list = view_list, current_diagram = current_diagram,
       cursor = cursor, cache = cache, preview_parts = preview_parts,
       scan_of_current = .scan_of_current, scan_running = scan_running,
+      scan_progress = scan_progress, availability = availability,
       display_qic = display_qic
     )
   })
