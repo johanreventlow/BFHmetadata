@@ -21,3 +21,34 @@ test_that("assert_write_enabled fejler når disabled", {
     })
   })
 })
+
+test_that("pakket DB-konfiguration virker uden udviklingsrod", {
+  cfg <- withr::with_dir(withr::local_tempdir(), {
+    db_config(app_sys("db-config.yml"))
+  })
+  expect_named(cfg, c("host", "port", "dbname", "user", "sslmode"),
+               ignore.order = TRUE)
+  expect_false("password" %in% names(cfg))
+  expect_true(nzchar(cfg$host))
+  expect_true(nzchar(cfg$user))
+})
+
+test_that("BFHMETA_DB_CONFIG vælger eksplicit fil", {
+  p <- withr::local_tempfile(fileext = ".yml")
+  writeLines(c(
+    "default:", "  supabase:", "    host: localhost",
+    "    port: 5432", "    dbname: postgres", "    user: tester",
+    "    sslmode: require"
+  ), p)
+  withr::with_envvar(c(BFHMETA_DB_CONFIG = p), {
+    expect_identical(db_config()$user, "tester")
+  })
+})
+
+test_that("manglende eller ufuldstændig DB-konfiguration fejler lukket", {
+  expect_error(db_config(file.path(tempdir(), "findes-ikke.yml")),
+               "DB-konfigurationen mangler")
+  p <- withr::local_tempfile(fileext = ".yml")
+  writeLines(c("default:", "  supabase:", "    host: localhost"), p)
+  expect_error(db_config(p), "DB-konfigurationen er ufuldstændig")
+})

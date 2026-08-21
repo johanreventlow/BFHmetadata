@@ -1,8 +1,28 @@
-#' Læs supabase-DB-config fra rod-config.yml
+#' Find Supabase-DB-konfiguration uden at pakke hemmeligheder.
 #' @noRd
-db_config <- function() {
-  path <- if (file.exists("config.yml")) "config.yml" else app_sys("../config.yml")
-  yaml::read_yaml(path)$default$supabase
+db_config_path <- function(path = NULL) {
+  if (!is.null(path)) return(path)
+  explicit <- Sys.getenv("BFHMETA_DB_CONFIG")
+  if (nzchar(explicit)) return(explicit)
+  if (file.exists("config.yml")) return("config.yml")
+  app_sys("db-config.yml")
+}
+
+#' Læs og validér Supabase-DB-konfiguration.
+#' @noRd
+db_config <- function(path = NULL) {
+  path <- db_config_path(path)
+  if (length(path) != 1L || is.na(path) || !nzchar(path) || !file.exists(path)) {
+    stop("DB-konfigurationen mangler i installationen", call. = FALSE)
+  }
+  cfg <- yaml::read_yaml(path)$default$supabase
+  required <- c("host", "port", "dbname", "user", "sslmode")
+  if (!is.list(cfg) || !all(required %in% names(cfg)) ||
+      any(vapply(cfg[required], function(x) length(x) != 1L || is.na(x),
+                 logical(1)))) {
+    stop("DB-konfigurationen er ufuldstændig", call. = FALSE)
+  }
+  cfg[required]
 }
 
 #' Er skrivning aktiveret? (write-guard — bevidst friktion mod forkert target)
