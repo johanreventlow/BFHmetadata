@@ -67,6 +67,7 @@ test_that("parquet_load_slice filtrerer på enhed + dato", {
 })
 
 test_that("parquet_load_slice coercer character-dato → Date (rigtig-parquet-regression)", {
+  skip_if_not_installed("arrow")
   base <- withr::local_tempdir()
   ind <- file.path(base, "txt_ind"); dir.create(ind, recursive = TRUE)
   # Rigtig parquet lagrer dato som tekst (ej Date) → bfh_qic ville fejle uden coerce
