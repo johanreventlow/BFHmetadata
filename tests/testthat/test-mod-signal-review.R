@@ -1389,32 +1389,51 @@ test_that("scan uden lokale data stopper før scan-DB-kald", {
   )
 })
 
-test_that("korrupt indikator isoleres og rapporteres uden at skjule gyldigt signal", {
-  skip_if_not_installed("arrow")
-  base <- withr::local_tempdir()
+make_corrupt_signal_fixture <- function() {
+  base <- withr::local_tempdir(.local_envir = parent.frame())
   dir.create(file.path(base, "god"))
   dir.create(file.path(base, "korrupt"))
-  arrow::write_parquet(data.frame(
+  signal_data <- data.frame(
     dato = as.Date("2020-01-01") + 0:23 * 30,
     vaerdi = c(rep(10, 12), rep(2, 12)),
     taeller = NA_real_, naevner = NA_real_, enhed = "e"
-  ), file.path(base, "god", "p.parquet"))
+  )
+  arrow::write_parquet(signal_data, file.path(base, "god", "p.parquet"))
   writeBin(charToRaw("ikke parquet"),
            file.path(base, "korrupt", "p.parquet"))
 
   idx <- data.frame(
-    diagram_id = c(1L, 2L), indikator_id = c(1L, 2L),
-    indikator_navn = c("God", "Korrupt"),
-    indikator_navn_teknisk = c("god", "korrupt"),
+    diagram_id = c(1L, 2L, 3L), indikator_id = c(1L, 2L, 2L),
+    indikator_navn = c("God", "Korrupt A", "Korrupt B"),
+    indikator_navn_teknisk = c("god", "korrupt", "korrupt"),
     datasaet = "d", datapakke = "p", org_id = 5L,
     org_teknisk = "E", org_navn = "E", org_niveau = 5L,
     overafdeling = "OA", afdeling = NA, afsnit = NA,
     stringsAsFactors = FALSE
   )
-  db <- make_fake_signal_db(base, idx)
+  list(base = base, signal_data = signal_data,
+       db = make_fake_signal_db(base, idx))
+}
 
-  shiny::testServer(mod_signal_review_server, args = list(db = db), {
-    session$setInputs(parquet_dir = base, window_mode = "all", window_n = 36,
+test_that("korrupt indikator læses kun én gang for flere diagrammer", {
+  skip_if_not_installed("arrow")
+  fx <- make_corrupt_signal_fixture()
+  load_best <- parquet_load_indicator_best
+  reads <- new.env(parent = emptyenv())
+  reads$corrupt <- 0L
+  testthat::local_mocked_bindings(
+    parquet_load_indicator_best = function(base_path,
+                                           indikator_navn_teknisk, ...) {
+      if (identical(indikator_navn_teknisk, "korrupt")) {
+        reads$corrupt <- reads$corrupt + 1L
+      }
+      load_best(base_path, indikator_navn_teknisk, ...)
+    },
+    .package = "BFHmetadata"
+  )
+
+  shiny::testServer(mod_signal_review_server, args = list(db = fx$db), {
+    session$setInputs(parquet_dir = fx$base, window_mode = "all", window_n = 36,
       f_overafdeling = character(), f_afsnit = character(),
       f_datapakke = character(), f_datasaet = character(),
       f_indikator_navn = character(), scan = 1)
@@ -1422,9 +1441,37 @@ test_that("korrupt indikator isoleres og rapporteres uden at skjule gyldigt sign
     session$flushReact()
 
     expect_equal(signal_list()$diagram_id, 1L)
-    expect_equal(scan_progress()$fejl, 1L)
+    expect_equal(scan_progress()$fejl, 2L)
     expect_equal(availability()$state, "laesefejl")
-    expect_match(availability()$message, "1 diagram")
+    expect_match(availability()$message, "2 diagrammer")
     expect_match(as.character(output$scan_summary$html), "læsefejl")
+    expect_equal(reads$corrupt, 1L)
+  })
+})
+
+test_that("repareret korrupt indikator genlæses ved rescan", {
+  skip_if_not_installed("arrow")
+  fx <- make_corrupt_signal_fixture()
+
+  shiny::testServer(mod_signal_review_server, args = list(db = fx$db), {
+    session$setInputs(parquet_dir = fx$base, window_mode = "all", window_n = 36,
+      f_overafdeling = character(), f_afsnit = character(),
+      f_datapakke = character(), f_datasaet = character(),
+      f_indikator_navn = character(), scan = 1)
+    drain_scan()
+    expect_equal(availability()$state, "laesefejl")
+    expect_equal(scan_progress()$fejl, 2L)
+
+    arrow::write_parquet(
+      fx$signal_data,
+      file.path(fx$base, "korrupt", "p.parquet")
+    )
+    session$setInputs(scan = 2)
+    drain_scan()
+
+    expect_equal(availability()$state, "klar")
+    expect_equal(scan_progress()$fejl, 0L)
+    expect_setequal(scanned_list()$diagram_id, c(1L, 2L, 3L))
+    expect_setequal(signal_list()$diagram_id, c(1L, 2L, 3L))
   })
 })

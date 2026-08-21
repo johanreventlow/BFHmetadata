@@ -395,7 +395,7 @@ mod_signal_review_server <- function(
             org_struct = ctx$agg_os, agg_flags = ctx$agg_fl
           )
           res$row <- row
-          cc[[key]] <- res
+          if (!identical(res$status, "fejl")) cc[[key]] <- res
         }
         ctx$sig[i] <- isTRUE(res$signal)
         ctx$status[i] <- res$status %||% NA_character_
