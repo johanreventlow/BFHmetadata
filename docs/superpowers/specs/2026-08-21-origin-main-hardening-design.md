@@ -1,7 +1,7 @@
 # Origin-main hardening og redning af CRUD-forbedringer
 
-**Dato:** 2026-08-21  
-**Godkendt udgangspunkt:** `origin/main` ved `40a1716ff9a59b2e8897b4919bb6ddc0a9a80eeb`  
+**Dato:** 2026-08-21
+**Godkendt udgangspunkt:** `origin/main` ved `40a1716ff9a59b2e8897b4919bb6ddc0a9a80eeb`
 **Arbejdsgren:** `feat/origin-main-hardening`
 
 ## Formål
