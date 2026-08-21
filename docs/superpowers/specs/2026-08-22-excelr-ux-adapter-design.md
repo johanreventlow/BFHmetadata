@@ -2,7 +2,7 @@
 
 **Dato:** 2026-08-22
 
-**Status:** Design godkendt i chat; skriftlig gennemlæsning afventer
+**Status:** Godkendt 2026-08-22
 
 **Branchgrundlag:** `feat/origin-main-hardening` ved `dc8796f`
 
