@@ -4,7 +4,13 @@ db_config_path <- function(path = NULL) {
   if (!is.null(path)) return(path)
   explicit <- Sys.getenv("BFHMETA_DB_CONFIG")
   if (nzchar(explicit)) return(explicit)
-  if (file.exists("config.yml")) return("config.yml")
+  if (file.exists("config.yml") && file.exists("DESCRIPTION")) {
+    package <- tryCatch(
+      read.dcf("DESCRIPTION", fields = "Package")[1L, 1L],
+      error = function(e) NA_character_
+    )
+    if (identical(unname(package), "BFHmetadata")) return("config.yml")
+  }
   app_sys("db-config.yml")
 }
 

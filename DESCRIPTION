@@ -5,6 +5,8 @@ Authors@R: person("Johan", "Reventlow", email = "johan@reventlow.dk", role = c("
 Description: Lokal admin-app til CRUD på BFH-metadata i Supabase. v0: tblIndikatorer.
 License: file LICENSE
 Encoding: UTF-8
+Depends:
+    R (>= 4.1.0)
 Imports:
     shiny,
     bslib,

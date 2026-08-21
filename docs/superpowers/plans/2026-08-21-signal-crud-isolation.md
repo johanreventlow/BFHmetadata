@@ -32,7 +32,7 @@
 - `DESCRIPTION`: moves Arrow from `Imports` to `Suggests`.
 - `.Rbuildignore`: excludes the development-only root `config.yml` from source packages.
 - `inst/db-config.yml`: contains only the tracked non-secret Supabase connection fields needed by an installed app.
-- `.Renviron.example`: documents the optional explicit config-path override; no real values.
+- `Renviron.example`: documents the optional explicit config-path override; no real values.
 - `tests/testthat/test-parquet.R`: low-level optional-Arrow and capability tests.
 - `tests/testthat/test-mod-signal-review.R`: signal-tab state, scan guard, mixed-result, and read-error tests.
 - `tests/testthat/test-mod-compact.R`: eager compaction behavior without Arrow.
@@ -608,7 +608,7 @@ git commit -m "fix(signal): isolate parquet read failures per indicator"
 - Modify: `tests/testthat/test-db-guard.R`
 - Create: `inst/db-config.yml`
 - Modify: `.Rbuildignore`
-- Modify: `.Renviron.example`
+- Modify: `Renviron.example`
 
 **Interfaces:**
 - Produces: `db_config_path(path = NULL)` with precedence: explicit argument, `BFHMETA_DB_CONFIG`, development-root `config.yml`, packaged `app_sys("db-config.yml")`.
@@ -717,7 +717,7 @@ These are the existing tracked non-secret values from `config.yml`. Before stagi
 Rscript -e 'x <- yaml::read_yaml("inst/db-config.yml")$default$supabase; stopifnot(identical(sort(names(x)), sort(c("host","port","dbname","user","sslmode"))))'
 ```
 
-Add `^config\.yml$` to `.Rbuildignore`. Add this commented option to `.Renviron.example` without a real path:
+Add `^config\.yml$` to `.Rbuildignore`. Add this commented option to `Renviron.example` without a real path:
 
 ```text
 # Valgfri: brug en anden ikke-hemmelig DB-config end den pakkede standard.
@@ -738,7 +738,7 @@ Expected: PASS; packaged configuration contains exactly five non-secret fields.
 - [ ] **Step 6: Commit installed configuration support**
 
 ```bash
-git add R/fct_db.R tests/testthat/test-db-guard.R inst/db-config.yml .Rbuildignore .Renviron.example
+git add R/fct_db.R tests/testthat/test-db-guard.R inst/db-config.yml .Rbuildignore Renviron.example
 git commit -m "fix(config): package non-secret Supabase connection settings"
 ```
 

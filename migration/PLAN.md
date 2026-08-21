@@ -347,7 +347,7 @@ Fase 2-arbejdet kan delvist erstatte den nuværende manuelle Access-redigering, 
 | `~/bfh_db_migration/02_migrate_data.R` | Ny | Læser Parquet-dumps → Supabase via RPostgres |
 | `~/bfh_db_migration/03_verify.R` | Ny | Sammenlign row counts + sample data + FK-integritet |
 | `~/bfh_db_migration/config.yml` | Ny | Connection-info (host, dbname, ssl); credentials i `.Renviron` |
-| `~/bfh_db_migration/.Renviron.example` | Ny | Skabelon for credentials (gitignored på Mac, ikke en del af ZIP) |
+| `~/bfh_db_migration/Renviron.example` | Ny | Skabelon for credentials (kopieres til `.Renviron`) |
 | `~/bfh_db_migration/renv.lock` | Ny | R-pakke-versioner for repro |
 | `~/bfh_db_migration/PLAN.md` | Ny | Kopi af denne plan-fil for portabel reference |
 | `~/bfh_db_migration/README.md` | Ny | Quick-start til Mac-bruger (efter unpack af ZIP) |

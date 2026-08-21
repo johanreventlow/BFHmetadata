@@ -33,6 +33,46 @@ test_that("pakket DB-konfiguration virker uden udviklingsrod", {
   expect_true(nzchar(cfg$user))
 })
 
+test_that("bar db_config bruger pakket config uden for udviklingsrod", {
+  cfg <- withr::with_envvar(c(BFHMETA_DB_CONFIG = ""), {
+    withr::with_dir(withr::local_tempdir(), db_config())
+  })
+
+  expect_identical(cfg$user, "postgres.ijgwlqpbjcfffdmxeahh")
+})
+
+test_that("bar db_config ignorerer uvedkommende config.yml", {
+  unrelated <- withr::local_tempdir()
+  writeLines(c(
+    "default:", "  supabase:", "    host: unrelated.invalid",
+    "    port: 5432", "    dbname: unrelated", "    user: unrelated",
+    "    sslmode: disable"
+  ), file.path(unrelated, "config.yml"))
+
+  cfg <- withr::with_envvar(c(BFHMETA_DB_CONFIG = ""), {
+    withr::with_dir(unrelated, db_config())
+  })
+
+  expect_identical(cfg$user, "postgres.ijgwlqpbjcfffdmxeahh")
+})
+
+test_that("bar db_config bruger config.yml i BFHmetadata-udviklingsrod", {
+  development_root <- withr::local_tempdir()
+  writeLines(c("Package: BFHmetadata", "Version: 0.0.0"),
+             file.path(development_root, "DESCRIPTION"))
+  writeLines(c(
+    "default:", "  supabase:", "    host: development.invalid",
+    "    port: 5432", "    dbname: development", "    user: development",
+    "    sslmode: disable"
+  ), file.path(development_root, "config.yml"))
+
+  cfg <- withr::with_envvar(c(BFHMETA_DB_CONFIG = ""), {
+    withr::with_dir(development_root, db_config())
+  })
+
+  expect_identical(cfg$user, "development")
+})
+
 test_that("BFHMETA_DB_CONFIG vælger eksplicit fil", {
   p <- withr::local_tempfile(fileext = ".yml")
   writeLines(c(
