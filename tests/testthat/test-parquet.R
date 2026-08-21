@@ -1,5 +1,6 @@
 # Bygger en fixture-parquet med folder-pr-indikator-struktur
 make_parquet_fixture <- function(env = parent.frame()) {
+  skip_if_not_installed("arrow")
   base <- withr::local_tempdir(.local_envir = env)
   ind <- file.path(base, "test_ind")
   dir.create(ind, recursive = TRUE)
@@ -11,6 +12,37 @@ make_parquet_fixture <- function(env = parent.frame()) {
   arrow::write_parquet(d, file.path(ind, "part-0.parquet"))
   base
 }
+
+test_that("Arrow er Suggests, ikke Imports", {
+  dcf <- read.dcf(
+    testthat::test_path("..", "..", "DESCRIPTION"),
+    fields = c("Imports", "Suggests")
+  )
+  expect_false(grepl("arrow", dcf[1, "Imports"], fixed = TRUE))
+  expect_match(dcf[1, "Suggests"], "arrow", fixed = TRUE)
+})
+
+test_that("manglende og tom indikatormappe kræver ikke Arrow", {
+  base <- withr::local_tempdir()
+  empty <- file.path(base, "tom")
+  dir.create(empty)
+
+  expect_null(parquet_load_slice(file.path(base, "findes-ikke"),
+                                 arrow_available = FALSE))
+  expect_null(parquet_load_slice(empty, arrow_available = FALSE))
+})
+
+test_that("parquet-filer uden Arrow giver typed handlingsanvisende fejl", {
+  ind <- withr::local_tempdir()
+  writeBin(charToRaw("ikke vigtig for availability-testen"),
+           file.path(ind, "part-0.parquet"))
+
+  expect_error(
+    parquet_load_slice(ind, arrow_available = FALSE),
+    "Signal-gennemgang kræver R-pakken 'arrow'",
+    class = "bfhmeta_arrow_unavailable"
+  )
+})
 
 test_that("parquet_indicator_path finder direkte + 1-niveau", {
   base <- make_parquet_fixture()

@@ -249,6 +249,7 @@ parquet_load_indicator_best <- function(base_path, indikator_navn_teknisk,
       fp <- fp %||% tryCatch(source_fingerprint(src), error = function(e) NA_character_)
       if (!is.null(entry) && !is.na(fp) &&
           identical(entry$fingerprint, fp)) {
+        .require_arrow()
         d <- tryCatch(arrow::read_parquet(f), error = function(e) NULL)
         if (!is.null(d)) {
           if ("dato" %in% names(d) && is.character(d$dato)) {

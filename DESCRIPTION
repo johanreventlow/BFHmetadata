@@ -15,7 +15,6 @@ Imports:
     pool,
     config,
     yaml,
-    arrow,
     dplyr,
     rlang,
     lubridate,
@@ -28,6 +27,7 @@ Imports:
     ggiraph
 Suggests:
     testthat (>= 3.0.0),
-    withr
+    withr,
+    arrow
 Config/testthat/edition: 3
 RoxygenNote: 7.3.1

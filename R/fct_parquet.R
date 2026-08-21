@@ -14,11 +14,38 @@ parquet_indicator_path <- function(base_path, indikator_navn_teknisk) {
   direct  # fejler downstream med klar besked
 }
 
+#' Stop med en typed, handlingsanvisende fejl når Arrow mangler.
+#' @noRd
+.require_arrow <- function(available = requireNamespace("arrow", quietly = TRUE)) {
+  if (!isTRUE(available)) {
+    cond <- simpleError(
+      "Signal-gennemgang kræver R-pakken 'arrow'. Database-CRUD kan bruges uden."
+    )
+    class(cond) <- c("bfhmeta_arrow_unavailable", class(cond))
+    stop(cond)
+  }
+  invisible(TRUE)
+}
+
+#' Har mappen mindst én parquet-fil? Kalder aldrig Arrow.
+#' @noRd
+parquet_files_present <- function(path) {
+  if (length(path) != 1L || is.na(path) || !dir.exists(path)) return(FALSE)
+  length(list.files(
+    path, pattern = "\\.parquet$", recursive = TRUE,
+    full.names = FALSE, ignore.case = TRUE
+  )) > 0L
+}
+
 #' Indlæs én indikators parquet-slice, filtreret på enhed + dato.
 #' Returnerer NULL hvis enhed angivet men intet matcher (eller tom).
 #' @noRd
-parquet_load_slice <- function(path, enhed = NULL, from = NULL, to = NULL) {
-  if (!dir.exists(path)) return(NULL)
+parquet_load_slice <- function(path, enhed = NULL, from = NULL, to = NULL,
+                               arrow_available = requireNamespace(
+                                 "arrow", quietly = TRUE
+                               )) {
+  if (!parquet_files_present(path)) return(NULL)
+  .require_arrow(arrow_available)
   ds <- arrow::open_dataset(path)
   if (!is.null(from)) ds <- dplyr::filter(ds, .data$dato >= as.Date(from))
   if (!is.null(to))   ds <- dplyr::filter(ds, .data$dato <= as.Date(to))
