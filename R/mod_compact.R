@@ -25,8 +25,11 @@ mod_compact_btn_ui <- function(id) {
 #' landingssiden, før nogen fane er åbnet); koster ingen DB-kald — kun
 #' fil-stats mod lageret, og de køres chunket i baggrunden.
 #' @noRd
-mod_compact_server <- function(id) {
+mod_compact_server <- function(
+    id,
+    arrow_available = function() requireNamespace("arrow", quietly = TRUE)) {
   moduleServer(id, function(input, output, session) {
+    capability <- reactiveVal(signal_data_capability("", arrow_available()))
     asked <- reactiveVal(FALSE)      # blev modalen vist?
     running <- reactiveVal(FALSE)    # kompaktering i gang?
     sweeping <- reactiveVal(FALSE)   # sweep i gang?
@@ -89,6 +92,14 @@ mod_compact_server <- function(id) {
     }
 
     .start_sweep <- function(base, manual = FALSE) {
+      cap <- signal_data_capability(base, arrow_available())
+      capability(cap)
+      if (!identical(cap$state, "klar")) {
+        if (isTRUE(manual)) {
+          showNotification(cap$message, type = "warning", session = session)
+        }
+        return(invisible())
+      }
       items <- safe_operation("enumerér lager", compact_list_indicators(base),
                               fallback = NULL)
       if (is.null(items) || nrow(items) == 0) {
@@ -223,6 +234,9 @@ mod_compact_server <- function(id) {
     })
 
     # Eksponér til test
-    list(asked = asked, running = running, sweeping = sweeping, result = result)
+    list(
+      asked = asked, running = running, sweeping = sweeping, result = result,
+      capability = capability
+    )
   })
 }

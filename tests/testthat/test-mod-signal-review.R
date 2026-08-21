@@ -1388,3 +1388,43 @@ test_that("scan uden lokale data stopper før scan-DB-kald", {
     }
   )
 })
+
+test_that("korrupt indikator isoleres og rapporteres uden at skjule gyldigt signal", {
+  skip_if_not_installed("arrow")
+  base <- withr::local_tempdir()
+  dir.create(file.path(base, "god"))
+  dir.create(file.path(base, "korrupt"))
+  arrow::write_parquet(data.frame(
+    dato = as.Date("2020-01-01") + 0:23 * 30,
+    vaerdi = c(rep(10, 12), rep(2, 12)),
+    taeller = NA_real_, naevner = NA_real_, enhed = "e"
+  ), file.path(base, "god", "p.parquet"))
+  writeBin(charToRaw("ikke parquet"),
+           file.path(base, "korrupt", "p.parquet"))
+
+  idx <- data.frame(
+    diagram_id = c(1L, 2L), indikator_id = c(1L, 2L),
+    indikator_navn = c("God", "Korrupt"),
+    indikator_navn_teknisk = c("god", "korrupt"),
+    datasaet = "d", datapakke = "p", org_id = 5L,
+    org_teknisk = "E", org_navn = "E", org_niveau = 5L,
+    overafdeling = "OA", afdeling = NA, afsnit = NA,
+    stringsAsFactors = FALSE
+  )
+  db <- make_fake_signal_db(base, idx)
+
+  shiny::testServer(mod_signal_review_server, args = list(db = db), {
+    session$setInputs(parquet_dir = base, window_mode = "all", window_n = 36,
+      f_overafdeling = character(), f_afsnit = character(),
+      f_datapakke = character(), f_datasaet = character(),
+      f_indikator_navn = character(), scan = 1)
+    drain_scan()
+    session$flushReact()
+
+    expect_equal(signal_list()$diagram_id, 1L)
+    expect_equal(scan_progress()$fejl, 1L)
+    expect_equal(availability()$state, "laesefejl")
+    expect_match(availability()$message, "1 diagram")
+    expect_match(as.character(output$scan_summary$html), "læsefejl")
+  })
+})

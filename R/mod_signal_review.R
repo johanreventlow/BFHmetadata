@@ -353,23 +353,29 @@ mod_signal_review_server <- function(
       # force springer begge cache-lag over og læser råt.
       slice_env <- new.env(parent = emptyenv())
       slice_env$loaded <- FALSE
+      slice_env$error <- NULL
       get_slice <- function() {
         if (!slice_env$loaded) {
           src <- parquet_indicator_path(ctx$base, ind)
           fp <- source_fingerprint(src)
-          slice_env$val <- load_indicator_slice_cached(
-            ctx$base, ind,
-            loader = function() {
-              parquet_load_indicator_best(
+          slice_env$val <- tryCatch(
+            load_indicator_slice_cached(
+              ctx$base, ind,
+              loader = function() parquet_load_indicator_best(
                 ctx$base, ind,
                 force = ctx$force,
                 manifest = ctx$manifest, src = src, fp = fp
-              )
-            },
-            force = ctx$force, key = fp
+              ),
+              force = ctx$force, key = fp
+            ),
+            error = function(e) {
+              slice_env$error <- e
+              NULL
+            }
           )
           slice_env$loaded <- TRUE
         }
+        if (!is.null(slice_env$error)) stop(slice_env$error)
         slice_env$val
       }
       for (i in idxs) {
@@ -417,6 +423,16 @@ mod_signal_review_server <- function(
         ingen_data = sum(ctx$status == "ingen_data", na.rm = TRUE),
         fejl = sum(ctx$status == "fejl", na.rm = TRUE)
       ))
+      p <- scan_progress()
+      if ((p$fejl %||% 0L) > 0L) {
+        availability(list(
+          state = "laesefejl",
+          message = sprintf(
+            "%d diagram%s kunne ikke læses; øvrige resultater kan stadig gennemgås.",
+            p$fejl, if (identical(p$fejl, 1L)) "" else "mer"
+          )
+        ))
+      }
       if (ctx$gi > length(ctx$groups)) {
         .scan_finish(gen)
       } else {
@@ -629,7 +645,7 @@ mod_signal_review_server <- function(
         class = "small text-muted mt-2", txt,
         if (skipped > 0) {
           tagList(br(), sprintf(
-            "%d uden data, %d fejlede (ej vurderet)",
+            "%d uden data, %d med læsefejl (ej vurderet)",
             p$ingen_data %||% 0L, p$fejl %||% 0L
           ))
         },
