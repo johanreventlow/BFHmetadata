@@ -91,7 +91,7 @@ På Mac:
 1. Download ZIP fra OneDrive
 2. Unpack til `~/bfh_db_migration/` (eller andet sted — opdater stier hvis nødvendigt)
 3. `cd ~/bfh_db_migration/`
-4. Kopier `.Renviron.example` til `.Renviron` + udfyld Supabase credentials
+4. Kør `cp Renviron.example .Renviron` + udfyld Supabase credentials
 5. Installer R-pakker:
    ```r
    install.packages(c("DBI", "RPostgres", "pool", "yaml", "arrow",
@@ -112,7 +112,7 @@ Se PLAN.md for detaljer på resterende trin.
 ├── README.md                          ← du er her
 ├── PLAN.md                            ← fuld plan (kopi af approved plan)
 ├── config.yml                         ← connection-config
-├── .Renviron.example                  ← skabelon (kopier til .Renviron)
+├── Renviron.example                   ← skabelon (kopier til .Renviron)
 ├── .Renviron                          ← KUN LOKALT — aldrig commit/zip
 ├── 00_introspect_access.R             ← Windows-script (Trin 0b)
 ├── 99_pak_zip.sh                      ← ZIP-pakning til Mac-transport

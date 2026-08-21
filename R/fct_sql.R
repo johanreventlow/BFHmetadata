@@ -28,7 +28,7 @@
     " SELECT start_id,",
     ' max("hierarki_navn") FILTER (WHERE niveau_navn = \'Datapakke\')',
     " AS label_datapakke,",
-    ' max("hierarki_navn") FILTER (WHERE niveau_navn = \'Datasæt\')',
+    ' max("hierarki_navn") FILTER (WHERE niveau_navn = \'Datas\u00E6t\')',
     " AS label_datasaet",
     " FROM h_anc GROUP BY start_id",
     ")"
@@ -45,7 +45,7 @@ build_list_sql <- function() {
     al <- paste0("p_", f$col)
     labels <- c(labels, sprintf(
       '(%s) AS "label_%s"',
-      gsub("([a-zæøå_]+)", sprintf("%s.\\1", al), f$label, perl = TRUE), f$col
+      gsub("([a-z\u00E6\u00F8\u00E5_]+)", sprintf("%s.\\1", al), f$label, perl = TRUE), f$col
     ))
     joins <- c(joins, sprintf(
       'LEFT JOIN "%s" %s ON %s."Id" = i."%s"',

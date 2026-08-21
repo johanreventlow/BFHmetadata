@@ -42,7 +42,7 @@ app_ui <- function(request) {
 .write_badge_ui <- function(enabled) {
   if (enabled) {
     tags$span(class = "badge text-bg-danger align-self-center",
-              title = "BFHMETA_WRITE=1 — aendringer skrives til Supabase",
+              title = "BFHMETA_WRITE=1 \u2014 aendringer skrives til Supabase",
               "Skrivning aktiv")
   } else {
     tags$span(class = "badge text-bg-secondary align-self-center",
@@ -59,7 +59,7 @@ app_ui <- function(request) {
     bslib::card_body(
       h5(title, class = "mb-1"),
       p(desc, class = "text-muted small flex-grow-1"),
-      actionButton(paste0("go_", value), "Åbn ›",
+      actionButton(paste0("go_", value), "\u00C5bn \u203A",
         class = "btn-sm btn-outline-primary align-self-start")))
   sect <- function(txt) div(class = "mt-4 mb-2",
     h6(txt, class = "text-uppercase text-primary",
@@ -70,11 +70,11 @@ app_ui <- function(request) {
       tile("indikatorer", "Indikatorer",
         "Fuld redigering: oversigt, modal og relationer."),
       tile("indikator_hierarki", "Indikator-hierarki",
-        "Træ-redigering af datasæt og datapakker: felter, flyt, aktiv-flag.")),
+        "Tr\u00E6-redigering af datas\u00E6t og datapakker: felter, flyt, aktiv-flag.")),
     sect("Signal-gennemgang"),
     bslib::layout_column_wrap(width = 1/3, fill = FALSE,
       tile("signal", "Signal-gennemgang",
-        "Scan parquet for Anhøj-signaler og registrér faseskift.")),
+        "Scan parquet for Anh\u00F8j-signaler og registr\u00E9r faseskift.")),
     sect("Diagrammer"),
     bslib::layout_column_wrap(width = 1/3, fill = FALSE,
       tile("diagrammer", "Diagrammer",
@@ -82,7 +82,7 @@ app_ui <- function(request) {
     sect("Organisation"),
     bslib::layout_column_wrap(width = 1/3, fill = FALSE,
       tile("org_struktur", "Organisations-struktur",
-        "Træ-redigering: felter, flyt og opret/slet."),
+        "Tr\u00E6-redigering: felter, flyt og opret/slet."),
       tile("org_oversaettelse",
         Find(function(cfg) cfg$id == "org_oversaettelse", LOOKUP_TABLES)$label,
         "Inline-redigering direkte i tabellen.")),

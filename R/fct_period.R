@@ -26,10 +26,10 @@ period_to_en <- function(x) {
     "dag" = "day",
     "uge" = "week",
     "maaned" = "month",
-    "måned" = "month",
+    "m\u00E5ned" = "month",
     "kvartal" = "quarter",
     "aar" = "year",
-    "år" = "year",
+    "\u00E5r" = "year",
     key)
 }
 

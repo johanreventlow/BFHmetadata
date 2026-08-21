@@ -43,7 +43,7 @@ BFHmetadata/
 ├── tests/testthat/                 # unit-tests
 ├── dev/                            # golem dev-scripts (run_dev.R, 01_start.R...)
 ├── config.yml                      # BLIVER i roden (delt: app + migration)
-├── .Renviron / .Renviron.example   # BLIVER (delt secrets)
+├── .Renviron / Renviron.example    # BLIVER (delt secrets)
 ├── docs/                           # specs, ADR
 └── migration/                      # FLYTTET hertil
     ├── 00_introspect_access.R, 01_generate_ddl.R, 02_migrate_data.R

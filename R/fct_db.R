@@ -1,8 +1,34 @@
-#' Læs supabase-DB-config fra rod-config.yml
+#' Find Supabase-DB-konfiguration uden at pakke hemmeligheder.
 #' @noRd
-db_config <- function() {
-  path <- if (file.exists("config.yml")) "config.yml" else app_sys("../config.yml")
-  yaml::read_yaml(path)$default$supabase
+db_config_path <- function(path = NULL) {
+  if (!is.null(path)) return(path)
+  explicit <- Sys.getenv("BFHMETA_DB_CONFIG")
+  if (nzchar(explicit)) return(explicit)
+  if (file.exists("config.yml") && file.exists("DESCRIPTION")) {
+    package <- tryCatch(
+      read.dcf("DESCRIPTION", fields = "Package")[1L, 1L],
+      error = function(e) NA_character_
+    )
+    if (identical(unname(package), "BFHmetadata")) return("config.yml")
+  }
+  app_sys("db-config.yml")
+}
+
+#' Læs og validér Supabase-DB-konfiguration.
+#' @noRd
+db_config <- function(path = NULL) {
+  path <- db_config_path(path)
+  if (length(path) != 1L || is.na(path) || !nzchar(path) || !file.exists(path)) {
+    stop("DB-konfigurationen mangler i installationen", call. = FALSE)
+  }
+  cfg <- yaml::read_yaml(path)$default$supabase
+  required <- c("host", "port", "dbname", "user", "sslmode")
+  if (!is.list(cfg) || !all(required %in% names(cfg)) ||
+      any(vapply(cfg[required], function(x) length(x) != 1L || is.na(x),
+                 logical(1)))) {
+    stop("DB-konfigurationen er ufuldst\u00E6ndig", call. = FALSE)
+  }
+  cfg[required]
 }
 
 #' Er skrivning aktiveret? (write-guard — bevidst friktion mod forkert target)
@@ -16,8 +42,8 @@ write_enabled <- function() {
 #' @noRd
 assert_write_enabled <- function() {
   if (!write_enabled()) {
-    stop("DB-skrivning er deaktiveret. Sæt BFHMETA_WRITE=1 eller ",
-      "options(bfhmeta.write_enabled=TRUE) efter at have bekræftet target.",
+    stop("DB-skrivning er deaktiveret. S\u00E6t BFHMETA_WRITE=1 eller ",
+      "options(bfhmeta.write_enabled=TRUE) efter at have bekr\u00E6ftet target.",
       call. = FALSE
     )
   }

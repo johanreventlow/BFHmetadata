@@ -1,5 +1,6 @@
 # Bygger en fixture-parquet med folder-pr-indikator-struktur
 make_parquet_fixture <- function(env = parent.frame()) {
+  skip_if_not_installed("arrow")
   base <- withr::local_tempdir(.local_envir = env)
   ind <- file.path(base, "test_ind")
   dir.create(ind, recursive = TRUE)
@@ -11,6 +12,37 @@ make_parquet_fixture <- function(env = parent.frame()) {
   arrow::write_parquet(d, file.path(ind, "part-0.parquet"))
   base
 }
+
+test_that("Arrow er Suggests, ikke Imports", {
+  dcf <- read.dcf(
+    testthat::test_path("..", "..", "DESCRIPTION"),
+    fields = c("Imports", "Suggests")
+  )
+  expect_false(grepl("arrow", dcf[1, "Imports"], fixed = TRUE))
+  expect_match(dcf[1, "Suggests"], "arrow", fixed = TRUE)
+})
+
+test_that("manglende og tom indikatormappe kræver ikke Arrow", {
+  base <- withr::local_tempdir()
+  empty <- file.path(base, "tom")
+  dir.create(empty)
+
+  expect_null(parquet_load_slice(file.path(base, "findes-ikke"),
+                                 arrow_available = FALSE))
+  expect_null(parquet_load_slice(empty, arrow_available = FALSE))
+})
+
+test_that("parquet-filer uden Arrow giver typed handlingsanvisende fejl", {
+  ind <- withr::local_tempdir()
+  writeBin(charToRaw("ikke vigtig for availability-testen"),
+           file.path(ind, "part-0.parquet"))
+
+  expect_error(
+    parquet_load_slice(ind, arrow_available = FALSE),
+    "Signal-gennemgang kræver R-pakken 'arrow'",
+    class = "bfhmeta_arrow_unavailable"
+  )
+})
 
 test_that("parquet_indicator_path finder direkte + 1-niveau", {
   base <- make_parquet_fixture()
@@ -35,6 +67,7 @@ test_that("parquet_load_slice filtrerer på enhed + dato", {
 })
 
 test_that("parquet_load_slice coercer character-dato → Date (rigtig-parquet-regression)", {
+  skip_if_not_installed("arrow")
   base <- withr::local_tempdir()
   ind <- file.path(base, "txt_ind"); dir.create(ind, recursive = TRUE)
   # Rigtig parquet lagrer dato som tekst (ej Date) → bfh_qic ville fejle uden coerce
@@ -52,4 +85,28 @@ test_that("parquet_limit_observations beholder seneste N unikke datoer", {
   expect_equal(nrow(parquet_limit_observations(d, 3)), 3)
   expect_equal(max(parquet_limit_observations(d, 3)$dato), max(d$dato))
   expect_equal(nrow(parquet_limit_observations(d, NULL)), 10)
+})
+
+test_that("signal_data_capability skelner manglende, tom, Arrow og klar", {
+  expect_equal(signal_data_capability("", FALSE)$state, "ingen_data")
+
+  base <- withr::local_tempdir()
+  expect_equal(signal_data_capability(base, FALSE)$state, "ingen_data")
+
+  part <- file.path(base, "ind", "dato=2026-01-01")
+  dir.create(part, recursive = TRUE)
+  writeBin(charToRaw("availability ser kun filnavnet"),
+           file.path(part, "part-0.parquet"))
+
+  expect_equal(signal_data_capability(base, FALSE)$state, "arrow_mangler")
+  expect_equal(signal_data_capability(base, TRUE)$state, "klar")
+})
+
+test_that("capability-scan er begrænset til understøttet mappedybde", {
+  base <- withr::local_tempdir()
+  too_deep <- file.path(base, "gruppe", "ekstra", "ind", "dato=2026-01-01")
+  dir.create(too_deep, recursive = TRUE)
+  writeBin(charToRaw("x"), file.path(too_deep, "part-0.parquet"))
+
+  expect_equal(signal_data_capability(base, TRUE)$state, "ingen_data")
 })

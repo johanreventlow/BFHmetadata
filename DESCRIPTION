@@ -5,9 +5,10 @@ Authors@R: person("Johan", "Reventlow", email = "johan@reventlow.dk", role = c("
 Description: Lokal admin-app til CRUD på BFH-metadata i Supabase. v0: tblIndikatorer.
 License: file LICENSE
 Encoding: UTF-8
+Depends:
+    R (>= 4.1.0)
 Imports:
     shiny,
-    golem,
     bslib,
     DT,
     DBI,
@@ -15,7 +16,6 @@ Imports:
     pool,
     config,
     yaml,
-    arrow,
     dplyr,
     rlang,
     lubridate,
@@ -24,10 +24,12 @@ Imports:
     BFHcharts,
     excelR (>= 0.4.0),
     htmlwidgets,
+    htmltools,
     ggplot2,
     ggiraph
 Suggests:
     testthat (>= 3.0.0),
-    withr
+    withr,
+    arrow
 Config/testthat/edition: 3
-RoxygenNote: 7.3.1
+Config/roxygen2/version: 8.0.0

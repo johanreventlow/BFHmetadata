@@ -152,7 +152,7 @@ hierarchy_grid_fields <- function(cfg) {
   stats::setNames(
     c(vapply(cfg$fields, function(f) f$col, ""), cfg$parent_col, cfg$level$col,
       cfg$aktiv_col),   # NULL falder bort i c()
-    c(vapply(cfg$fields, function(f) f$label, ""), "Forælder", "Niveau",
+    c(vapply(cfg$fields, function(f) f$label, ""), "For\u00E6lder", "Niveau",
       if (!is.null(cfg$aktiv_col)) "Aktiv")
   )
 }
@@ -175,7 +175,7 @@ hierarchy_parent_choices <- function(tree_df, cfg) {
   depth <- if ("depth" %in% names(tree_df)) tree_df$depth else 0L
   stats::setNames(
     tree_df$id,
-    paste0(strrep("  ", depth), hierarchy_node_labels(tree_df, cfg))
+    paste0(strrep("\u00A0\u00A0", depth), hierarchy_node_labels(tree_df, cfg))
   )
 }
 
@@ -189,14 +189,14 @@ hierarchy_parent_choices <- function(tree_df, cfg) {
 hierarchy_excel_data <- function(tree_df, cfg) {
   chr_or_empty <- function(x) ifelse(is.na(x), "", as.character(x))
   fm <- hierarchy_grid_fields(cfg)
-  field_titles <- setdiff(names(fm), c("Forælder", "Niveau", "Aktiv"))
+  field_titles <- setdiff(names(fm), c("For\u00E6lder", "Niveau", "Aktiv"))
   out <- data.frame(id = tree_df$id, stringsAsFactors = FALSE,
                     check.names = FALSE)
   #   (non-breaking space): alm. mellemrum kollapses i HTML-celler
   out[["Struktur"]] <- paste0(
-    strrep("  ", tree_df$depth), hierarchy_node_labels(tree_df, cfg))
+    strrep("\u00A0\u00A0", tree_df$depth), hierarchy_node_labels(tree_df, cfg))
   for (t in field_titles) out[[t]] <- chr_or_empty(tree_df[[fm[[t]]]])
-  out[["Forælder"]] <- chr_or_empty(tree_df$parent_id_raw)
+  out[["For\u00E6lder"]] <- chr_or_empty(tree_df$parent_id_raw)
   out[["Niveau"]] <- chr_or_empty(tree_df$niveau_id)
   if (!is.null(cfg$aktiv_col)) {
     # list_sql aliaser aktiv_col AS aktiv; NA normaliseres til FALSE
@@ -226,18 +226,18 @@ hierarchy_excel_columns <- function(cfg, tree_df, niveauer,
   parent_src <- data.frame(
     id = c("", as.character(source_df$id), as.character(unknown_parents)),
     name = c("(rod)", labels,
-             sprintf("Ukendt forælder #%s", unknown_parents)),
+             sprintf("Ukendt for\u00E6lder #%s", unknown_parents)),
     stringsAsFactors = FALSE)
   unknown_niv <- setdiff(stats::na.omit(tree_df$niveau_id), niveauer$id)
   niveau_src <- data.frame(
     id = c("", as.character(niveauer$id), as.character(unknown_niv)),
-    name = c("(vælg)", as.character(niveauer$label),
+    name = c("(v\u00E6lg)", as.character(niveauer$label),
              sprintf("Ukendt niveau #%s", unknown_niv)),
     stringsAsFactors = FALSE)
   field_titles <- vapply(cfg$fields, function(f) f$label, "")
   has_aktiv <- !is.null(cfg$aktiv_col)
   out <- data.frame(
-    title = c("id", "Struktur", field_titles, "Forælder", "Niveau",
+    title = c("id", "Struktur", field_titles, "For\u00E6lder", "Niveau",
               if (has_aktiv) "Aktiv"),
     # id: "hidden" — med i data/payload (pk-diff) men aldrig synlig
     type = c("hidden", "text", rep("text", length(field_titles)),
@@ -252,9 +252,8 @@ hierarchy_excel_columns <- function(cfg, tree_df, niveauer,
   # Fraktil-baserede bredder (enkelte lange navne må ikke trække kolonnen
   # bred). Dropdown-kolonner måles på deres viste labels, ikke id'erne.
   disp <- hierarchy_excel_data(tree_df, cfg)
-  disp[["Forælder"]] <- .excel_dropdown_display(disp[["Forælder"]], parent_src)
+  disp[["For\u00E6lder"]] <- .excel_dropdown_display(disp[["For\u00E6lder"]], parent_src)
   disp[["Niveau"]] <- .excel_dropdown_display(disp[["Niveau"]], niveau_src)
   out$width <- unname(excel_col_widths(disp)[out$title])
   out
 }
-

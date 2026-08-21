@@ -1,0 +1,7 @@
+default:
+  supabase:
+    host: "aws-0-eu-west-1.pooler.supabase.com"
+    port: 5432
+    dbname: "postgres"
+    user: "postgres.ijgwlqpbjcfffdmxeahh"
+    sslmode: "require"
