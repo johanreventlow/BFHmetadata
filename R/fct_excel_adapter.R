@@ -14,8 +14,11 @@ validate_excel_adapter_map <- function(map, col_names, pk) {
       !identical(as.integer(indices), seq_along(col_names) - 1L)) {
     stop("Kolonnemap matcher ikke data.", call. = FALSE)
   }
-  if (!pk %in% map$field || !identical(map$editable[match(pk, map$field)], FALSE)) {
-    stop("PK skal findes og være ikke-redigerbar.", call. = FALSE)
+  if (!identical(map$field[[1]], pk) || !identical(map$column_index[[1]], 0L)) {
+    stop("PK skal være første kolonne.", call. = FALSE)
+  }
+  if (!identical(map$editable[match(pk, map$field)], FALSE)) {
+    stop("PK skal være ikke-redigerbar.", call. = FALSE)
   }
   if (anyNA(map$value_type) || !all(map$value_type %in% c("text", "int", "fk", "boolean"))) {
     stop("Ugyldig kolonnetype.", call. = FALSE)
@@ -27,6 +30,11 @@ is_scalar_intish <- function(x) {
   length(x) == 1L && !is.na(x) && is.numeric(x) && is.finite(x) && x == floor(x)
 }
 
+.excel_adapter_generation <- function(x) {
+  if (!is_scalar_intish(x) || x < 0 || x > .Machine$integer.max) return(NULL)
+  as.integer(x)
+}
+
 canonical_for_browser <- function(x) if (length(x) == 0L || is.na(x)) NA else x
 
 .excel_adapter_rejected <- function(event, message) {
@@ -36,10 +44,8 @@ canonical_for_browser <- function(x) if (length(x) == 0L || is.na(x)) NA else x
       !is.na(event$event_id) && nzchar(event$event_id)) {
     event_id <- event$event_id
   }
-  if (is.list(event) && is_scalar_intish(event$grid_generation) &&
-      event$grid_generation >= -.Machine$integer.max &&
-      event$grid_generation <= .Machine$integer.max) {
-    generation <- as.integer(event$grid_generation)
+  if (is.list(event)) {
+    generation <- .excel_adapter_generation(event$grid_generation)
   }
   list(ok = FALSE, event_id = event_id, grid_generation = generation, message = message)
 }
@@ -74,8 +80,10 @@ prepare_excel_cell_update <- function(event, generation, rows, pk, column_map) {
       is.na(event$event_id) || !nzchar(event$event_id)) {
     return(.excel_adapter_rejected(event, "Ugyldigt event."))
   }
-  if (!is_scalar_intish(event$grid_generation) || !is_scalar_intish(generation) ||
-      event$grid_generation != generation) {
+  event_generation <- .excel_adapter_generation(event$grid_generation)
+  server_generation <- .excel_adapter_generation(generation)
+  if (is.null(event_generation) || is.null(server_generation) ||
+      event_generation != server_generation) {
     return(.excel_adapter_rejected(event, "Ugyldig grid-generation."))
   }
   if (!is.character(event$row_pk) || length(event$row_pk) != 1L || is.na(event$row_pk) ||
@@ -99,7 +107,7 @@ prepare_excel_cell_update <- function(event, generation, rows, pk, column_map) {
   list(
     ok = TRUE,
     event_id = event$event_id,
-    grid_generation = as.integer(event$grid_generation),
+    grid_generation = event_generation,
     cell_key = paste0(as.character(pk_values[row_index]), ":", as.integer(event$column_index)),
     row_index = as.integer(row_index),
     pk_value = pk_values[row_index],
@@ -116,15 +124,23 @@ patch_excel_cell <- function(rows, row_index, field, value) {
       !field %in% names(rows)) {
     stop("Ugyldig celleopdatering.", call. = FALSE)
   }
-  rows[[field]][as.integer(row_index)] <- value
+  column <- rows[[field]]
+  if (length(value) != 1L || typeof(value) != typeof(column)) {
+    stop("Ugyldig celletype.", call. = FALSE)
+  }
+  column[as.integer(row_index)] <- value
+  if (typeof(column) != typeof(rows[[field]])) stop("Ugyldig celletype.", call. = FALSE)
+  rows[[field]] <- column
   rows
 }
 
 excel_adapter_result <- function(event, status, value, message = NULL, lock_grid = FALSE) {
   if (!status %in% c("saved", "rejected")) stop("Ugyldig status.", call. = FALSE)
   metadata <- .excel_adapter_rejected(event, "")
+  value <- if (identical(value, "")) NA else value
   list(event_id = metadata$event_id, grid_generation = metadata$grid_generation,
-       status = status, value = value, message = message, lock_grid = isTRUE(lock_grid))
+       status = status, value = canonical_for_browser(value), message = message,
+       lock_grid = isTRUE(lock_grid))
 }
 
 send_excel_adapter_result <- function(session, output_id, result) {
@@ -134,6 +150,8 @@ send_excel_adapter_result <- function(session, output_id, result) {
 }
 
 send_excel_adapter_init <- function(session, output_id, generation) {
+  generation <- .excel_adapter_generation(generation)
+  if (is.null(generation)) stop("Ugyldig generation.", call. = FALSE)
   session$sendCustomMessage("bfh-excel-adapter:init",
     list(id = session$ns(output_id), grid_generation = generation))
   invisible(NULL)

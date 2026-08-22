@@ -19,6 +19,9 @@ test_that("adapter map kræver entydige 0-baserede kolonner og skjult pk", {
     column_index = c(0L, 1L, 1L)), names(adapter_rows), "Id"), "entydig")
   expect_error(validate_excel_adapter_map(transform(adapter_map,
     editable = c(TRUE, TRUE, TRUE)), names(adapter_rows), "Id"), "PK")
+  expect_error(validate_excel_adapter_map(transform(adapter_map,
+    field = c("navn", "Id", "niveau"), editable = c(TRUE, FALSE, TRUE)),
+    c("navn", "Id", "niveau"), "Id"), "første")
 })
 
 cell_event <- function(event_id = "1", generation = 7L, row_pk = "11",
@@ -44,7 +47,8 @@ test_that("prepare_excel_cell_update afviser ugyldige events før write", {
   cases <- list(
     cell_event(event_id = ""), cell_event(generation = 6L),
     cell_event(generation = 8L), cell_event(row_pk = "99"),
-    cell_event(column_index = 9L), cell_event(column_index = 0L)
+    cell_event(column_index = 9L), cell_event(column_index = 0L),
+    cell_event(generation = 2147483648)
   )
   for (event in cases) {
     result <- prepare_excel_cell_update(event, 7L, adapter_rows, "Id", adapter_map)
@@ -56,6 +60,13 @@ test_that("prepare_excel_cell_update afviser ugyldige events før write", {
     adapter_rows, "Id", adapter_map)
   expect_identical(old$event_id, "1")
   expect_identical(old$grid_generation, 6L)
+})
+
+test_that("prepare_excel_cell_update afviser ugyldig server-generation", {
+  result <- prepare_excel_cell_update(cell_event(), 2147483648,
+    adapter_rows, "Id", adapter_map)
+  expect_false(result$ok)
+  expect_identical(result$grid_generation, 7L)
 })
 
 test_that("prepare_excel_cell_update koerceder int fk tomme og boolean strengt", {
@@ -81,6 +92,19 @@ test_that("prepare_excel_cell_update koerceder int fk tomme og boolean strengt",
   }
   expect_false(prepare_excel_cell_update(cell_event(raw_value = "yes"), 7L,
     adapter_rows, "Id", bool_map)$ok)
+  expect_identical(prepare_excel_cell_update(cell_event(raw_value = ""), 7L,
+    adapter_rows, "Id", bool_map)$value, NA)
+})
+
+test_that("prepare_excel_cell_update koerceder den direkte int-kolonne strengt", {
+  expect_identical(prepare_excel_cell_update(cell_event(column_index = 2L, raw_value = "7"),
+    7L, adapter_rows, "Id", adapter_map)$value, 7L)
+  for (value in c("7.2", "abc", "2147483648")) {
+    expect_false(prepare_excel_cell_update(cell_event(column_index = 2L, raw_value = value),
+      7L, adapter_rows, "Id", adapter_map)$ok)
+  }
+  expect_identical(prepare_excel_cell_update(cell_event(column_index = 2L, raw_value = ""),
+    7L, adapter_rows, "Id", adapter_map)$value, NA_integer_)
 })
 
 test_that("prepare_excel_cell_update afviser dubleret pk fail-closed", {
@@ -96,6 +120,7 @@ test_that("patch_excel_cell ændrer kun den udpegede celle og bevarer typer", {
   expect_identical(patched$navn, c("A", "B"))
   expect_identical(patched$niveau, c(1L, 7L))
   expect_type(patched$niveau, "integer")
+  expect_error(patch_excel_cell(adapter_rows, 2L, "niveau", "7"), "type")
 })
 
 test_that("excel_adapter_result og sendere bruger den faste client-kontrakt", {
@@ -103,6 +128,10 @@ test_that("excel_adapter_result og sendere bruger den faste client-kontrakt", {
   expect_identical(names(result), c("event_id", "grid_generation", "status", "value",
     "message", "lock_grid"))
   expect_error(excel_adapter_result(cell_event(), "other", NULL), "status")
+  expect_identical(excel_adapter_result(cell_event(), "saved", "")$value, NA)
+  expect_identical(excel_adapter_result(cell_event(), "saved", NA_character_)$value, NA)
+  expect_identical(excel_adapter_result(cell_event(), "saved", 7L)$value, 7L)
+  expect_identical(excel_adapter_result(cell_event(), "saved", TRUE)$value, TRUE)
 
   sent <- list()
   session <- list(
@@ -115,4 +144,5 @@ test_that("excel_adapter_result og sendere bruger den faste client-kontrakt", {
   send_excel_adapter_init(session, "grid", 7L)
   expect_identical(sent[[2]], list("bfh-excel-adapter:init",
     list(id = "mod-grid", grid_generation = 7L)))
+  expect_error(send_excel_adapter_init(session, "grid", 2147483648), "generation")
 })
