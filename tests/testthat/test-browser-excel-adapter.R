@@ -67,25 +67,22 @@ next_console_barrier <- local({
 
 browser_console_errors_before_barrier <- function(app, timeout = 5000) {
   barrier <- next_console_barrier()
-  app$run_js(sprintf(
-    "setTimeout(function () { console.info('%s'); }, 0);", barrier
-  ))
-  deadline <- Sys.time() + timeout / 1000
-  repeat {
-    logs <- app$get_logs()
-    barrier_rows <- which(logs$location == "chromote" &
-                            grepl(barrier, logs$message, fixed = TRUE))
-    if (length(barrier_rows)) {
-      before_barrier <- logs[seq_len(barrier_rows[[1L]]), , drop = FALSE]
-      return(browser_console_errors(before_barrier))
-    }
-    if (Sys.time() >= deadline) {
-      return(testthat::fail(paste(
-        "Chrome-logbarrieren blev ikke modtaget:", barrier
-      )))
-    }
-    Sys.sleep(0.05)
+  app$get_js(sprintf(
+    paste0(
+      "new Promise(function (resolve) { setTimeout(function () { ",
+      "console.info('%s'); resolve(true); }, 0); })"
+    ),
+    barrier
+  ), timeout = timeout)
+  logs <- app$get_logs()
+  barrier_rows <- which(logs$location == "chromote" &
+                          grepl(barrier, logs$message, fixed = TRUE))
+  if (!length(barrier_rows)) {
+    stop(paste("Chrome-logbarrieren blev ikke modtaget:", barrier),
+         call. = FALSE)
   }
+  before_barrier <- logs[seq_len(barrier_rows[[1L]]), , drop = FALSE]
+  browser_console_errors(before_barrier)
 }
 
 expect_no_browser_console_errors <- function(app) {
@@ -423,6 +420,28 @@ test_that("consolekontrol klassificerer literal shinytest2 error og throw", {
   expect_identical(errors$level, c("error", "throw"))
   expect_identical(errors$message,
                    c("BFH_LITERAL_ERROR", "Uncaught Error: BFH_LITERAL_THROW"))
+})
+
+test_that("consolebarriere venter paa browserens timer-rundtur", {
+  app <- start_adapter_app()
+  withr::defer(app$stop())
+
+  errors <- browser_console_errors_before_barrier(app)
+  expect_s3_class(errors, "data.frame")
+  expect_identical(nrow(errors), 0L)
+})
+
+test_that("manglende consolebarriere afbryder expecten rent", {
+  app <- list(
+    get_js = function(...) TRUE,
+    get_logs = function() data.frame(
+      location = "chromote", level = "info", message = "anden log",
+      stringsAsFactors = FALSE
+    )
+  )
+
+  expect_error(expect_no_browser_console_errors(app),
+               "Chrome-logbarrieren blev ikke modtaget")
 })
 
 test_that("consolebarriere opdager en forsinket fejl plantet f\u00F8r barrieren", {

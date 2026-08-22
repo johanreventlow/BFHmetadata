@@ -13,6 +13,12 @@ adapter_map <- data.frame(
   stringsAsFactors = FALSE
 )
 
+test_that("excel-adapterens produktions-R-kilde er ASCII", {
+  path <- testthat::test_path("..", "..", "R", "fct_excel_adapter.R")
+  bytes <- readBin(path, what = "raw", n = file.info(path)$size)
+  expect_true(all(as.integer(bytes) < 128L))
+})
+
 test_that("adapter map kræver entydige 0-baserede kolonner og skjult pk", {
   expect_silent(validate_excel_adapter_map(adapter_map, names(adapter_rows), "Id"))
   expect_error(validate_excel_adapter_map(transform(adapter_map,

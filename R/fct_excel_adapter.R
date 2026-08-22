@@ -20,17 +20,17 @@ validate_excel_adapter_map <- function(map, col_names, pk) {
   indices <- map$column_index
   if (anyNA(indices) || !is.numeric(indices) || any(!is.finite(indices)) ||
       any(indices != floor(indices)) || any(indices < 0) || anyDuplicated(indices)) {
-    stop("Kolonneindeks skal være entydige ikke-negative heltal.", call. = FALSE)
+    stop("Kolonneindeks skal v\u00E6re entydige ikke-negative heltal.", call. = FALSE)
   }
   if (!identical(as.character(map$field), as.character(col_names)) ||
       !identical(as.integer(indices), seq_along(col_names) - 1L)) {
     stop("Kolonnemap matcher ikke data.", call. = FALSE)
   }
   if (!identical(map$field[[1]], pk) || !identical(map$column_index[[1]], 0L)) {
-    stop("PK skal være første kolonne.", call. = FALSE)
+    stop("PK skal v\u00E6re f\u00F8rste kolonne.", call. = FALSE)
   }
   if (!identical(map$editable[match(pk, map$field)], FALSE)) {
-    stop("PK skal være ikke-redigerbar.", call. = FALSE)
+    stop("PK skal v\u00E6re ikke-redigerbar.", call. = FALSE)
   }
   if (anyNA(map$value_type) || !all(map$value_type %in% c("text", "int", "fk", "boolean"))) {
     stop("Ugyldig kolonnetype.", call. = FALSE)
@@ -109,13 +109,13 @@ prepare_excel_cell_update <- function(event, generation, rows, pk, column_map) {
   row_index <- match(event$row_pk, as.character(pk_values))
   map_index <- match(as.integer(event$column_index), column_map$column_index)
   if (is.na(row_index) || is.na(map_index)) {
-    return(.excel_adapter_rejected(event, "Ukendt række eller kolonne."))
+    return(.excel_adapter_rejected(event, "Ukendt r\u00E6kke eller kolonne."))
   }
   if (!isTRUE(column_map$editable[map_index])) {
     return(.excel_adapter_rejected(event, "Kolonnen kan ikke redigeres."))
   }
   value <- .excel_adapter_value(event$raw_value, column_map$value_type[map_index])
-  if (is.null(value)) return(.excel_adapter_rejected(event, "Ugyldig celleværdi."))
+  if (is.null(value)) return(.excel_adapter_rejected(event, "Ugyldig cellev\u00E6rdi."))
   list(
     ok = TRUE,
     event_id = event$event_id,
