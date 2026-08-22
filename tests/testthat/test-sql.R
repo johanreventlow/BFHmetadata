@@ -3,6 +3,10 @@ test_that("lookup-byggere bruger pk-kolonne (Id) korrekt parametriseret", {
     build_lookup_list_sql("tblFaggrupper", "Id"),
     'SELECT \\* FROM "tblFaggrupper" ORDER BY "Id"'
   )
+  expect_equal(
+    build_lookup_get_sql("tblFaggrupper", "Id"),
+    'SELECT * FROM "tblFaggrupper" WHERE "Id" = $1'
+  )
   expect_match(
     build_lookup_update_sql("tblFaggrupper", "Id", "faggruppe"),
     'UPDATE "tblFaggrupper" SET "faggruppe" = \\$1 WHERE "Id" = \\$2'
