@@ -148,6 +148,7 @@ LABEL_SEPARATOR <- " \u2014 "
 # Verificeret mod access_schema.yaml 2026-06-10.
 LOOKUP_TABLES <- list(
   list(id = "faggrupper", table = "tblFaggrupper", pk = "Id", label = "Faggrupper",
+       excel_adapter = TRUE,
        cols = list(
          list(col = "faggruppe", type = "text", label = "Faggruppe"))),
   list(id = "datakilder", table = "tblDatakilder", pk = "Id", label = "Datakilder",

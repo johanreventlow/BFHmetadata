@@ -108,7 +108,7 @@
       Shiny.setInputValue(container.id + "_cell", {
         event_id: eventId,
         grid_generation: generation,
-        row_pk: rowPk,
+        row_pk: String(rowPk),
         column_index: columnIndex,
         raw_value: value
       }, { priority: "event" });

@@ -1,26 +1,31 @@
-test_that("lookup-byggere bruger pk-kolonne (Id) korrekt parametriseret", {
+test_that("faggrupper-piloten bevarer lookup-SQL-kontrakten", {
+  cfg <- Find(function(item) identical(item$id, "faggrupper"), LOOKUP_TABLES)
+  expect_true(isTRUE(cfg$excel_adapter))
+  expect_identical(cfg$table, "tblFaggrupper")
+  expect_identical(cfg$pk, "Id")
+  expect_identical(cfg$cols[[1L]]$col, "faggruppe")
   expect_match(
-    build_lookup_list_sql("tblFaggrupper", "Id"),
+    build_lookup_list_sql(cfg$table, cfg$pk),
     'SELECT \\* FROM "tblFaggrupper" ORDER BY "Id"'
   )
   expect_equal(
-    build_lookup_get_sql("tblFaggrupper", "Id"),
+    build_lookup_get_sql(cfg$table, cfg$pk),
     'SELECT * FROM "tblFaggrupper" WHERE "Id" = $1'
   )
   expect_match(
-    build_lookup_update_sql("tblFaggrupper", "Id", "faggruppe"),
+    build_lookup_update_sql(cfg$table, cfg$pk, cfg$cols[[1L]]$col),
     'UPDATE "tblFaggrupper" SET "faggruppe" = \\$1 WHERE "Id" = \\$2'
   )
   expect_no_match(
-    build_lookup_update_sql("tblFaggrupper", "Id", "faggruppe"),
+    build_lookup_update_sql(cfg$table, cfg$pk, cfg$cols[[1L]]$col),
     'WHERE "id"'
   ) # MÅ ej bruge lille-bogstav id
   expect_match(
-    build_lookup_insert_sql("tblFaggrupper", "Id"),
+    build_lookup_insert_sql(cfg$table, cfg$pk),
     'INSERT INTO "tblFaggrupper" DEFAULT VALUES RETURNING "Id"'
   )
   expect_match(
-    build_lookup_delete_sql("tblFaggrupper", "Id"),
+    build_lookup_delete_sql(cfg$table, cfg$pk),
     'DELETE FROM "tblFaggrupper" WHERE "Id" = \\$1'
   )
   expect_match(

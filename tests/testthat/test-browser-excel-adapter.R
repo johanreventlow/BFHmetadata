@@ -131,6 +131,8 @@ test_that("adapter sender en celle n\u00F8jagtigt en gang og patcher uden re-ren
   wait_for_browser(app, "document.getElementById('event_count').textContent.trim() === '1'")
   expect_identical(app$get_js(
     "document.getElementById('write_count').textContent.trim()"), "1")
+  latest <- jsonlite::fromJSON(browser_output(app, "latest_event"))
+  expect_type(latest$row_pk, "character")
   wait_for_browser(app,
     "document.querySelector('#grid td[data-x=\"1\"][data-y=\"0\"]').classList.contains('bfh-cell-saved')")
   expect_true(app$get_js("window.fixtureGrid === document.getElementById('grid')"))
@@ -455,5 +457,102 @@ test_that("init til et legacy excelR-grid kan ikke erstatte dets callbacks", {
     "window.legacyOnchange === document.getElementById('legacy_grid').excel.options.onchange"))
   expect_false(app$get_js(
     "Object.prototype.hasOwnProperty.call(document.getElementById('legacy_grid').dataset, 'bfhGeneration')"))
+  expect_no_browser_console_errors(app)
+})
+
+start_lookup_adapter_app <- function() {
+  app <- shinytest2::AppDriver$new("apps/lookup-adapter", load_timeout = 15000)
+  wait_for_browser(app, paste0(
+    "!!(document.getElementById('adapter-tbl') && ",
+    "document.getElementById('adapter-tbl').excel && ",
+    "document.getElementById('adapter-tbl').dataset.bfhGeneration === '1' && ",
+    "document.getElementById('legacy-tbl') && ",
+    "document.getElementById('legacy-tbl').excel)"
+  ), timeout = 15000)
+  app
+}
+
+edit_lookup_cell <- function(app, id, x, y, value) {
+  app$run_js(sprintf(
+    paste0(
+      "(() => { const c = document.querySelector('#%s td[data-x=\"%d\"]",
+      "[data-y=\"%d\"]'); ",
+      "['mousedown', 'mouseup', 'click', 'mousedown', 'mouseup', 'click', ",
+      "'dblclick'].forEach(type => c.dispatchEvent(new MouseEvent(type, ",
+      "{ bubbles: true, button: 0 }))); })()"
+    ),
+    id, x, y
+  ))
+  app$run_js("document.activeElement.select()")
+  app$get_chromote_session()$Input$insertText(text = value)
+  press_browser_key(app, "Enter")
+  invisible(NULL)
+}
+
+test_that("rigtigt lookup-modul gemmer og reconciler adaptercellen uden re-render", {
+  app <- start_lookup_adapter_app()
+  withr::defer(app$stop())
+
+  app$run_js(
+    "window.lookupAdapterGrid = document.getElementById('adapter-tbl')")
+  neighbor_before <- app$get_js(
+    "document.querySelector('#adapter-tbl td[data-x=\"1\"][data-y=\"1\"]').textContent")
+
+  edit_lookup_cell(app, "adapter-tbl", 1L, 0L, "Adapter gemt")
+  wait_for_browser(app,
+    "document.getElementById('adapter_write_count').textContent.trim() === '1'")
+  wait_for_browser(app,
+    "document.getElementById('adapter_db_value').textContent.trim() === 'Adapter gemt'")
+  expect_identical(browser_output(app, "adapter_local_value"), "Adapter gemt")
+  expect_identical(app$get_js(
+    "document.querySelector('#adapter-tbl td[data-x=\"1\"][data-y=\"0\"]').textContent"),
+    "Adapter gemt")
+  expect_true(app$get_js(
+    "window.lookupAdapterGrid === document.getElementById('adapter-tbl')"))
+
+  edit_lookup_cell(app, "adapter-tbl", 1L, 0L, "AFVIS")
+  wait_for_browser(app,
+    "document.getElementById('adapter_write_count').textContent.trim() === '2'")
+  wait_for_browser(app,
+    "document.querySelector('#adapter-tbl td[data-x=\"1\"][data-y=\"0\"]').classList.contains('bfh-cell-rejected')")
+  expect_identical(browser_output(app, "adapter_get_row_count"), "1")
+  expect_identical(browser_output(app, "adapter_db_value"), "Adapter gemt")
+  expect_identical(browser_output(app, "adapter_local_value"), "Adapter gemt")
+  expect_identical(app$get_js(
+    "document.querySelector('#adapter-tbl td[data-x=\"1\"][data-y=\"0\"]').textContent"),
+    "Adapter gemt")
+  expect_identical(app$get_js(
+    "document.querySelector('#adapter-tbl td[data-x=\"1\"][data-y=\"1\"]').textContent"),
+    neighbor_before)
+  expect_true(app$get_js(
+    "window.lookupAdapterGrid === document.getElementById('adapter-tbl')"))
+  expect_no_browser_console_errors(app)
+})
+
+test_that("rigtigt legacy lookup-modul bevarer fuldtabelstien uden cellekanal", {
+  app <- start_lookup_adapter_app()
+  withr::defer(app$stop())
+
+  expect_false(app$get_js(
+    "document.getElementById('legacy-tbl').closest('.bfh-excel-grid') !== null"))
+  app$run_js(paste0(
+    "window.lookupLegacyGrid = document.getElementById('legacy-tbl');",
+    "window.lookupLegacyOnchange = lookupLegacyGrid.excel.options.onchange;"
+  ))
+  expect_true(app$get_js("typeof window.lookupLegacyOnchange === 'function'"))
+
+  edit_lookup_cell(app, "legacy-tbl", 1L, 0L, "Legacy gemt")
+  wait_for_browser(app,
+    "document.getElementById('legacy_write_count').textContent.trim() === '1'")
+  wait_for_browser(app,
+    "document.getElementById('legacy_db_value').textContent.trim() === 'Legacy gemt'")
+  expect_identical(browser_output(app, "legacy_local_value"), "Legacy gemt")
+  Sys.sleep(0.2)
+  expect_identical(browser_output(app, "legacy_cell_count"), "0")
+  expect_true(app$get_js(paste0(
+    "window.lookupLegacyGrid === document.getElementById('legacy-tbl') && ",
+    "window.lookupLegacyOnchange === ",
+    "document.getElementById('legacy-tbl').excel.options.onchange"
+  )))
   expect_no_browser_console_errors(app)
 })

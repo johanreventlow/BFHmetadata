@@ -1,6 +1,11 @@
 # Validerer LOOKUP_TABLES-config mod forventet skema (fanger tastefejl i
 # tabel-/kolonnenavne før de rammer DB).
 
+test_that("kun faggrupper er optet ind i excel-adapter batch 1", {
+  enabled <- Filter(function(cfg) isTRUE(cfg$excel_adapter), LOOKUP_TABLES)
+  expect_equal(vapply(enabled, `[[`, "", "id"), "faggrupper")
+})
+
 test_that("org_oversaettelse-entry findes med korrekte kolonner", {
   ids <- vapply(LOOKUP_TABLES, function(x) x$id, "")
   expect_true("org_oversaettelse" %in% ids)
