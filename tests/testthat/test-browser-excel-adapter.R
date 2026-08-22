@@ -52,9 +52,39 @@ selected_cell <- function(app) {
     "JSON.stringify(document.getElementById('grid').excel.selectedCell.map(Number))")
 }
 
+browser_console_errors <- function(logs) {
+  logs[logs$location == "chromote" & logs$level %in% c("error", "throw"),
+       , drop = FALSE]
+}
+
+wait_for_console_sentinels <- function(app, timeout = 5000) {
+  deadline <- Sys.time() + timeout / 1000
+  repeat {
+    errors <- browser_console_errors(app$get_logs())
+    has_console_error <- any(errors$level == "error" &
+                               grepl("BFH_SYNTHETIC_CONSOLE_ERROR",
+                                     errors$message, fixed = TRUE))
+    has_uncaught_throw <- any(errors$level == "throw" &
+                                grepl("BFH_SYNTHETIC_THROW", errors$message,
+                                      fixed = TRUE))
+    if (has_console_error && has_uncaught_throw) return(errors)
+    if (Sys.time() >= deadline) {
+      observed <- if (nrow(errors)) {
+        paste(sprintf("%s: %s", errors$level, errors$message), collapse = "\n")
+      } else {
+        "<ingen chromote error/throw-loglinjer>"
+      }
+      return(testthat::fail(paste(
+        "Chrome-loggen modtog ikke begge syntetiske sentineller. Observeret:",
+        observed, sep = "\n"
+      )))
+    }
+    Sys.sleep(0.05)
+  }
+}
+
 expect_no_browser_console_errors <- function(app) {
-  logs <- app$get_logs()
-  errors <- logs[logs$location == "JS" & logs$level == "error", , drop = FALSE]
+  errors <- browser_console_errors(app$get_logs())
   expect_equal(nrow(errors), 0L,
                info = if (nrow(errors)) paste(errors$message, collapse = "\n") else NULL)
 }
@@ -338,4 +368,71 @@ test_that("adapter l\u00E5ser uden offline-k\u00F8 n\u00E5r Shiny-forbindelsen m
     "afbrudt")
   expect_identical(browser_output(app, "event_count"), "0")
   expect_no_browser_console_errors(app)
+})
+
+test_that("disconnect rydder pending korrelation og reconnect genopliver intet event", {
+  app <- start_adapter_app()
+  withr::defer(app$stop())
+
+  edit_browser_cell(app, 1L, 0L, "FAST")
+  wait_for_browser(app,
+    "document.querySelector('#grid td[data-x=\"1\"][data-y=\"0\"]').classList.contains('bfh-cell-saved')")
+  edit_browser_cell(app, 1L, 1L, "SLOW")
+  wait_for_event_count(app, 2L)
+  expect_true(app$get_js(
+    "document.querySelector('#grid td[data-x=\"1\"][data-y=\"1\"]').classList.contains('bfh-cell-pending')"))
+
+  app$run_js(paste0(
+    "document.dispatchEvent(new CustomEvent('shiny:disconnected'));",
+    "document.dispatchEvent(new CustomEvent('shiny:connected'));"
+  ))
+  expect_true(app$get_js(
+    "document.querySelector('.bfh-excel-grid').classList.contains('bfh-grid-locked')"))
+  expect_identical(app$get_js(
+    "document.querySelectorAll('#grid td.bfh-cell-pending, #grid td.bfh-cell-saved').length"),
+    0L)
+
+  Sys.sleep(1)
+  expect_identical(app$get_js(
+    "document.querySelector('#grid td[data-x=\"1\"][data-y=\"1\"]').textContent"),
+    "SLOW")
+  expect_identical(app$get_js(
+    "document.querySelectorAll('#grid td.bfh-cell-pending, #grid td.bfh-cell-saved').length"),
+    0L)
+  expect_identical(browser_output(app, "write_count"), "2")
+})
+
+test_that("consolekontrol opdager Chrome error og uncaught throw", {
+  app <- start_adapter_app()
+  withr::defer(app$stop())
+
+  app$run_js(paste0(
+    "console.error('BFH_SYNTHETIC_CONSOLE_ERROR');",
+    "setTimeout(function () { throw new Error('BFH_SYNTHETIC_THROW'); }, 0);"
+  ))
+  errors <- wait_for_console_sentinels(app)
+  expect_true(any(errors$level == "error" &
+                  grepl("BFH_SYNTHETIC_CONSOLE_ERROR", errors$message,
+                        fixed = TRUE)))
+  expect_true(any(errors$level == "throw" &
+                  grepl("BFH_SYNTHETIC_THROW", errors$message, fixed = TRUE)))
+})
+
+test_that("init til et legacy excelR-grid kan ikke erstatte dets callbacks", {
+  app <- start_adapter_app()
+  withr::defer(app$stop())
+  wait_for_browser(app,
+    "!!(document.getElementById('legacy_grid') && document.getElementById('legacy_grid').excel)")
+
+  app$run_js(paste0(
+    "window.legacyOnchange = document.getElementById('legacy_grid').excel.options.onchange;",
+    "Shiny.setInputValue('request_legacy_init', Date.now(), { priority: 'event' });"
+  ))
+  wait_for_browser(app,
+    "document.getElementById('legacy_init_count').textContent.trim() === '1'")
+  Sys.sleep(0.1)
+  expect_true(app$get_js(
+    "window.legacyOnchange === document.getElementById('legacy_grid').excel.options.onchange"))
+  expect_false(app$get_js(
+    "Object.prototype.hasOwnProperty.call(document.getElementById('legacy_grid').dataset, 'bfhGeneration')"))
 })

@@ -44,6 +44,10 @@ ui <- fluidPage(
     `data-bfh-adapter` = "true",
     excelR::excelOutput("grid", width = "100%", height = "auto")
   ),
+  tags$div(
+    id = "legacy_host",
+    excelR::excelOutput("legacy_grid", width = "100%", height = "auto")
+  ),
   tags$dl(
     tags$dt("Events"), tags$dd(textOutput("event_count", inline = TRUE)),
     tags$dt("Fake writes"), tags$dd(textOutput("write_count", inline = TRUE)),
@@ -51,6 +55,8 @@ ui <- fluidPage(
     tags$dt("Latest"), tags$dd(verbatimTextOutput("latest_event")),
     tags$dt("Event log"), tags$dd(verbatimTextOutput("event_log")),
     tags$dt("Latest selection"), tags$dd(verbatimTextOutput("latest_selection")),
+    tags$dt("Legacy init sent"),
+    tags$dd(textOutput("legacy_init_count", inline = TRUE)),
     tags$dt("Client status"), tags$dd(textOutput("client_status", inline = TRUE))
   )
 )
@@ -63,6 +69,7 @@ server <- function(input, output, session) {
   latest_event <- reactiveVal(NULL)
   event_log <- reactiveVal(list())
   latest_selection <- reactiveVal(NULL)
+  legacy_init_count <- reactiveVal(0L)
   client_status <- reactiveVal("")
 
   output$grid <- excelR::renderExcel({
@@ -85,6 +92,20 @@ server <- function(input, output, session) {
       columnSorting = TRUE,
       rowDrag = FALSE,
       columnDrag = FALSE
+    )
+  })
+
+  output$legacy_grid <- excelR::renderExcel({
+    excelR::excelTable(
+      data = fixture_rows[seq_len(3L), c("Id", "Tekst")],
+      columns = fixture_columns[seq_len(2L), , drop = FALSE],
+      autoColTypes = FALSE,
+      autoWidth = FALSE,
+      allowInsertRow = FALSE,
+      allowInsertColumn = FALSE,
+      allowDeleteRow = FALSE,
+      allowDeleteColumn = FALSE,
+      getSelectedData = TRUE
     )
   })
 
@@ -146,6 +167,12 @@ server <- function(input, output, session) {
     client_status(if (is.null(message)) "" else message)
   }, ignoreInit = TRUE)
 
+  observeEvent(input$request_legacy_init, {
+    legacy_init_count(legacy_init_count() + 1L)
+    session$sendCustomMessage("bfh-excel-adapter:init",
+                              list(id = "legacy_grid", grid_generation = 99L))
+  }, ignoreInit = TRUE)
+
   output$event_count <- renderText(event_count())
   output$write_count <- renderText(write_count())
   output$selection_count <- renderText(selection_count())
@@ -154,6 +181,7 @@ server <- function(input, output, session) {
   output$latest_selection <- renderText(
     jsonlite::toJSON(latest_selection(), auto_unbox = TRUE)
   )
+  output$legacy_init_count <- renderText(legacy_init_count())
   output$client_status <- renderText(client_status())
 }
 

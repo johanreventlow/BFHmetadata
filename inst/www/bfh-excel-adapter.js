@@ -7,15 +7,41 @@
     return container.closest(".bfh-excel-grid") || container;
   }
 
+  function isOptInContainer(container) {
+    return !!(container &&
+      container.closest(".bfh-excel-grid[data-bfh-adapter=\"true\"]"));
+  }
+
   function isConnected() {
     return !!(window.Shiny && Shiny.shinyapp && Shiny.shinyapp.$socket &&
       Shiny.shinyapp.$socket.readyState === 1);
   }
 
   function lockGrid(container, state, message, cell) {
-    wrapperFor(container).classList.add("bfh-grid-locked");
+    const wrapper = wrapperFor(container);
+    wrapper.classList.add("bfh-grid-locked");
+    wrapper.title = message;
     state.grid.options.editable = false;
     if (cell) cell.title = message;
+  }
+
+  function disconnectState(container, state, cell) {
+    state.savedTimers.forEach(function (timer) {
+      window.clearTimeout(timer);
+    });
+    state.savedTimers.clear();
+    state.latestByCell.clear();
+    state.eventDetails.clear();
+    state.grid.records.forEach(function (row) {
+      row.forEach(function (record) {
+        const transient = record.classList.contains("bfh-cell-pending") ||
+          record.classList.contains("bfh-cell-saved");
+        record.classList.remove("bfh-cell-pending", "bfh-cell-saved");
+        if (transient) record.removeAttribute("title");
+      });
+    });
+    lockGrid(container, state,
+      "Forbindelsen til serveren er afbrudt. Genindl\u00E6s siden.", cell);
   }
 
   function clearSavedTimer(state, cellKey) {
@@ -45,6 +71,7 @@
   }
 
   function attach(container) {
+    if (!isOptInContainer(container)) return;
     const grid = container.excel;
     const generation = requestedGeneration(container);
     if (!grid || generation === null) return;
@@ -75,9 +102,7 @@
       if (cell) markPending(state, cellKey, cell);
 
       if (!isConnected()) {
-        state.eventDetails.delete(eventId);
-        lockGrid(container, state,
-          "Forbindelsen til serveren er afbrudt. Genindl\u00E6s siden.", cell);
+        disconnectState(container, state, cell);
         return;
       }
       Shiny.setInputValue(container.id + "_cell", {
@@ -105,8 +130,7 @@
         }
       }
       if (!isConnected()) {
-        lockGrid(container, state,
-          "Forbindelsen til serveren er afbrudt. Genindl\u00E6s siden.");
+        disconnectState(container, state);
         return;
       }
       Shiny.setInputValue(container.id + "_selection", {
@@ -118,12 +142,14 @@
   }
 
   function scan() {
-    document.querySelectorAll(".bfh-excel-grid .jexcel_container").forEach(attach);
+    document.querySelectorAll(
+      ".bfh-excel-grid[data-bfh-adapter=\"true\"] .jexcel_container"
+    ).forEach(attach);
   }
 
   Shiny.addCustomMessageHandler("bfh-excel-adapter:init", function (payload) {
     const container = document.getElementById(payload.id);
-    if (!container) return;
+    if (!isOptInContainer(container)) return;
     container.dataset.bfhGeneration = String(payload.grid_generation);
     attach(container);
   });
@@ -183,6 +209,14 @@
 
   new MutationObserver(scan).observe(document.documentElement,
     { childList: true, subtree: true });
+  document.addEventListener("shiny:disconnected", function () {
+    document.querySelectorAll(
+      ".bfh-excel-grid[data-bfh-adapter=\"true\"] .jexcel_container"
+    ).forEach(function (container) {
+      const state = states.get(container);
+      if (state) disconnectState(container, state);
+    });
+  });
   document.addEventListener("shiny:connected", scan);
   document.addEventListener("DOMContentLoaded", scan);
 })();
