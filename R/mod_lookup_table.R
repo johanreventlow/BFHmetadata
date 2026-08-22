@@ -89,6 +89,11 @@ mod_lookup_table_server <- function(id, db, cfg,
     }
     status_msg <- reactiveVal("")
     sel_pk <- reactiveVal(NULL) # pk (chr) for senest valgte række
+    adapter_locked <- reactiveVal(FALSE)
+    ambiguity_message <- paste0(
+      "Databasestatus kunne ikke bekr\u00E6ftes. ",
+      "Genindl\u00E6s siden."
+    )
     column_map <- reactiveVal(NULL)
     mapped_generation <- NULL
     fk_cols <- Filter(function(c) identical(c$type, "fk"), cfg$cols)
@@ -229,6 +234,13 @@ mod_lookup_table_server <- function(id, db, cfg,
     if (excel_adapter_enabled(cfg)) {
       observeEvent(input$tbl_cell, {
         raw_event <- input$tbl_cell
+        if (isTRUE(isolate(adapter_locked()))) {
+          adapter_reply(session, "tbl", excel_adapter_result(
+            raw_event, "rejected", NA, ambiguity_message,
+            lock_grid = TRUE
+          ))
+          return()
+        }
         current_rows <- isolate(rows())
         current_map <- isolate(column_map())
         event <- prepare_excel_cell_update(
@@ -270,9 +282,9 @@ mod_lookup_table_server <- function(id, db, cfg,
           fresh_row, event, cfg$pk, current_rows
         )
         if (is.null(actual)) {
+          adapter_locked(TRUE)
           adapter_reply(session, "tbl", excel_adapter_result(
-            event, "rejected", NA,
-            "Databasestatus kunne ikke bekr\u00E6ftes. Genindl\u00E6s siden.",
+            event, "rejected", NA, ambiguity_message,
             lock_grid = TRUE
           ))
           return()

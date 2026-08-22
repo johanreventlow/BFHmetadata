@@ -9,8 +9,11 @@ cfg_test <- list(id = "t", table = "tblTest", pk = "Id", label = "Test",
 cfg_adapter <- c(cfg_test, list(excel_adapter = TRUE))
 
 fake_lookup_db <- function(ref = 0L, fail = c("none", "before", "after", "reload"),
-                           get_row_result = c("match", "duplicate", "none")) {
-  fail <- match.arg(fail)
+                           get_row_result = c(
+                             "match", "duplicate", "none", "missing_field",
+                             "wrong_field", "wrong_pk", "wrong_type"
+                           )) {
+  fail_mode <- match.arg(fail)
   get_row_result <- match.arg(get_row_result)
   store <- data.frame(Id = 1:2, navn = c("A", "B"), niveau = c(1L, 2L),
                       stringsAsFactors = FALSE)
@@ -23,12 +26,20 @@ fake_lookup_db <- function(ref = 0L, fail = c("none", "before", "after", "reload
     },
     get_row = function(pk_val) {
       calls$get_row <<- c(calls$get_row, list(pk_val))
-      if (identical(fail, "reload")) stop("test reload failure")
+      if (identical(fail_mode, "reload")) stop("test reload failure")
       row <- store[as.character(store$Id) == as.character(pk_val), , drop = FALSE]
       if (identical(get_row_result, "duplicate") && nrow(row) == 1L) {
         row <- rbind(row, row)
       } else if (identical(get_row_result, "none")) {
         row <- row[FALSE, , drop = FALSE]
+      } else if (identical(get_row_result, "missing_field")) {
+        row$navn <- NULL
+      } else if (identical(get_row_result, "wrong_field")) {
+        names(row)[names(row) == "navn"] <- "forkert_felt"
+      } else if (identical(get_row_result, "wrong_pk")) {
+        row$Id <- row$Id + 100L
+      } else if (identical(get_row_result, "wrong_type")) {
+        row$navn <- rep(42L, nrow(row))
       }
       row
     },
@@ -42,10 +53,10 @@ fake_lookup_db <- function(ref = 0L, fail = c("none", "before", "after", "reload
       u <- list(pk = pk_val, col = col, value = value)
       calls$updated <<- u
       calls$all_updates <<- c(calls$all_updates, list(u))
-      if (fail %in% c("before", "reload")) stop("test write failure")
+      if (fail_mode %in% c("before", "reload")) stop("test write failure")
       j <- match(as.character(pk_val), as.character(store$Id))
       store[j, col] <<- value
-      if (identical(fail, "after")) stop("test post-commit failure")
+      if (identical(fail_mode, "after")) stop("test post-commit failure")
       1L
     },
     delete_row = function(pk_val) {
@@ -55,7 +66,11 @@ fake_lookup_db <- function(ref = 0L, fail = c("none", "before", "after", "reload
     },
     ref_count = function(pk_val) ref,
     .calls = function() calls,
-    .store = function() store
+    .store = function() store,
+    .set_fail = function(value) {
+      fail_mode <<- match.arg(value, c("none", "before", "after", "reload"))
+      invisible(NULL)
+    }
   )
 }
 
@@ -246,6 +261,91 @@ test_that("tvetydig målrettet genlæsning låser uden at patche naboer", {
     expect_identical(result$message,
       "Databasestatus kunne ikke bekræftes. Genindlæs siden.")
   })
+})
+
+test_that("serverlås afviser senere celleevents uden ny write eller genlæsning", {
+  db <- fake_lookup_db(fail = "reload")
+  replies <- adapter_reply_recorder()
+  testServer(mod_lookup_table_server,
+             args = list(db = db, cfg = cfg_adapter,
+                         adapter_reply = replies$reply), {
+    session$flushReact()
+    local_before <- rows()
+    store_before <- db$.store()
+    session$setInputs(tbl_cell = adapter_cell(
+      event_id = "first", row_pk = "1", raw_value = "Uafklaret"
+    ))
+    expect_true(replies$results()[[1]]$result$lock_grid)
+    writes_after_lock <- length(db$.calls()$all_updates)
+    reads_after_lock <- length(db$.calls()$get_row)
+
+    # Uden en server-latch ville dette mutere række 2 og reconciles som saved.
+    db$.set_fail("after")
+    session$setInputs(tbl_cell = adapter_cell(
+      event_id = "queued", row_pk = "2", raw_value = "Y"
+    ))
+
+    expect_length(db$.calls()$all_updates, writes_after_lock)
+    expect_length(db$.calls()$get_row, reads_after_lock)
+    expect_identical(rows(), local_before)
+    expect_identical(db$.store(), store_before)
+    result <- replies$results()[[2]]$result
+    expect_identical(result$status, "rejected")
+    expect_true(result$lock_grid)
+    expect_identical(result$message,
+      "Databasestatus kunne ikke bekræftes. Genindlæs siden.")
+  })
+})
+
+test_that("alle tvetydige get_row-former låser sessionen fail-closed", {
+  shapes <- c(
+    "duplicate", "none", "missing_field", "wrong_field", "wrong_pk",
+    "wrong_type"
+  )
+  for (shape in shapes) {
+    db <- fake_lookup_db(fail = "before", get_row_result = shape)
+    replies <- adapter_reply_recorder()
+    testServer(mod_lookup_table_server,
+               args = list(db = db, cfg = cfg_adapter,
+                           adapter_reply = replies$reply), {
+      session$flushReact()
+      local_before <- rows()
+      store_before <- db$.store()
+      session$setInputs(tbl_cell = adapter_cell(
+        event_id = paste0("ambiguous-", shape), row_pk = "1",
+        raw_value = "Uafklaret"
+      ))
+
+      result <- replies$results()[[1]]$result
+      expect_identical(result$status, "rejected", info = shape)
+      expect_true(result$lock_grid, info = shape)
+      expect_identical(result$message,
+        "Databasestatus kunne ikke bekræftes. Genindlæs siden.", info = shape)
+      expect_identical(rows(), local_before, info = shape)
+      expect_identical(db$.store(), store_before, info = shape)
+      expect_identical(length(db$.calls()$all_updates), 1L, info = shape)
+      expect_identical(length(db$.calls()$get_row), 1L, info = shape)
+
+      writes_after_lock <- length(db$.calls()$all_updates)
+      reads_after_lock <- length(db$.calls()$get_row)
+      db$.set_fail("after")
+      session$setInputs(tbl_cell = adapter_cell(
+        event_id = paste0("queued-", shape), row_pk = "2", raw_value = "Y"
+      ))
+
+      expect_identical(length(db$.calls()$all_updates), writes_after_lock,
+                       info = shape)
+      expect_identical(length(db$.calls()$get_row), reads_after_lock,
+                       info = shape)
+      expect_identical(rows(), local_before, info = shape)
+      expect_identical(db$.store(), store_before, info = shape)
+      queued <- replies$results()[[2]]$result
+      expect_identical(queued$status, "rejected", info = shape)
+      expect_true(queued$lock_grid, info = shape)
+      expect_identical(queued$message,
+        "Databasestatus kunne ikke bekræftes. Genindlæs siden.", info = shape)
+    })
+  }
 })
 
 test_that("read-only ukendt og stale celleevent afvises uden DB-write", {
