@@ -8,8 +8,8 @@
   }
 
   function isOptInContainer(container) {
-    return !!(container &&
-      container.closest(".bfh-excel-grid[data-bfh-adapter=\"true\"]"));
+    const owner = container && container.closest(".bfh-excel-grid");
+    return !!(owner && owner.dataset.bfhAdapter === "true");
   }
 
   function isConnected() {
@@ -209,7 +209,7 @@
 
   new MutationObserver(scan).observe(document.documentElement,
     { childList: true, subtree: true });
-  document.addEventListener("shiny:disconnected", function () {
+  window.jQuery(document).on("shiny:disconnected.bfhExcelAdapter", function () {
     document.querySelectorAll(
       ".bfh-excel-grid[data-bfh-adapter=\"true\"] .jexcel_container"
     ).forEach(function (container) {

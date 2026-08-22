@@ -57,26 +57,31 @@ browser_console_errors <- function(logs) {
        , drop = FALSE]
 }
 
-wait_for_console_sentinels <- function(app, timeout = 5000) {
+next_console_barrier <- local({
+  counter <- 0L
+  function() {
+    counter <<- counter + 1L
+    sprintf("BFH_CONSOLE_BARRIER_%d_%d", Sys.getpid(), counter)
+  }
+})
+
+browser_console_errors_before_barrier <- function(app, timeout = 5000) {
+  barrier <- next_console_barrier()
+  app$run_js(sprintf(
+    "setTimeout(function () { console.info('%s'); }, 0);", barrier
+  ))
   deadline <- Sys.time() + timeout / 1000
   repeat {
-    errors <- browser_console_errors(app$get_logs())
-    has_console_error <- any(errors$level == "error" &
-                               grepl("BFH_SYNTHETIC_CONSOLE_ERROR",
-                                     errors$message, fixed = TRUE))
-    has_uncaught_throw <- any(errors$level == "throw" &
-                                grepl("BFH_SYNTHETIC_THROW", errors$message,
-                                      fixed = TRUE))
-    if (has_console_error && has_uncaught_throw) return(errors)
+    logs <- app$get_logs()
+    barrier_rows <- which(logs$location == "chromote" &
+                            grepl(barrier, logs$message, fixed = TRUE))
+    if (length(barrier_rows)) {
+      before_barrier <- logs[seq_len(barrier_rows[[1L]]), , drop = FALSE]
+      return(browser_console_errors(before_barrier))
+    }
     if (Sys.time() >= deadline) {
-      observed <- if (nrow(errors)) {
-        paste(sprintf("%s: %s", errors$level, errors$message), collapse = "\n")
-      } else {
-        "<ingen chromote error/throw-loglinjer>"
-      }
       return(testthat::fail(paste(
-        "Chrome-loggen modtog ikke begge syntetiske sentineller. Observeret:",
-        observed, sep = "\n"
+        "Chrome-logbarrieren blev ikke modtaget:", barrier
       )))
     }
     Sys.sleep(0.05)
@@ -84,7 +89,7 @@ wait_for_console_sentinels <- function(app, timeout = 5000) {
 }
 
 expect_no_browser_console_errors <- function(app) {
-  errors <- browser_console_errors(app$get_logs())
+  errors <- browser_console_errors_before_barrier(app)
   expect_equal(nrow(errors), 0L,
                info = if (nrow(errors)) paste(errors$message, collapse = "\n") else NULL)
 }
@@ -383,8 +388,8 @@ test_that("disconnect rydder pending korrelation og reconnect genopliver intet e
     "document.querySelector('#grid td[data-x=\"1\"][data-y=\"1\"]').classList.contains('bfh-cell-pending')"))
 
   app$run_js(paste0(
-    "document.dispatchEvent(new CustomEvent('shiny:disconnected'));",
-    "document.dispatchEvent(new CustomEvent('shiny:connected'));"
+    "$(document).trigger('shiny:disconnected');",
+    "$(document).trigger('shiny:connected');"
   ))
   expect_true(app$get_js(
     "document.querySelector('.bfh-excel-grid').classList.contains('bfh-grid-locked')"))
@@ -400,22 +405,37 @@ test_that("disconnect rydder pending korrelation og reconnect genopliver intet e
     "document.querySelectorAll('#grid td.bfh-cell-pending, #grid td.bfh-cell-saved').length"),
     0L)
   expect_identical(browser_output(app, "write_count"), "2")
+  expect_no_browser_console_errors(app)
 })
 
-test_that("consolekontrol opdager Chrome error og uncaught throw", {
+test_that("consolekontrol klassificerer literal shinytest2 error og throw", {
+  logs <- data.frame(
+    location = c("chromote", "chromote", "JS", "chromote"),
+    level = c("error", "throw", "error", "info"),
+    message = c("BFH_LITERAL_ERROR", "Uncaught Error: BFH_LITERAL_THROW",
+                "BFH_WRONG_LOCATION", "BFH_INFO"),
+    stringsAsFactors = FALSE
+  )
+
+  errors <- browser_console_errors(logs)
+  expect_identical(errors$level, c("error", "throw"))
+  expect_identical(errors$message,
+                   c("BFH_LITERAL_ERROR", "Uncaught Error: BFH_LITERAL_THROW"))
+})
+
+test_that("consolebarriere opdager en forsinket fejl plantet f\u00F8r barrieren", {
   app <- start_adapter_app()
   withr::defer(app$stop())
 
   app$run_js(paste0(
-    "console.error('BFH_SYNTHETIC_CONSOLE_ERROR');",
-    "setTimeout(function () { throw new Error('BFH_SYNTHETIC_THROW'); }, 0);"
+    "setTimeout(function () {",
+    "console.error('BFH_DELAYED_PLANTED_ERROR');",
+    "}, 0);"
   ))
-  errors <- wait_for_console_sentinels(app)
+  errors <- browser_console_errors_before_barrier(app)
   expect_true(any(errors$level == "error" &
-                  grepl("BFH_SYNTHETIC_CONSOLE_ERROR", errors$message,
+                  grepl("BFH_DELAYED_PLANTED_ERROR", errors$message,
                         fixed = TRUE)))
-  expect_true(any(errors$level == "throw" &
-                  grepl("BFH_SYNTHETIC_THROW", errors$message, fixed = TRUE)))
 })
 
 test_that("init til et legacy excelR-grid kan ikke erstatte dets callbacks", {
@@ -435,4 +455,5 @@ test_that("init til et legacy excelR-grid kan ikke erstatte dets callbacks", {
     "window.legacyOnchange === document.getElementById('legacy_grid').excel.options.onchange"))
   expect_false(app$get_js(
     "Object.prototype.hasOwnProperty.call(document.getElementById('legacy_grid').dataset, 'bfhGeneration')"))
+  expect_no_browser_console_errors(app)
 })

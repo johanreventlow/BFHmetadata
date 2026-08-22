@@ -42,11 +42,12 @@ ui <- fluidPage(
   tags$div(
     class = "bfh-excel-grid",
     `data-bfh-adapter` = "true",
-    excelR::excelOutput("grid", width = "100%", height = "auto")
-  ),
-  tags$div(
-    id = "legacy_host",
-    excelR::excelOutput("legacy_grid", width = "100%", height = "auto")
+    excelR::excelOutput("grid", width = "100%", height = "auto"),
+    tags$div(
+      id = "legacy_host",
+      class = "bfh-excel-grid",
+      excelR::excelOutput("legacy_grid", width = "100%", height = "auto")
+    )
   ),
   tags$dl(
     tags$dt("Events"), tags$dd(textOutput("event_count", inline = TRUE)),
