@@ -92,8 +92,10 @@ test_that("prepare_excel_cell_update koerceder int fk tomme og boolean strengt",
   }
   expect_false(prepare_excel_cell_update(cell_event(raw_value = "yes"), 7L,
     adapter_rows, "Id", bool_map)$ok)
-  expect_identical(prepare_excel_cell_update(cell_event(raw_value = ""), 7L,
-    adapter_rows, "Id", bool_map)$value, NA)
+  empty_bool <- prepare_excel_cell_update(cell_event(raw_value = ""), 7L,
+    adapter_rows, "Id", bool_map)
+  expect_identical(empty_bool$value, NA)
+  expect_identical(empty_bool$canonical_value, NA)
 })
 
 test_that("prepare_excel_cell_update koerceder den direkte int-kolonne strengt", {
