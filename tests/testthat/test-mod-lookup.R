@@ -7,6 +7,8 @@ cfg_test <- list(id = "t", table = "tblTest", pk = "Id", label = "Test",
   cols = list(list(col = "navn", type = "text", label = "Navn"),
               list(col = "niveau", type = "int", label = "Niveau")))
 
+cfg_adapter <- c(cfg_test, list(excel_adapter = TRUE))
+
 fake_lookup_db <- function(ref = 0L) {
   store <- data.frame(Id = 1:2, navn = c("A", "B"), niveau = c(1L, 2L),
                       stringsAsFactors = FALSE)
@@ -25,6 +27,16 @@ fake_lookup_db <- function(ref = 0L) {
     .calls = function() calls
   )
 }
+
+test_that("adaptercfg indlaeser kun den opt-in grid-wrapper og dependency", {
+  dependency <- .excel_adapter_dependency()
+  expect_s3_class(dependency, "html_dependency")
+  expect_equal(dependency$script, "bfh-excel-adapter.js")
+  expect_match(as.character(mod_lookup_table_ui("x", cfg_adapter)),
+               "bfh-excel-grid")
+  expect_false(grepl("bfh-excel-grid",
+                     as.character(mod_lookup_table_ui("x", cfg_test))))
+})
 
 # excelR onChange-payload: rækker som liste-af-lister i grid-rækkefølge
 change_payload <- function(rows, headers = c("Id", "navn", "niveau")) {
@@ -96,6 +108,19 @@ test_that("widgetten renderes som excelR-grid med skjult pk og faste bredder", {
     expect_false(isTRUE(w$x$autoWidth))        # ellers ignoreres bredderne
     expect_false(isTRUE(w$x$allowInsertRow))
     expect_true(isTRUE(w$x$columnSorting))     # klik-sortering på overskrifter
+  })
+})
+
+test_that("adaptercfg bruger kun dokumenterede widgetparametre", {
+  db <- fake_lookup_db()
+  testServer(mod_lookup_table_server, args = list(db = db, cfg = cfg_adapter), {
+    w <- jsonlite::fromJSON(output$tbl, simplifyVector = FALSE)
+    expect_true(isTRUE(w$x$tableOverflow))
+    expect_false(isTRUE(w$x$pagination))
+    expect_false(isTRUE(w$x$columnDrag))
+    expect_true(isTRUE(w$x$selectionCopy))
+    expect_equal(w$x$tableHeight, "calc(100vh - 250px)")
+    expect_false("bfhGeneration" %in% names(w$x))
   })
 })
 

@@ -9,6 +9,10 @@
 #' @noRd
 mod_lookup_table_ui <- function(id, cfg) {
   ns <- NS(id)
+  grid <- excelR::excelOutput(ns("tbl"), width = "100%", height = "auto")
+  if (excel_adapter_enabled(cfg)) {
+    grid <- div(class = "bfh-excel-grid", `data-bfh-adapter` = "true", grid)
+  }
   tagList(
     div(class = "d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2",
       h4(cfg$label, class = "m-0"),
@@ -17,7 +21,7 @@ mod_lookup_table_ui <- function(id, cfg) {
         actionButton(ns("delete"), "Slet valgte r\u00E6kke", class = "btn-outline-danger btn-sm"))),
     p(class = "text-muted small",
       "Dobbeltklik en celle for at redigere. Klik en r\u00E6kke og tryk Slet. Id er l\u00E5st."),
-    excelR::excelOutput(ns("tbl"), width = "100%", height = "auto")
+    grid
   )
 }
 
@@ -25,7 +29,12 @@ mod_lookup_table_ui <- function(id, cfg) {
 mod_lookup_table_server <- function(id, db, cfg) {
   moduleServer(id, function(input, output, session) {
     rows <- reactiveVal(db$list_rows())
-    refresh <- reactiveVal(0) # bump → re-render (ny/slet række + revert)
+    grid_generation <- reactiveVal(1L)
+    render_revision <- reactiveVal(0L)
+    force_grid_render <- function() {
+      grid_generation(isolate(grid_generation()) + 1L)
+      render_revision(isolate(render_revision()) + 1L)
+    }
     status_msg <- reactiveVal("")
     sel_pk <- reactiveVal(NULL) # pk (chr) for senest valgte række
     fk_cols <- Filter(function(c) identical(c$type, "fk"), cfg$cols)
@@ -50,9 +59,22 @@ mod_lookup_table_server <- function(id, db, cfg) {
     }
 
     output$tbl <- excelR::renderExcel({
-      refresh()
+      render_revision()
       d <- isolate(rows())
-      excelR::excelTable(
+      isolate(grid_generation())
+      adapter_args <- if (excel_adapter_enabled(cfg)) {
+        list(
+          tableOverflow = TRUE,
+          tableHeight = "calc(100vh - 250px)",
+          # excelR 0.4.x accepts pagination as a numeric page size only;
+          # zero preserves jspreadsheet's disabled-pagination semantics.
+          pagination = 0L,
+          selectionCopy = TRUE
+        )
+      } else {
+        list()
+      }
+      do.call(excelR::excelTable, c(list(
         data = d,
         columns = lookup_excel_columns(cfg, names(d), .fk_sources(), data = d),
         autoColTypes = FALSE,
@@ -70,8 +92,17 @@ mod_lookup_table_server <- function(id, db, cfg) {
         allowRenameColumn = FALSE, columnSorting = TRUE,
         rowDrag = FALSE, columnDrag = FALSE,
         getSelectedData = TRUE
-      )
+      ), adapter_args))
     })
+
+    if (excel_adapter_enabled(cfg)) {
+      observe({
+        render_revision()
+        session$onFlushed(function() {
+          send_excel_adapter_init(session, "tbl", isolate(grid_generation()))
+        }, once = TRUE)
+      })
+    }
 
     # excelR sender BÅDE celle-ændringer og selektioner på input$tbl —
     # forSelectedVals skelner. Selektion: gem pk'en (læses fra payloadens
@@ -124,14 +155,14 @@ mod_lookup_table_server <- function(id, db, cfg) {
       rows(d)
       # Én samlet re-render efter afviste celler: grid'et snapper tilbage til
       # den gemte tilstand (accepterede celler beholdes — de er i rows()).
-      if (revert) refresh(refresh() + 1)
+      if (revert) force_grid_render()
     })
 
     observeEvent(input$add_row, {
       safe_operation("ny r\u00E6kke", {
         db$add_row()
         rows(db$list_rows())
-        refresh(refresh() + 1)
+        force_grid_render()
         status_msg("Ny r\u00E6kke tilf\u00F8jet \u2014 udfyld felterne")
       }, fallback = status_msg("Fejl ved oprettelse (se log)"))
     })
@@ -169,7 +200,7 @@ mod_lookup_table_server <- function(id, db, cfg) {
       safe_operation("genindl\u00E6s r\u00E6kker", rows(db$list_rows()),
         fallback = status_msg("Databasen svarer ikke \u2014 viser senest hentede data"))
       sel_pk(NULL) # rækken findes ikke længere — stale selektion må ej genbruges
-      refresh(refresh() + 1)
+      force_grid_render()
       status_msg("Slettet")
     })
 

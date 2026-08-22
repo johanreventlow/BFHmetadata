@@ -1,5 +1,17 @@
 # Serverejet validering og resultatkontrakt for excelR-celleevents.
 
+.excel_adapter_dependency <- function() {
+  htmltools::htmlDependency(
+    name = "bfh-excel-adapter",
+    version = "0.1.0",
+    src = c(file = app_sys("www")),
+    script = "bfh-excel-adapter.js",
+    stylesheet = "bfh-excel-adapter.css"
+  )
+}
+
+excel_adapter_enabled <- function(cfg) isTRUE(cfg$excel_adapter)
+
 validate_excel_adapter_map <- function(map, col_names, pk) {
   required <- c("column_index", "field", "value_type", "editable")
   if (!is.data.frame(map) || !identical(names(map), required)) {
