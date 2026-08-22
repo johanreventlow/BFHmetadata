@@ -8,7 +8,8 @@ cfg_test <- list(id = "t", table = "tblTest", pk = "Id", label = "Test",
 
 cfg_adapter <- c(cfg_test, list(excel_adapter = TRUE))
 
-fake_lookup_db <- function(ref = 0L, fail = c("none", "before", "after", "reload"),
+fake_lookup_db <- function(ref = 0L,
+                           fail = c("none", "before", "after", "reload", "zero"),
                            get_row_result = c(
                              "match", "duplicate", "none", "missing_field",
                              "wrong_field", "wrong_pk", "wrong_type"
@@ -54,6 +55,7 @@ fake_lookup_db <- function(ref = 0L, fail = c("none", "before", "after", "reload
       calls$updated <<- u
       calls$all_updates <<- c(calls$all_updates, list(u))
       if (fail_mode %in% c("before", "reload")) stop("test write failure")
+      if (identical(fail_mode, "zero")) return(0L)
       j <- match(as.character(pk_val), as.character(store$Id))
       store[j, col] <<- value
       if (identical(fail_mode, "after")) stop("test post-commit failure")
@@ -68,7 +70,7 @@ fake_lookup_db <- function(ref = 0L, fail = c("none", "before", "after", "reload
     .calls = function() calls,
     .store = function() store,
     .set_fail = function(value) {
-      fail_mode <<- match.arg(value, c("none", "before", "after", "reload"))
+      fail_mode <<- match.arg(value, c("none", "before", "after", "reload", "zero"))
       invisible(NULL)
     }
   )
@@ -196,6 +198,25 @@ test_that("before-write exception genlæser kun rækken og afviser med DB-værdi
                        ignore.case = TRUE))
     expect_identical(grid_generation(), generation)
     expect_identical(render_revision(), revision)
+  })
+})
+
+test_that("nul berørte rækker reconciles og må ikke vises som gemt", {
+  db <- fake_lookup_db(fail = "zero")
+  replies <- adapter_reply_recorder()
+  testServer(mod_lookup_table_server,
+             args = list(db = db, cfg = cfg_adapter,
+                         adapter_reply = replies$reply), {
+    session$flushReact()
+    session$setInputs(tbl_cell = adapter_cell(raw_value = "Ikke gemt"))
+
+    expect_length(db$.calls()$all_updates, 1L)
+    expect_identical(db$.calls()$get_row, list(1L))
+    expect_identical(rows()$navn, c("A", "B"))
+    result <- replies$results()[[1]]$result
+    expect_identical(result$status, "rejected")
+    expect_identical(result$value, "A")
+    expect_false(result$lock_grid)
   })
 })
 

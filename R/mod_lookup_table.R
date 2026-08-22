@@ -261,7 +261,11 @@ mod_lookup_table_server <- function(id, db, cfg,
           return()
         }
         ok <- safe_operation("opdat\u00E9r adaptercelle", {
-          db$update_cell(event$pk_value, event$field, event$value)
+          affected <- db$update_cell(event$pk_value, event$field, event$value)
+          if (!is_scalar_intish(affected) || affected != 1) {
+            stop("Databaseopdateringen p\u00E5virkede ikke pr\u00E6cis en r\u00E6kke.",
+                 call. = FALSE)
+          }
           TRUE
         }, fallback = FALSE)
         if (isTRUE(ok)) {
