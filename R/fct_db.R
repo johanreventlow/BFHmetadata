@@ -4,13 +4,6 @@ db_config_path <- function(path = NULL) {
   if (!is.null(path)) return(path)
   explicit <- Sys.getenv("BFHMETA_DB_CONFIG")
   if (nzchar(explicit)) return(explicit)
-  if (file.exists("config.yml") && file.exists("DESCRIPTION")) {
-    package <- tryCatch(
-      read.dcf("DESCRIPTION", fields = "Package")[1L, 1L],
-      error = function(e) NA_character_
-    )
-    if (identical(unname(package), "BFHmetadata")) return("config.yml")
-  }
   app_sys("db-config.yml")
 }
 
@@ -285,6 +278,11 @@ make_db <- function(pool) {
 make_lookup_db <- function(pool, cfg) {
   list(
     list_rows = function() DBI::dbGetQuery(pool, build_lookup_list_sql(cfg$table, cfg$pk)),
+    get_row = function(pk_val) {
+      DBI::dbGetQuery(pool, build_lookup_get_sql(cfg$table, cfg$pk),
+        params = list(pk_val)
+      )
+    },
     add_row = function() {
       assert_write_enabled()
       DBI::dbGetQuery(pool, build_lookup_insert_sql(cfg$table, cfg$pk))[[1]][1]

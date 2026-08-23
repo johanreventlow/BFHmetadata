@@ -6,6 +6,17 @@ skip_if_no_db <- function() {
                         "BFHMETA_WRITE!=1 — springer DB-integration over")
 }
 
+test_that("lookup get_row forbliver en frisk læsning gennem app-cachen", {
+  reads <- 0L
+  db <- make_db_cached(list(get_row = function(pk_val) {
+    reads <<- reads + 1L
+    data.frame(Id = pk_val, version = reads)
+  }))
+
+  expect_identical(db$get_row(1L)$version, 1L)
+  expect_identical(db$get_row(1L)$version, 2L)
+})
+
 test_that("lookup add → update → NULL → delete round-trip (tblFaggrupper)", {
   skip_if_no_db()
   pool <- db_connect()
@@ -17,7 +28,11 @@ test_that("lookup add → update → NULL → delete round-trip (tblFaggrupper)"
   on.exit(pool::poolClose(pool), add = TRUE)
 
   expect_true(newid %in% db$list_rows()$Id)
+  fetched <- db$get_row(newid)
+  expect_equal(nrow(fetched), 1L)
+  expect_equal(fetched$Id, newid)
   db$update_cell(newid, "faggruppe", "ZZ_TESTGRUPPE")
+  expect_equal(db$get_row(newid)$faggruppe, "ZZ_TESTGRUPPE")
   d <- db$list_rows()
   expect_equal(d$faggruppe[d$Id == newid], "ZZ_TESTGRUPPE")
   # Tom værdi (NA) → skrives som NULL uden fejl

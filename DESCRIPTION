@@ -30,6 +30,7 @@ Imports:
 Suggests:
     testthat (>= 3.0.0),
     withr,
+    shinytest2,
     arrow
 Config/testthat/edition: 3
 Config/roxygen2/version: 8.0.0

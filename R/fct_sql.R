@@ -161,6 +161,12 @@ build_lookup_list_sql <- function(table, pk) {
   sprintf('SELECT * FROM "%s" ORDER BY "%s"', table, pk)
 }
 
+#' Hent én række på pk til frisk write-reconciliation
+#' @noRd
+build_lookup_get_sql <- function(table, pk) {
+  sprintf('SELECT * FROM "%s" WHERE "%s" = $1', table, pk)
+}
+
 #' Opdatér én celle: værdi=$1, pk=$2
 #' @noRd
 build_lookup_update_sql <- function(table, pk, col) {

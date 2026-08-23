@@ -56,21 +56,21 @@ test_that("bar db_config ignorerer uvedkommende config.yml", {
   expect_identical(cfg$user, "postgres.ijgwlqpbjcfffdmxeahh")
 })
 
-test_that("bar db_config bruger config.yml i BFHmetadata-udviklingsrod", {
-  development_root <- withr::local_tempdir()
+test_that("bar db_config ignorerer en spoofet BFHmetadata-udviklingsrod", {
+  spoofed_root <- withr::local_tempdir()
   writeLines(c("Package: BFHmetadata", "Version: 0.0.0"),
-             file.path(development_root, "DESCRIPTION"))
+             file.path(spoofed_root, "DESCRIPTION"))
   writeLines(c(
     "default:", "  supabase:", "    host: development.invalid",
     "    port: 5432", "    dbname: development", "    user: development",
     "    sslmode: disable"
-  ), file.path(development_root, "config.yml"))
+  ), file.path(spoofed_root, "config.yml"))
 
   cfg <- withr::with_envvar(c(BFHMETA_DB_CONFIG = ""), {
-    withr::with_dir(development_root, db_config())
+    withr::with_dir(spoofed_root, db_config())
   })
 
-  expect_identical(cfg$user, "development")
+  expect_identical(cfg$user, "postgres.ijgwlqpbjcfffdmxeahh")
 })
 
 test_that("BFHMETA_DB_CONFIG vælger eksplicit fil", {

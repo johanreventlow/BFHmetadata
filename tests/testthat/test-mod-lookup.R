@@ -1,30 +1,104 @@
-# testServer-tests for mod_lookup_table (excelR/jspreadsheet-grid) med fake-db.
-# Redigeringer simuleres som excelR's onChange-payload: HELE tabellen (data +
-# colHeaders); modulet diffar mod rows() og skriver ændrede celler enkeltvis.
+# testServer-tests for legacy-fuldtabelpayloads og opt-in adapterens separate
+# celle-, selektions- og statuskanaler med en mutérbar fake-db.
 
 cfg_test <- list(id = "t", table = "tblTest", pk = "Id", label = "Test",
   ref_check = list(child = "tblBruger", col = "test_id"),
   cols = list(list(col = "navn", type = "text", label = "Navn"),
               list(col = "niveau", type = "int", label = "Niveau")))
 
-fake_lookup_db <- function(ref = 0L) {
+cfg_adapter <- c(cfg_test, list(excel_adapter = TRUE))
+
+fake_lookup_db <- function(ref = 0L,
+                           fail = c("none", "before", "after", "reload", "zero"),
+                           get_row_result = c(
+                             "match", "duplicate", "none", "missing_field",
+                             "wrong_field", "wrong_pk", "wrong_type"
+                           )) {
+  fail_mode <- match.arg(fail)
+  get_row_result <- match.arg(get_row_result)
   store <- data.frame(Id = 1:2, navn = c("A", "B"), niveau = c(1L, 2L),
                       stringsAsFactors = FALSE)
   calls <- list(updated = NULL, all_updates = list(), added = FALSE,
-                deleted = NULL)
+                deleted = NULL, get_row = list(), list_rows = 0L)
   list(
-    list_rows = function() store,
-    add_row = function() { calls$added <<- TRUE; 3L },
+    list_rows = function() {
+      calls$list_rows <<- calls$list_rows + 1L
+      store
+    },
+    get_row = function(pk_val) {
+      calls$get_row <<- c(calls$get_row, list(pk_val))
+      if (identical(fail_mode, "reload")) stop("test reload failure")
+      row <- store[as.character(store$Id) == as.character(pk_val), , drop = FALSE]
+      if (identical(get_row_result, "duplicate") && nrow(row) == 1L) {
+        row <- rbind(row, row)
+      } else if (identical(get_row_result, "none")) {
+        row <- row[FALSE, , drop = FALSE]
+      } else if (identical(get_row_result, "missing_field")) {
+        row$navn <- NULL
+      } else if (identical(get_row_result, "wrong_field")) {
+        names(row)[names(row) == "navn"] <- "forkert_felt"
+      } else if (identical(get_row_result, "wrong_pk")) {
+        row$Id <- row$Id + 100L
+      } else if (identical(get_row_result, "wrong_type")) {
+        row$navn <- rep(42L, nrow(row))
+      }
+      row
+    },
+    add_row = function() {
+      calls$added <<- TRUE
+      store <<- rbind(store, data.frame(Id = 3L, navn = NA_character_,
+                                        niveau = NA_integer_))
+      3L
+    },
     update_cell = function(pk_val, col, value) {
       u <- list(pk = pk_val, col = col, value = value)
       calls$updated <<- u
       calls$all_updates <<- c(calls$all_updates, list(u))
-      1L },
-    delete_row = function(pk_val) { calls$deleted <<- pk_val; 1L },
+      if (fail_mode %in% c("before", "reload")) stop("test write failure")
+      if (identical(fail_mode, "zero")) return(0L)
+      j <- match(as.character(pk_val), as.character(store$Id))
+      store[j, col] <<- value
+      if (identical(fail_mode, "after")) stop("test post-commit failure")
+      1L
+    },
+    delete_row = function(pk_val) {
+      calls$deleted <<- pk_val
+      store <<- store[as.character(store$Id) != as.character(pk_val), , drop = FALSE]
+      1L
+    },
     ref_count = function(pk_val) ref,
-    .calls = function() calls
+    .calls = function() calls,
+    .store = function() store,
+    .set_fail = function(value) {
+      fail_mode <<- match.arg(value, c("none", "before", "after", "reload", "zero"))
+      invisible(NULL)
+    }
   )
 }
+
+test_that("adaptercfg indlaeser kun den opt-in grid-wrapper og dependency", {
+  dependency <- .excel_adapter_dependency()
+  expect_s3_class(dependency, "html_dependency")
+  expect_equal(dependency$script, "bfh-excel-adapter.js")
+  expect_match(as.character(mod_lookup_table_ui("x", cfg_adapter)),
+               "bfh-excel-grid")
+  expect_false(grepl("bfh-excel-grid",
+                     as.character(mod_lookup_table_ui("x", cfg_test))))
+})
+
+test_that("lookup adapter-map kommer fra serverkolonner og låser ukendte felter", {
+  map <- lookup_excel_adapter_map(cfg_adapter, c("Id", "navn", "server_only"))
+  expect_identical(map, data.frame(
+    column_index = 0:2,
+    field = c("Id", "navn", "server_only"),
+    value_type = c("text", "text", "text"),
+    editable = c(FALSE, TRUE, FALSE),
+    stringsAsFactors = FALSE
+  ))
+  expect_silent(validate_excel_adapter_map(
+    map, c("Id", "navn", "server_only"), "Id"
+  ))
+})
 
 # excelR onChange-payload: rækker som liste-af-lister i grid-rækkefølge
 change_payload <- function(rows, headers = c("Id", "navn", "niveau")) {
@@ -41,10 +115,333 @@ select_payload <- function(row0, pks = c("1", "2")) {
        fullData = list(data = lapply(pks, function(p) list(p))))
 }
 
+adapter_cell <- function(event_id = "1:1", generation = 1L, row_pk = "1",
+                         column_index = 1L, raw_value = "Nyt") {
+  list(event_id = event_id, grid_generation = generation, row_pk = row_pk,
+       column_index = column_index, raw_value = raw_value)
+}
+
+adapter_reply_recorder <- function() {
+  replies <- list()
+  list(
+    reply = function(session, output_id, result) {
+      replies[[length(replies) + 1L]] <<- list(output_id = output_id, result = result)
+    },
+    results = function() replies
+  )
+}
+
 test_that("opslagsmodul indlæser data ved start", {
   db <- fake_lookup_db()
   testServer(mod_lookup_table_server, args = list(db = db, cfg = cfg_test), {
     expect_equal(nrow(rows()), 2)
+  })
+})
+
+test_that("adaptercelle gemmes én gang uden legacy-diff eller fuld render", {
+  db <- fake_lookup_db()
+  replies <- list()
+  reply <- function(session, output_id, result) {
+    replies[[length(replies) + 1L]] <<- list(output_id = output_id, result = result)
+  }
+  testServer(mod_lookup_table_server,
+             args = list(db = db, cfg = cfg_adapter, adapter_reply = reply), {
+    session$flushReact()
+    before_generation <- grid_generation()
+    before_revision <- render_revision()
+    payload <- adapter_cell()
+    payload$field <- "niveau"
+    session$setInputs(tbl_cell = payload)
+
+    expect_length(db$.calls()$all_updates, 1L)
+    expect_identical(db$.calls()$updated,
+      list(pk = 1L, col = "navn", value = "Nyt"))
+    expect_identical(rows()$navn[1], "Nyt")
+    expect_identical(db$.store()$navn[1], "Nyt")
+    expect_length(replies, 1L)
+    expect_identical(replies[[1]]$output_id, "tbl")
+    expect_identical(replies[[1]]$result$status, "saved")
+    expect_identical(replies[[1]]$result$event_id, "1:1")
+    expect_identical(replies[[1]]$result$grid_generation, 1L)
+    expect_identical(replies[[1]]$result$value, "Nyt")
+    expect_identical(grid_generation(), before_generation)
+    expect_identical(render_revision(), before_revision)
+
+    session$setInputs(tbl = change_payload(list(
+      list(1, "Browser-fuldtabel", 1), list(2, "B", 2))))
+    expect_length(db$.calls()$all_updates, 1L)
+    expect_identical(rows()$navn[1], "Nyt")
+  })
+})
+
+test_that("before-write exception genlæser kun rækken og afviser med DB-værdi", {
+  db <- fake_lookup_db(fail = "before")
+  replies <- adapter_reply_recorder()
+  testServer(mod_lookup_table_server,
+             args = list(db = db, cfg = cfg_adapter,
+                         adapter_reply = replies$reply), {
+    session$flushReact()
+    list_reads <- db$.calls()$list_rows
+    generation <- grid_generation()
+    revision <- render_revision()
+    session$setInputs(tbl_cell = adapter_cell(raw_value = "Ikke gemt"))
+
+    expect_length(db$.calls()$all_updates, 1L)
+    expect_identical(db$.calls()$get_row, list(1L))
+    expect_identical(db$.calls()$list_rows, list_reads)
+    expect_identical(rows()$navn, c("A", "B"))
+    result <- replies$results()[[1]]$result
+    expect_identical(result$status, "rejected")
+    expect_identical(result$value, "A")
+    expect_false(result$lock_grid)
+    expect_false(grepl("test|failure|password|SQL", result$message %||% "",
+                       ignore.case = TRUE))
+    expect_identical(grid_generation(), generation)
+    expect_identical(render_revision(), revision)
+  })
+})
+
+test_that("nul berørte rækker reconciles og må ikke vises som gemt", {
+  db <- fake_lookup_db(fail = "zero")
+  replies <- adapter_reply_recorder()
+  testServer(mod_lookup_table_server,
+             args = list(db = db, cfg = cfg_adapter,
+                         adapter_reply = replies$reply), {
+    session$flushReact()
+    session$setInputs(tbl_cell = adapter_cell(raw_value = "Ikke gemt"))
+
+    expect_length(db$.calls()$all_updates, 1L)
+    expect_identical(db$.calls()$get_row, list(1L))
+    expect_identical(rows()$navn, c("A", "B"))
+    result <- replies$results()[[1]]$result
+    expect_identical(result$status, "rejected")
+    expect_identical(result$value, "A")
+    expect_false(result$lock_grid)
+  })
+})
+
+test_that("post-commit exception accepteres efter én frisk målrettet genlæsning", {
+  db <- fake_lookup_db(fail = "after")
+  replies <- adapter_reply_recorder()
+  testServer(mod_lookup_table_server,
+             args = list(db = db, cfg = cfg_adapter,
+                         adapter_reply = replies$reply), {
+    session$flushReact()
+    list_reads <- db$.calls()$list_rows
+    session$setInputs(tbl_cell = adapter_cell(raw_value = "Gemt trods fejl"))
+
+    expect_length(db$.calls()$all_updates, 1L)
+    expect_identical(db$.calls()$get_row, list(1L))
+    expect_identical(db$.calls()$list_rows, list_reads)
+    expect_identical(rows()$navn, c("Gemt trods fejl", "B"))
+    expect_identical(db$.store()$navn, c("Gemt trods fejl", "B"))
+    result <- replies$results()[[1]]$result
+    expect_identical(result$status, "saved")
+    expect_identical(result$value, "Gemt trods fejl")
+    expect_false(result$lock_grid)
+  })
+})
+
+test_that("write og målrettet genlæsning der fejler låser fail-closed", {
+  db <- fake_lookup_db(fail = "reload")
+  replies <- adapter_reply_recorder()
+  testServer(mod_lookup_table_server,
+             args = list(db = db, cfg = cfg_adapter,
+                         adapter_reply = replies$reply), {
+    session$flushReact()
+    list_reads <- db$.calls()$list_rows
+    session$setInputs(tbl_cell = adapter_cell(raw_value = "Uafklaret"))
+
+    expect_length(db$.calls()$all_updates, 1L)
+    expect_identical(db$.calls()$get_row, list(1L))
+    expect_identical(db$.calls()$list_rows, list_reads)
+    expect_identical(rows()$navn, c("A", "B"))
+    result <- replies$results()[[1]]$result
+    expect_identical(result$status, "rejected")
+    expect_true(result$lock_grid)
+    expect_identical(result$message,
+      "Databasestatus kunne ikke bekræftes. Genindlæs siden.")
+  })
+})
+
+test_that("tvetydig målrettet genlæsning låser uden at patche naboer", {
+  db <- fake_lookup_db(fail = "before", get_row_result = "duplicate")
+  replies <- adapter_reply_recorder()
+  testServer(mod_lookup_table_server,
+             args = list(db = db, cfg = cfg_adapter,
+                         adapter_reply = replies$reply), {
+    session$flushReact()
+    session$setInputs(tbl_cell = adapter_cell(raw_value = "Uafklaret"))
+
+    expect_identical(db$.calls()$get_row, list(1L))
+    expect_identical(rows()$navn, c("A", "B"))
+    expect_identical(rows()$niveau, c(1L, 2L))
+    result <- replies$results()[[1]]$result
+    expect_identical(result$status, "rejected")
+    expect_true(result$lock_grid)
+    expect_identical(result$message,
+      "Databasestatus kunne ikke bekræftes. Genindlæs siden.")
+  })
+})
+
+test_that("serverlås afviser senere celleevents uden ny write eller genlæsning", {
+  db <- fake_lookup_db(fail = "reload")
+  replies <- adapter_reply_recorder()
+  testServer(mod_lookup_table_server,
+             args = list(db = db, cfg = cfg_adapter,
+                         adapter_reply = replies$reply), {
+    session$flushReact()
+    local_before <- rows()
+    store_before <- db$.store()
+    session$setInputs(tbl_cell = adapter_cell(
+      event_id = "first", row_pk = "1", raw_value = "Uafklaret"
+    ))
+    expect_true(replies$results()[[1]]$result$lock_grid)
+    writes_after_lock <- length(db$.calls()$all_updates)
+    reads_after_lock <- length(db$.calls()$get_row)
+
+    # Uden en server-latch ville dette mutere række 2 og reconciles som saved.
+    db$.set_fail("after")
+    session$setInputs(tbl_cell = adapter_cell(
+      event_id = "queued", row_pk = "2", raw_value = "Y"
+    ))
+
+    expect_length(db$.calls()$all_updates, writes_after_lock)
+    expect_length(db$.calls()$get_row, reads_after_lock)
+    expect_identical(rows(), local_before)
+    expect_identical(db$.store(), store_before)
+    result <- replies$results()[[2]]$result
+    expect_identical(result$status, "rejected")
+    expect_true(result$lock_grid)
+    expect_identical(result$message,
+      "Databasestatus kunne ikke bekræftes. Genindlæs siden.")
+  })
+})
+
+test_that("alle tvetydige get_row-former låser sessionen fail-closed", {
+  shapes <- c(
+    "duplicate", "none", "missing_field", "wrong_field", "wrong_pk",
+    "wrong_type"
+  )
+  for (shape in shapes) {
+    db <- fake_lookup_db(fail = "before", get_row_result = shape)
+    replies <- adapter_reply_recorder()
+    testServer(mod_lookup_table_server,
+               args = list(db = db, cfg = cfg_adapter,
+                           adapter_reply = replies$reply), {
+      session$flushReact()
+      local_before <- rows()
+      store_before <- db$.store()
+      session$setInputs(tbl_cell = adapter_cell(
+        event_id = paste0("ambiguous-", shape), row_pk = "1",
+        raw_value = "Uafklaret"
+      ))
+
+      result <- replies$results()[[1]]$result
+      expect_identical(result$status, "rejected", info = shape)
+      expect_true(result$lock_grid, info = shape)
+      expect_identical(result$message,
+        "Databasestatus kunne ikke bekræftes. Genindlæs siden.", info = shape)
+      expect_identical(rows(), local_before, info = shape)
+      expect_identical(db$.store(), store_before, info = shape)
+      expect_identical(length(db$.calls()$all_updates), 1L, info = shape)
+      expect_identical(length(db$.calls()$get_row), 1L, info = shape)
+
+      writes_after_lock <- length(db$.calls()$all_updates)
+      reads_after_lock <- length(db$.calls()$get_row)
+      db$.set_fail("after")
+      session$setInputs(tbl_cell = adapter_cell(
+        event_id = paste0("queued-", shape), row_pk = "2", raw_value = "Y"
+      ))
+
+      expect_identical(length(db$.calls()$all_updates), writes_after_lock,
+                       info = shape)
+      expect_identical(length(db$.calls()$get_row), reads_after_lock,
+                       info = shape)
+      expect_identical(rows(), local_before, info = shape)
+      expect_identical(db$.store(), store_before, info = shape)
+      queued <- replies$results()[[2]]$result
+      expect_identical(queued$status, "rejected", info = shape)
+      expect_true(queued$lock_grid, info = shape)
+      expect_identical(queued$message,
+        "Databasestatus kunne ikke bekræftes. Genindlæs siden.", info = shape)
+    })
+  }
+})
+
+test_that("read-only ukendt og stale celleevent afvises uden DB-write", {
+  db <- fake_lookup_db()
+  replies <- adapter_reply_recorder()
+  testServer(mod_lookup_table_server,
+             args = list(db = db, cfg = cfg_adapter,
+                         adapter_reply = replies$reply), {
+    session$flushReact()
+    session$setInputs(tbl_cell = adapter_cell(event_id = "readonly", column_index = 0L))
+    session$setInputs(tbl_cell = adapter_cell(event_id = "unknown", column_index = 99L))
+    session$setInputs(tbl_cell = adapter_cell(event_id = "stale", generation = 0L))
+
+    expect_length(db$.calls()$all_updates, 0L)
+    expect_length(db$.calls()$get_row, 0L)
+    results <- lapply(replies$results(), `[[`, "result")
+    expect_identical(vapply(results, `[[`, "", "status"),
+                     rep("rejected", 3L))
+    expect_identical(results[[1]]$value, 1L)
+    expect_false(results[[1]]$lock_grid)
+    expect_true(results[[2]]$lock_grid)
+    expect_identical(results[[3]]$value, "A")
+    expect_false(results[[3]]$lock_grid)
+  })
+})
+
+test_that("adapterselektion bruger første PK i klientens aktuelle rækkefølge", {
+  db <- fake_lookup_db(ref = 0L)
+  testServer(mod_lookup_table_server, args = list(db = db, cfg = cfg_adapter), {
+    session$flushReact()
+    session$setInputs(tbl_selection = list(
+      grid_generation = 1L,
+      boundaries = list(top = 0L, bottom = 1L, left = 0L, right = 2L),
+      row_pks = c("2", "1")
+    ))
+    expect_identical(sel_pk(), "2")
+    session$setInputs(delete = 1L)
+    expect_identical(db$.calls()$deleted, 2L)
+    expect_null(sel_pk())
+  })
+})
+
+test_that("adapter klientstatus accepterer kun serverens sikre allowlist", {
+  db <- fake_lookup_db()
+  safe <- "Indsætning af flere celler understøttes ikke endnu."
+  testServer(mod_lookup_table_server, args = list(db = db, cfg = cfg_adapter), {
+    session$flushReact()
+    session$setInputs(tbl_client_status = list(message = safe))
+    expect_identical(status_msg(), safe)
+    session$setInputs(tbl_client_status = list(
+      message = "SQL password=hemmelig; send credentials"
+    ))
+    expect_identical(status_msg(), safe)
+  })
+})
+
+test_that("adapter add og delete bumper generation og revision præcis én gang", {
+  db <- fake_lookup_db(ref = 0L)
+  testServer(mod_lookup_table_server, args = list(db = db, cfg = cfg_adapter), {
+    session$flushReact()
+    generation <- grid_generation()
+    revision <- render_revision()
+    session$setInputs(add_row = 1L)
+    expect_identical(grid_generation(), generation + 1L)
+    expect_identical(render_revision(), revision + 1L)
+
+    session$setInputs(tbl_selection = list(
+      grid_generation = grid_generation(), row_pks = "3"
+    ))
+    generation <- grid_generation()
+    revision <- render_revision()
+    session$setInputs(delete = 1L)
+    expect_identical(db$.calls()$deleted, 3L)
+    expect_identical(grid_generation(), generation + 1L)
+    expect_identical(render_revision(), revision + 1L)
   })
 })
 
@@ -96,6 +493,19 @@ test_that("widgetten renderes som excelR-grid med skjult pk og faste bredder", {
     expect_false(isTRUE(w$x$autoWidth))        # ellers ignoreres bredderne
     expect_false(isTRUE(w$x$allowInsertRow))
     expect_true(isTRUE(w$x$columnSorting))     # klik-sortering på overskrifter
+  })
+})
+
+test_that("adaptercfg bruger kun dokumenterede widgetparametre", {
+  db <- fake_lookup_db()
+  testServer(mod_lookup_table_server, args = list(db = db, cfg = cfg_adapter), {
+    w <- jsonlite::fromJSON(output$tbl, simplifyVector = FALSE)
+    expect_true(isTRUE(w$x$tableOverflow))
+    expect_false(isTRUE(w$x$pagination))
+    expect_false(isTRUE(w$x$columnDrag))
+    expect_true(isTRUE(w$x$selectionCopy))
+    expect_equal(w$x$tableHeight, "calc(100vh - 250px)")
+    expect_false("bfhGeneration" %in% names(w$x))
   })
 })
 

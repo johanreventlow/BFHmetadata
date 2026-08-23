@@ -1,0 +1,22 @@
+.bfh-excel-grid .jexcel_content {
+  max-height: calc(100vh - 250px) !important;
+  overflow: auto !important;
+  margin-bottom: 0 !important;
+}
+.bfh-excel-grid .jexcel > thead > tr > td {
+  position: sticky !important;
+  top: 0;
+  z-index: 3;
+}
+.bfh-excel-grid .jexcel > tbody > tr { height: 28px; }
+.bfh-excel-grid .jexcel > tbody > tr > td {
+  padding: 2px 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.bfh-excel-grid .jexcel td.readonly { background: #f1f3f5; }
+.bfh-excel-grid td.bfh-cell-pending { background: #fff3bf !important; }
+.bfh-excel-grid td.bfh-cell-saved { background: #d3f9d8 !important; }
+.bfh-excel-grid td.bfh-cell-rejected { background: #ffe3e3 !important; }
+.bfh-excel-grid.bfh-grid-locked { opacity: .72; pointer-events: none; }
