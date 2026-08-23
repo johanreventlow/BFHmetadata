@@ -404,6 +404,8 @@ test_that("adapterselektion bruger første PK i klientens aktuelle rækkefølge"
     ))
     expect_identical(sel_pk(), "2")
     session$setInputs(delete = 1L)
+    expect_null(db$.calls()$deleted) # kun bekræftelsesdialog vist endnu
+    session$setInputs(delete_confirm = 1L)
     expect_identical(db$.calls()$deleted, 2L)
     expect_null(sel_pk())
   })
@@ -439,6 +441,8 @@ test_that("adapter add og delete bumper generation og revision præcis én gang"
     generation <- grid_generation()
     revision <- render_revision()
     session$setInputs(delete = 1L)
+    expect_identical(grid_generation(), generation) # dialog endnu ikke bekræftet
+    session$setInputs(delete_confirm = 1L)
     expect_identical(db$.calls()$deleted, 3L)
     expect_identical(grid_generation(), generation + 1L)
     expect_identical(render_revision(), revision + 1L)
@@ -546,6 +550,7 @@ test_that("slet bruger seneste celle-selektion (pk fra fullData)", {
     session$setInputs(tbl = select_payload(0))
     expect_equal(sel_pk(), "1")
     session$setInputs(delete = 1)
+    session$setInputs(delete_confirm = 1)
     expect_equal(db$.calls()$deleted, 1L)
     expect_null(sel_pk())                       # stale selektion ryddes
   })
@@ -557,7 +562,19 @@ test_that("selektion overlever klient-side sortering (pk følger rækken)", {
     # Grid sorteret omvendt: position 0 er nu rækken med pk 2
     session$setInputs(tbl = select_payload(0, pks = c("2", "1")))
     session$setInputs(delete = 1)
+    session$setInputs(delete_confirm = 1)
     expect_equal(db$.calls()$deleted, 2L)       # IKKE server-ordenens række 1
+  })
+})
+
+test_that("bekræftelsesdialogen fryser pk'en - senere selektionsskift på klienten ændrer ikke hvad der slettes", {
+  db <- fake_lookup_db(ref = 0L)
+  testServer(mod_lookup_table_server, args = list(db = db, cfg = cfg_test), {
+    session$setInputs(tbl = select_payload(0, pks = c("1", "2")))
+    session$setInputs(delete = 1) # dialog vises for pk "1"
+    session$setInputs(tbl = select_payload(0, pks = c("2", "1"))) # klienten skifter valg imens dialogen er åben
+    session$setInputs(delete_confirm = 1)
+    expect_equal(db$.calls()$deleted, 1L) # den oprindeligt viste pk, ikke den nye selektion
   })
 })
 

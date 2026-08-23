@@ -169,6 +169,41 @@ test_that("dynamiske oversigtsfiltre bevarer kun gyldige valg", {
   })
 })
 
+test_that("tom-tilstand vises når filtre ikke matcher nogen rækker, og Ryd filtre er wired", {
+  db <- fake_db()
+  initial_rows <- data.frame(
+    id = c(1L, 2L), indikator_navn = c("A", "B"),
+    indikator_navn_teknisk = c("a", "b"), aktiv_indikator = c(TRUE, TRUE),
+    nøgleindikator = c(FALSE, FALSE), indikator_hierarki = c(1L, 2L),
+    kontaktperson = c(1L, 1L), datakilde = c(1L, 1L),
+    label_datapakke = c("Pakke A", "Pakke B"),
+    label_datasaet = c("Datasæt A", "Datasæt B"),
+    label_indikator_hierarki = c("Samling A", "Samling B"),
+    stringsAsFactors = FALSE
+  )
+  db$list_indikatorer <- function() initial_rows
+
+  testServer(mod_indikator_crud_server, args = list(db = db), {
+    session$setInputs(filter_datapakke = "Pakke A", filter_datasaet = "Datasæt B")
+    reload()
+    session$flushReact()
+
+    expect_identical(nrow(tbl_rows()), 0L)
+    html <- output$tbl_container$html
+    expect_match(html, "Ingen indikatorer")
+    expect_match(html, "Ryd filtre")
+
+    # updateSelectInput() er en no-op i testServer (MockShinySession ekkoer
+    # ikke klientens svar tilbage til input$...) — den faktiske nulstilling
+    # kan kun verificeres i en browser-test. Her tjekkes kun at knappen er
+    # wired og ikke fejler.
+    expect_no_error({
+      session$setInputs(ryd_filtre = 1)
+      session$flushReact()
+    })
+  })
+})
+
 # excelR-selektion: borderTop er 0-baseret række; fullData bærer grid'ets
 # aktuelle rækkefølge (pk i første kolonne)
 .tbl_select <- function(row0, pks = "1") {
@@ -207,11 +242,13 @@ test_that("inline-tømt Navn afvises uden update (obligatorisk)", {
   })
 })
 
-test_that("soft_delete kalder db.soft_delete med active=FALSE", {
+test_that("soft_delete viser bekræftelsesdialog og skriver først ved bekræftelse", {
   db <- fake_db()
   testServer(mod_indikator_crud_server, args = list(db = db), {
     session$setInputs(tbl = .tbl_select(0)) # selektion FØR knap (egen flush)
     session$setInputs(soft_delete = 1)
+    expect_null(db$.calls()$deleted) # kun dialog vist endnu
+    session$setInputs(soft_delete_confirm = 1)
     expect_equal(db$.calls()$deleted[[2]], FALSE)
   })
 })
