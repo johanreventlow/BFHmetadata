@@ -63,6 +63,21 @@
   AKTIVE hierarki-noder ved nyvalg; en eksisterende værdi der peger på en
   inaktiv node bevares og vises med "(inaktiv)"-suffix — ingen stille
   datamutation ved deaktivering af et datasæt.
+* Sletning af en opslagsrække og deaktivering af en indikator kræver nu
+  bekræftelse i en dialog i stedet for at ske øjeblikkeligt ved klik.
+  Rækken/indikatoren fryses ved dialog-visning, så et evt. selektionsskift
+  mens dialogen er åben ikke ændrer hvad der rent faktisk rammes.
+* Database-fejl vises nu med en dansk, forståelig besked (fx "posten er i
+  brug", "værdien findes allerede", "feltet må ikke være tomt",
+  "forbindelsen blev afbrudt") i stedet for "Fejl ved gem/slet (se log)".
+* Alle gem-, slet- og opdatér-kald mod databasen viser nu en kort
+  ventevisning, mens kaldet kører.
+* Indikator-oversigten viser en forklarende tom-tilstand ("Ingen
+  indikatorer at vise" + en "Ryd filtre"-knap), når de valgte filtre ikke
+  matcher nogen rækker, i stedet for et tomt grid.
+* Opslagstabellen Faggrupper redigeres nu via en opt-in excelR-adapter, der
+  sender pålidelige enkeltcelle-hændelser direkte fra browseren i stedet
+  for at diffe hele tabellen ved hver ændring.
 * Signal-gennemgang er markant hurtigere, og man kan arbejde næsten med det
   samme: diagrammer scannes pr. indikator (ét parquet-load deles af alle
   diagrammer på samme indikator), resultater vises løbende mens scannet kører
@@ -123,6 +138,13 @@
   registrerer et moduls server-funktion ved første besøg på fanen.
   Nyt batch-opslag af median-knæk (build_median_batch_sql +
   medians_by_diagram) med fallback til per-diagram ved fejl.
+* Forberedt (ikke kørt) migration til den kommende bulk-redigering med
+  fortryd: tidsstempler + trigger, unikhed på indikator_navn_teknisk, FK på
+  datakilde, NOT NULL + unikhed på junction-tabellerne, og en ændringslog i
+  et separat audit-schema (uden for public, så den ikke eksponeres via
+  Supabases Data API). Se migration/06_preflight.sql og
+  migration/07_migration.sql — kør ikke uden en verificeret backup
+  (migration/backup.sh) og et grønt preflight-tjek først.
 
 ## Bug fixes
 * Inline-redigeringer i grid'ene (Indikatorer, Indikator-hierarki,
