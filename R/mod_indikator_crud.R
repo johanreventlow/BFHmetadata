@@ -101,7 +101,7 @@ mod_indikator_crud_ui <- function(id) {
       "Klik en r\u00E6kke og brug '\u00C5bn valgte' for definitioner, relationer",
       "og diagrammer \u2014 eller 'Deaktiv\u00E9r valgte'."
     )),
-    excelR::excelOutput(ns("tbl"), width = "100%", height = "auto"),
+    uiOutput(ns("tbl_container")),
     verbatimTextOutput(ns("status"))
   )
 }
@@ -517,7 +517,7 @@ mod_indikator_crud_server <- function(id, db) {
       )
       names(picks) <- names(INDIKATOR_JUNCTIONS)
       safe_operation("modal-gem",
-        {
+        med_ventevisning("Gemmer…", {
           if (is.null(rid)) {
             newid <- db$create_indikator_full(vals, picks)
             status_msg(paste("Oprettet indikator", newid))
@@ -527,7 +527,7 @@ mod_indikator_crud_server <- function(id, db) {
           }
           removeModal()
           reload()
-        },
+        }),
         fallback = status_msg("Fejl ved modal-gem (se log)")
       )
     })
@@ -642,7 +642,7 @@ mod_indikator_crud_server <- function(id, db) {
         ), type = "warning")
       }
       safe_operation("diagram-gem (modal)",
-        {
+        med_ventevisning("Gemmer…", {
           if (is.null(did)) {
             newid <- db$create_diagram(vals)
             status_msg(paste("Oprettet diagram", newid))
@@ -651,7 +651,7 @@ mod_indikator_crud_server <- function(id, db) {
             status_msg(paste("Gemt diagram", did))
           }
           .reopen_indikator_modal()
-        },
+        }),
         fallback = status_msg("Fejl ved gem af diagram (se log)")
       )
     })
@@ -686,9 +686,30 @@ mod_indikator_crud_server <- function(id, db) {
     tbl_refresh <- reactiveVal(0) # bump → snap-back efter fejlet gem
     tbl_sel <- reactiveVal(NULL) # pk (chr) for senest valgte række
 
+    # Viser en forklarende tom-tilstand i stedet for et tomt grid, når
+    # filtrene ikke matcher noget — ellers det redigerbare excelR-grid.
+    output$tbl_container <- renderUI({
+      tbl_refresh()
+      d <- tbl_rows()
+      ns <- session$ns
+      if (nrow(d) == 0) {
+        return(tom_tilstand_ui(ns, has_filters = har_aktive_filtre(
+          input$filter_datapakke, input$filter_datasaet, input$filter_status
+        )))
+      }
+      excelR::excelOutput(ns("tbl"), width = "100%", height = "auto")
+    })
+
+    observeEvent(input$ryd_filtre, {
+      updateSelectInput(session, "filter_datapakke", selected = "")
+      updateSelectInput(session, "filter_datasaet", selected = "")
+      updateSelectInput(session, "filter_status", selected = "alle")
+    })
+
     output$tbl <- excelR::renderExcel({
       tbl_refresh()
       d <- tbl_rows()
+      req(nrow(d) > 0)
       excelR::excelTable(
         data = indikator_excel_data(d),
         columns = indikator_excel_columns(d, fk),
@@ -750,20 +771,39 @@ mod_indikator_crud_server <- function(id, db) {
       d[["id"]][j]
     })
 
+    # Bekr\u00E6ftelse f\u00F8r deaktivering \u2014 skriver intet selv. Selve skrivningen
+    # sker i input$soft_delete_confirm. sid fryses i pending_soft_delete_id,
+    # s\u00E5 et evt. selektionsskift mens dialogen er \u00E5ben ikke \u00E6ndrer hvad der
+    # rent faktisk deaktiveres.
+    pending_soft_delete_id <- reactiveVal(NULL)
     observeEvent(input$soft_delete, {
       sid <- selected_id()
       if (is.null(sid)) {
         status_msg("V\u00E6lg en r\u00E6kke f\u00F8rst")
         return()
       }
+      pending_soft_delete_id(sid)
+      showModal(build_confirm_modal(
+        title = "Deaktiv\u00E9r indikator?",
+        body = p("Indikatoren skjules fra aktive lister. Data slettes ikke."),
+        confirm_id = session$ns("soft_delete_confirm"),
+        confirm_label = "Deaktiv\u00E9r",
+        confirm_class = "btn-warning"))
+    })
+
+    observeEvent(input$soft_delete_confirm, {
+      sid <- pending_soft_delete_id()
+      removeModal()
+      if (is.null(sid)) return()
       safe_operation("soft-delete",
-        {
+        med_ventevisning("Deaktiverer…", {
           db$soft_delete(sid, active = FALSE)
           status_msg("Deaktiveret")
           reload()
-        },
+        }),
         fallback = status_msg("Fejl ved deaktivering")
       )
+      pending_soft_delete_id(NULL)
     })
 
     # excelR sender BÅDE celle-ændringer og selektioner på input$tbl —
@@ -819,10 +859,10 @@ mod_indikator_crud_server <- function(id, db) {
           next
         }
         ok <- safe_operation("inline-update",
-          {
+          med_ventevisning("Gemmer…", {
             db$update_indikator(rid, stats::setNames(list(val), field))
             TRUE
-          },
+          }),
           fallback = FALSE
         )
         if (isTRUE(ok)) {

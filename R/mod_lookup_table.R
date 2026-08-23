@@ -213,10 +213,10 @@ mod_lookup_table_server <- function(id, db, cfg,
           }
           val <- coerced
         }
-        ok <- safe_operation("opdat\u00E9r celle", {
+        ok <- safe_operation("opdat\u00E9r celle", med_ventevisning("Gemmer\u2026", {
           db$update_cell(pk_val, col, val)
           TRUE
-        }, fallback = FALSE)
+        }), fallback = FALSE)
         if (isTRUE(ok)) {
           d[j, col] <- val
           status_msg("Gemt")
@@ -260,14 +260,14 @@ mod_lookup_table_server <- function(id, db, cfg,
           ))
           return()
         }
-        ok <- safe_operation("opdat\u00E9r adaptercelle", {
+        ok <- safe_operation("opdat\u00E9r adaptercelle", med_ventevisning("Gemmer\u2026", {
           affected <- db$update_cell(event$pk_value, event$field, event$value)
           if (!is_scalar_intish(affected) || affected != 1) {
             stop("Databaseopdateringen p\u00E5virkede ikke pr\u00E6cis en r\u00E6kke.",
                  call. = FALSE)
           }
           TRUE
-        }, fallback = FALSE)
+        }), fallback = FALSE)
         if (isTRUE(ok)) {
           d <- patch_excel_cell(current_rows, event$row_index, event$field, event$value)
           rows(d)
@@ -345,15 +345,20 @@ mod_lookup_table_server <- function(id, db, cfg,
     }
 
     observeEvent(input$add_row, {
-      safe_operation("ny r\u00E6kke", {
+      safe_operation("ny r\u00E6kke", med_ventevisning("Opretter\u2026", {
         db$add_row()
         rows(db$list_rows())
         sel_pk(NULL)
         force_grid_render()
         status_msg("Ny r\u00E6kke tilf\u00F8jet \u2014 udfyld felterne")
-      }, fallback = status_msg("Fejl ved oprettelse (se log)"))
+      }), fallback = status_msg("Fejl ved oprettelse (se log)"))
     })
 
+    # Bekræftelse før sletning. Ref-tjekket (app-niveau FK-guard) køres FØR
+    # dialogen vises, så en blokeret sletning slet ikke tilbyder en knap.
+    # pk_val fryses i pending_delete_pk — et evt. selektionsskift på klienten,
+    # mens dialogen er åben, må ikke ændre hvad der rent faktisk slettes.
+    pending_delete_pk <- reactiveVal(NULL)
     observeEvent(input$delete, {
       sel <- sel_pk()
       d <- rows()
@@ -368,25 +373,35 @@ mod_lookup_table_server <- function(id, db, cfg,
         status_msg("Kan ikke slettes \u2014 posten er i brug")
         return()
       }
-      # Ellers forsøg slet; DB-RESTRICT (FK) fanges og rapporteres pænt
+      pending_delete_pk(pk_val)
+      showModal(build_confirm_modal(
+        title = "Slet valgt r\u00E6kke?",
+        body = p(sprintf("R\u00E6kken (id %s) slettes permanent. Denne handling kan ikke fortrydes.",
+                         pk_val)),
+        confirm_id = session$ns("delete_confirm"),
+        confirm_label = "Slet"))
+    })
+
+    observeEvent(input$delete_confirm, {
+      pk_val <- pending_delete_pk()
+      removeModal()
+      if (is.null(pk_val)) return()
+      # Ellers fors\u00F8g slet; DB-RESTRICT (FK) fanges og rapporteres p\u00E6nt
       res <- tryCatch({
-        db$delete_row(pk_val)
+        med_ventevisning("Sletter\u2026", db$delete_row(pk_val))
         "ok"
       }, error = function(e) e)
       if (inherits(res, "error")) {
         msg <- conditionMessage(res)
-        status_msg(if (grepl("foreign key|23503|violates", msg, ignore.case = TRUE)) {
-          "Kan ikke slettes \u2014 posten er i brug"
-        } else {
-          "Fejl ved sletning (se log)"
-        })
+        status_msg(pg_besked(msg) %||% "Fejl ved sletning (se log)")
         return()
       }
-      # Fejl-tolerant genindlæsning: DB-udfald efter en gennemført sletning
-      # må ikke vælte sessionen — behold senest hentede rækker
+      # Fejl-tolerant genindl\u00E6sning: DB-udfald efter en gennemf\u00F8rt sletning
+      # m\u00E5 ikke v\u00E6lte sessionen — behold senest hentede r\u00E6kker
       safe_operation("genindl\u00E6s r\u00E6kker", rows(db$list_rows()),
         fallback = status_msg("Databasen svarer ikke \u2014 viser senest hentede data"))
-      sel_pk(NULL) # rækken findes ikke længere — stale selektion må ej genbruges
+      sel_pk(NULL) # r\u00E6kken findes ikke l\u00E6ngere — stale selektion m\u00E5 ej genbruges
+      pending_delete_pk(NULL)
       force_grid_render()
       status_msg("Slettet")
     })
