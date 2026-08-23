@@ -40,10 +40,10 @@
 
   tagList(
     field_inputs,
-    selectInput(ns("h_parent"), "Forælder",
+    selectInput(ns("h_parent"), "For\u00E6lder",
       choices = c("(rod)" = "", parent_choices), selected = parent_sel),
     selectInput(ns("h_niveau"), "Niveau",
-      choices = c("(vælg)" = "", niveau_choices), selected = niveau_sel),
+      choices = c("(v\u00E6lg)" = "", niveau_choices), selected = niveau_sel),
     aktiv_input)
 }
 
@@ -95,7 +95,7 @@ mod_hierarchy_ui <- function(id, cfg) {
                    class = "btn-outline-danger")),
     filter_row,
     p(class = "text-muted small",
-      "Dobbeltklik en celle for at redigere. Klik en række og tryk Slet valgt."),
+      "Dobbeltklik en celle for at redigere. Klik en r\u00E6kke og tryk Slet valgt."),
     excelR::excelOutput(ns("tbl"), width = "100%", height = "auto"))
 }
 
@@ -115,8 +115,8 @@ mod_hierarchy_server <- function(id, db, cfg) {
     # behold senest hentede noder (revision bumpes stadig → grid snapper
     # tilbage til den kendte tilstand).
     reload <- function() {
-      safe_operation("genindlæs org-træ", nodes(db$list_nodes()),
-        fallback = notify_warning("Databasen svarer ikke — viser senest hentede data"))
+      safe_operation("genindl\u00E6s org-tr\u00E6", nodes(db$list_nodes()),
+        fallback = notify_warning("Databasen svarer ikke \u2014 viser senest hentede data"))
       table_revision(isolate(table_revision()) + 1L)
     }
     notify_status <- function(message) {
@@ -294,7 +294,7 @@ mod_hierarchy_server <- function(id, db, cfg) {
           parent_choices = .parent_choices(),
           niveau_choices = .niveau_choices()),
         footer = div(class = "d-flex justify-content-end gap-2 w-100",
-          modalButton("Annullér"),
+          modalButton("Annull\u00E9r"),
           actionButton(ns("h_save"), "Gem", class = "btn-primary"))))
     }
 
@@ -323,7 +323,7 @@ mod_hierarchy_server <- function(id, db, cfg) {
           } else NA
           if (!is.na(niveau_num_row) &&
               niveau_num_row <= parent_row$niveau_num[1]) {
-            notify_warning("Niveau er ikke dybere end forælderens niveau")
+            notify_warning("Niveau er ikke dybere end for\u00E6lderens niveau")
           }
         }
       }

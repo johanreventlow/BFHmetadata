@@ -14,11 +14,101 @@ parquet_indicator_path <- function(base_path, indikator_navn_teknisk) {
   direct  # fejler downstream med klar besked
 }
 
+#' Stop med en typed, handlingsanvisende fejl når Arrow mangler.
+#' @noRd
+.require_arrow <- function(available = requireNamespace("arrow", quietly = TRUE)) {
+  if (!isTRUE(available)) {
+    cond <- simpleError(
+      "Signal-gennemgang kr\u00E6ver R-pakken 'arrow'. Database-CRUD kan bruges uden."
+    )
+    class(cond) <- c("bfhmeta_arrow_unavailable", class(cond))
+    stop(cond)
+  }
+  invisible(TRUE)
+}
+
+#' Har mappen mindst én parquet-fil? Kalder aldrig Arrow.
+#' @noRd
+parquet_files_present <- function(path) {
+  if (length(path) != 1L || is.na(path) || !dir.exists(path)) return(FALSE)
+  length(list.files(
+    path, pattern = "\\.parquet$", recursive = TRUE,
+    full.names = FALSE, ignore.case = TRUE
+  )) > 0L
+}
+
+#' Find kandidat-indikatormapper direkte eller ét gruppeniveau nede.
+#' @noRd
+parquet_indicator_dirs <- function(base_path) {
+  if (length(base_path) != 1L || is.na(base_path) || !dir.exists(base_path)) {
+    return(character())
+  }
+  first <- list.dirs(base_path, recursive = FALSE, full.names = TRUE)
+  first <- first[!startsWith(basename(first), "_")]
+  second <- unlist(lapply(first, function(path) {
+    dirs <- list.dirs(path, recursive = FALSE, full.names = TRUE)
+    dirs[!startsWith(basename(dirs), "_")]
+  }), use.names = FALSE)
+  candidates <- unique(c(first, second))
+  candidates[vapply(candidates, parquet_indicator_dir_has_data, logical(1))]
+}
+
+#' Har en kandidat data direkte eller i en dato-partition?
+#' Scanner højst ét niveau under kandidaten og kalder aldrig Arrow.
+#' @noRd
+parquet_indicator_dir_has_data <- function(path) {
+  if (length(path) != 1L || is.na(path) || !dir.exists(path)) return(FALSE)
+  has_parquet <- function(dir) {
+    length(list.files(
+      dir, pattern = "\\.parquet$", recursive = FALSE,
+      full.names = FALSE, ignore.case = TRUE
+    )) > 0L
+  }
+  if (has_parquet(path)) return(TRUE)
+  partitions <- list.dirs(path, recursive = FALSE, full.names = TRUE)
+  any(vapply(partitions, has_parquet, logical(1)))
+}
+
+#' Beskriv om signaldata kan bruges på denne computer.
+#' @noRd
+signal_data_capability <- function(
+    base_path,
+    arrow_available = requireNamespace("arrow", quietly = TRUE)) {
+  if (length(base_path) != 1L || is.na(base_path) || !nzchar(base_path) ||
+      !dir.exists(base_path)) {
+    return(list(
+      state = "ingen_data",
+      message = "Ingen lokal parquet-mappe er valgt. Database-CRUD virker fortsat."
+    ))
+  }
+  dirs <- parquet_indicator_dirs(base_path)
+  if (length(dirs) == 0L) {
+    return(list(
+      state = "ingen_data",
+      message = "Mappen indeholder ingen lokale parquet-data. Database-CRUD virker fortsat."
+    ))
+  }
+  if (!isTRUE(arrow_available)) {
+    return(list(
+      state = "arrow_mangler",
+      message = paste(
+        "Signal-gennemgang kr\u00E6ver R-pakken 'arrow'.",
+        "Database-CRUD virker fortsat."
+      )
+    ))
+  }
+  list(state = "klar", message = "Lokale signaldata er klar til scanning.")
+}
+
 #' Indlæs én indikators parquet-slice, filtreret på enhed + dato.
 #' Returnerer NULL hvis enhed angivet men intet matcher (eller tom).
 #' @noRd
-parquet_load_slice <- function(path, enhed = NULL, from = NULL, to = NULL) {
-  if (!dir.exists(path)) return(NULL)
+parquet_load_slice <- function(path, enhed = NULL, from = NULL, to = NULL,
+                               arrow_available = requireNamespace(
+                                 "arrow", quietly = TRUE
+                               )) {
+  if (!parquet_files_present(path)) return(NULL)
+  .require_arrow(arrow_available)
   ds <- arrow::open_dataset(path)
   if (!is.null(from)) ds <- dplyr::filter(ds, .data$dato >= as.Date(from))
   if (!is.null(to))   ds <- dplyr::filter(ds, .data$dato <= as.Date(to))

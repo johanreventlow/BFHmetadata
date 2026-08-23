@@ -29,6 +29,11 @@
   grænse), så ingen knæk falder ud ved opgraderingen.
 
 ## Nye features
+* Appen kan nu installeres og bruges til database-CRUD uden R-pakken Arrow og
+  uden lokale parquet-data. Signal-gennemgangen viser særskilt, om data mangler,
+  Arrow mangler, eller enkelte diagrammer har læsefejl; disse tilstande påvirker
+  ikke excelR-redigering eller andre faner. Startup-kompaktering tilbyder ikke
+  en operation, som maskinen mangler Arrow til.
 * Hierarki-dropdowns viser nu træstrukturen visuelt (depth-first-orden
   med indrykning) i stedet for en flad alfabetisk liste:
   Hierarki-placering på Indikator-siden (grid + modal), Forælder-dropdowns

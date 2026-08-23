@@ -13,10 +13,10 @@ mod_lookup_table_ui <- function(id, cfg) {
     div(class = "d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2",
       h4(cfg$label, class = "m-0"),
       div(class = "d-flex gap-2",
-        actionButton(ns("add_row"), "Ny række", class = "btn-success btn-sm"),
-        actionButton(ns("delete"), "Slet valgte række", class = "btn-outline-danger btn-sm"))),
+        actionButton(ns("add_row"), "Ny r\u00E6kke", class = "btn-success btn-sm"),
+        actionButton(ns("delete"), "Slet valgte r\u00E6kke", class = "btn-outline-danger btn-sm"))),
     p(class = "text-muted small",
-      "Dobbeltklik en celle for at redigere. Klik en række og tryk Slet. Id er låst."),
+      "Dobbeltklik en celle for at redigere. Klik en r\u00E6kke og tryk Slet. Id er l\u00E5st."),
     excelR::excelOutput(ns("tbl"), width = "100%", height = "auto")
   )
 }
@@ -109,7 +109,7 @@ mod_lookup_table_server <- function(id, db, cfg) {
           }
           val <- coerced
         }
-        ok <- safe_operation("opdatér celle", {
+        ok <- safe_operation("opdat\u00E9r celle", {
           db$update_cell(pk_val, col, val)
           TRUE
         }, fallback = FALSE)
@@ -128,11 +128,11 @@ mod_lookup_table_server <- function(id, db, cfg) {
     })
 
     observeEvent(input$add_row, {
-      safe_operation("ny række", {
+      safe_operation("ny r\u00E6kke", {
         db$add_row()
         rows(db$list_rows())
         refresh(refresh() + 1)
-        status_msg("Ny række tilføjet — udfyld felterne")
+        status_msg("Ny r\u00E6kke tilf\u00F8jet \u2014 udfyld felterne")
       }, fallback = status_msg("Fejl ved oprettelse (se log)"))
     })
 
@@ -141,13 +141,13 @@ mod_lookup_table_server <- function(id, db, cfg) {
       d <- rows()
       j <- if (is.null(sel)) NA_integer_ else match(sel, as.character(d[[cfg$pk]]))
       if (is.na(j)) {
-        status_msg("Vælg en række først")
+        status_msg("V\u00E6lg en r\u00E6kke f\u00F8rst")
         return()
       }
       pk_val <- d[[cfg$pk]][j]
       # App-niveau ref-tjek (kun hvor DB ej enforcer FK)
       if (db$ref_count(pk_val) > 0) {
-        status_msg("Kan ikke slettes — posten er i brug")
+        status_msg("Kan ikke slettes \u2014 posten er i brug")
         return()
       }
       # Ellers forsøg slet; DB-RESTRICT (FK) fanges og rapporteres pænt
@@ -158,7 +158,7 @@ mod_lookup_table_server <- function(id, db, cfg) {
       if (inherits(res, "error")) {
         msg <- conditionMessage(res)
         status_msg(if (grepl("foreign key|23503|violates", msg, ignore.case = TRUE)) {
-          "Kan ikke slettes — posten er i brug"
+          "Kan ikke slettes \u2014 posten er i brug"
         } else {
           "Fejl ved sletning (se log)"
         })
@@ -166,8 +166,8 @@ mod_lookup_table_server <- function(id, db, cfg) {
       }
       # Fejl-tolerant genindlæsning: DB-udfald efter en gennemført sletning
       # må ikke vælte sessionen — behold senest hentede rækker
-      safe_operation("genindlæs rækker", rows(db$list_rows()),
-        fallback = status_msg("Databasen svarer ikke — viser senest hentede data"))
+      safe_operation("genindl\u00E6s r\u00E6kker", rows(db$list_rows()),
+        fallback = status_msg("Databasen svarer ikke \u2014 viser senest hentede data"))
       sel_pk(NULL) # rækken findes ikke længere — stale selektion må ej genbruges
       refresh(refresh() + 1)
       status_msg("Slettet")

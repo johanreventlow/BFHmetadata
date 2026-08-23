@@ -182,7 +182,7 @@ run_compaction <- function(base_path, progress = NULL) {
   now <- format(Sys.time(), "%Y-%m-%d %H:%M:%S")
   for (i in seq_len(nrow(todo))) {
     if (!is.null(progress)) progress(i, nrow(todo), todo$rel[i])
-    res <- safe_operation(paste("kompaktér", todo$rel[i]),
+    res <- safe_operation(paste("kompakt\u00E9r", todo$rel[i]),
       compact_indicator(todo$src[i], compact_dest_path(base_path, todo$rel[i])),
       fallback = list(status = "fejl"))
     if (res$status == "ok") {
@@ -249,6 +249,7 @@ parquet_load_indicator_best <- function(base_path, indikator_navn_teknisk,
       fp <- fp %||% tryCatch(source_fingerprint(src), error = function(e) NA_character_)
       if (!is.null(entry) && !is.na(fp) &&
           identical(entry$fingerprint, fp)) {
+        .require_arrow()
         d <- tryCatch(arrow::read_parquet(f), error = function(e) NULL)
         if (!is.null(d)) {
           if ("dato" %in% names(d) && is.character(d$dato)) {

@@ -1,2 +1,6 @@
 ^.*\.Rproj$
 ^\.Rproj\.user$
+^config\.yml$
+^\.git$
+^\.superpowers$
+^inst/app/www/\.gitkeep$

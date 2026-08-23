@@ -144,3 +144,24 @@ test_that("manuel knap: sweep on demand; uændret lager giver 'intet at gøre'-b
     expect_equal(result()$n_ok, 1L)
   })
 })
+
+test_that("startup med kendt lager men uden Arrow tilbyder ikke kompaktering", {
+  withr::local_options(list(bfhmeta.cache_dir = withr::local_tempdir()))
+  base <- withr::local_tempdir()
+  part <- file.path(base, "ind", "dato=2026-01-01")
+  dir.create(part, recursive = TRUE)
+  writeBin(charToRaw("x"), file.path(part, "part-0.parquet"))
+  last_parquet_dir_write(base)
+  q <- .with_queue()
+
+  shiny::testServer(
+    mod_compact_server,
+    args = list(arrow_available = function() FALSE),
+    {
+      .run_queued(q)
+      expect_false(asked())
+      expect_false(sweeping())
+      expect_equal(capability()$state, "arrow_mangler")
+    }
+  )
+})

@@ -5,12 +5,12 @@ validate_indikator <- function(values) {
   errs <- character(0)
   nm <- values[["indikator_navn"]]
   if (is.null(nm) || is.na(nm) || !nzchar(trimws(as.character(nm %||% "")))) {
-    errs <- c(errs, "indikator_navn må ikke være tom")
+    errs <- c(errs, "indikator_navn m\u00E5 ikke v\u00E6re tom")
   }
   ao <- values[["antal_observationer"]]
   if (!is.null(ao) && !is.na(ao) && nzchar(as.character(ao))) {
     if (is.na(suppressWarnings(as.numeric(ao)))) {
-      errs <- c(errs, "antal_observationer skal være et tal")
+      errs <- c(errs, "antal_observationer skal v\u00E6re et tal")
     }
   }
   errs
