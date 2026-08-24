@@ -21,12 +21,14 @@ mod_compact_btn_ui <- function(id) {
 }
 
 #' Server-modul: al interaktion sker via modal og notifikationer (+ knappen
-#' ovenfor). Initialiseres EAGER i app_server (skal kunne spørge på
-#' landingssiden, før nogen fane er åbnet); koster ingen DB-kald — kun
-#' fil-stats mod lageret, og de køres chunket i baggrunden.
+#' ovenfor). Startup-sweepen er DOVEN via lazy_module (selected_tab) — den
+#' ville ellers konkurrere med andre faners lazy-init om samme later-kø, og
+#' på et stort lokalt lager (mange hundrede indikator-mapper) kunne sweepen
+#' optage køen i minutter og blokere fx Indikatorer/Diagrammer, hvis brugeren
+#' navigerede direkte dertil uden at ramme "Start" først.
 #' @noRd
 mod_compact_server <- function(
-    id,
+    id, selected_tab = reactive(NULL),
     arrow_available = function() requireNamespace("arrow", quietly = TRUE)) {
   moduleServer(id, function(input, output, session) {
     capability <- reactiveVal(signal_data_capability("", arrow_available()))
@@ -91,54 +93,123 @@ mod_compact_server <- function(
       }
     }
 
-    .start_sweep <- function(base, manual = FALSE) {
-      cap <- signal_data_capability(base, arrow_available())
+    # --- Fase 0b: enumerér indikator-mapper (chunket) --------------------
+    # Samme granularitet som capability-scannet: én topmappe (inkl. dens
+    # evt. undermapper) pr. tick. compact_list_indicators' dyre skridt er
+    # list.files() PR. kandidat-mappe (is_indicator_dir) — ikke selve
+    # list.dirs-opremsningen, som allerede skete billigt i .enum_init.
+    .enum_tick <- function(g) {
+      if (!identical(g, isolate(gen()))) return(invisible())
+      done <- .compact_list_indicators_step(ctx$enum_ctx, 1L)
+      if (!done) {
+        next_tick_session(session, function() .enum_tick(g))
+        return(invisible())
+      }
+      items <- data.frame(rel = ctx$enum_ctx$rel, src = ctx$enum_ctx$src,
+                          stringsAsFactors = FALSE)
+      if (nrow(items) == 0) {
+        removeNotification(sweep_id, session = session)
+        sweeping(FALSE)
+        if (isTRUE(ctx$manual)) {
+          showNotification("Ingen indikatorer fundet i lageret",
+                           type = "warning", session = session)
+        }
+        return(invisible())
+      }
+      manifest <- compact_manifest_read(ctx$base)
+      entries <- compact_manifest_entries(manifest)
+      ctx$items <- items
+      ctx$manifest <- manifest
+      ctx$entries <- entries
+      ctx$stored <- vapply(items$rel, function(r) entries[[r]]$fingerprint %||% "", "")
+      ctx$fps <- rep(NA_character_, nrow(items))
+      ctx$si <- 1L
+      .sweep_tick(g)
+    }
+
+    # --- Fase 0a: capability-tjek (chunket) ---------------------------------
+    # parquet_indicator_dirs' dyre skridt er parquet_indicator_dir_has_data
+    # PR. kandidat-mappe — samme is_indicator_dir-agtige list.files()-kald
+    # der gør fase 0b langsom. Chunk = 1 topmappe (inkl. dens ét-niveau-ned
+    # undermapper) pr. tick, så en enkelt stor topmappe (fx 822 undermapper)
+    # stadig deles over mange ticks i stedet for at blokere i ét hug.
+    .cap_tick <- function(g, base, manual) {
+      if (!identical(g, isolate(gen()))) return(invisible())
+      cctx <- ctx$cap_ctx
+      if (is.null(cctx)) {
+        # base_path ugyldig/mangler — samme "ingen_data"-kontrakt som før
+        capability(list(
+          state = "ingen_data",
+          message = "Ingen lokal parquet-mappe er valgt. Database-CRUD virker fortsat."
+        ))
+        removeNotification(sweep_id, session = session)
+        sweeping(FALSE)
+        return(invisible())
+      }
+      done <- .parquet_indicator_dirs_step(cctx, 1L)
+      if (!done) {
+        next_tick_session(session, function() .cap_tick(g, base, manual))
+        return(invisible())
+      }
+      cap <- if (length(cctx$found) == 0L) {
+        list(state = "ingen_data",
+             message = "Mappen indeholder ingen lokale parquet-data. Database-CRUD virker fortsat.")
+      } else if (!isTRUE(arrow_available())) {
+        list(state = "arrow_mangler",
+             message = paste("Signal-gennemgang kræver R-pakken 'arrow'.",
+                             "Database-CRUD virker fortsat."))
+      } else {
+        list(state = "klar", message = "Lokale signaldata er klar til scanning.")
+      }
       capability(cap)
       if (!identical(cap$state, "klar")) {
+        removeNotification(sweep_id, session = session)
+        sweeping(FALSE)
         if (isTRUE(manual)) {
           showNotification(cap$message, type = "warning", session = session)
         }
         return(invisible())
       }
-      items <- safe_operation("enumer\u00E9r lager", compact_list_indicators(base),
-                              fallback = NULL)
-      if (is.null(items) || nrow(items) == 0) {
-        if (manual) showNotification("Ingen indikatorer fundet i lageret",
-                                     type = "warning", session = session)
-        return(invisible())
-      }
-      manifest <- compact_manifest_read(base)
-      entries <- compact_manifest_entries(manifest)
+      ctx$enum_ctx <- .compact_list_indicators_init(base)
+      .enum_tick(g)
+    }
+
+    .start_sweep <- function(base, manual = FALSE) {
       # isolate: .start_sweep kaldes også fra startup-ticken (uden reaktiv
       # kontekst) — en bar gen()-læsning kastede dér i produktion
       g <- isolate(gen()) + 1L
       gen(g)
       ctx <<- list2env(list(
-        base = base, items = items, manifest = manifest, manual = manual,
-        stored = vapply(items$rel, function(r) entries[[r]]$fingerprint %||% "", ""),
-        fps = rep(NA_character_, nrow(items)), si = 1L, sweep_chunk = 25L,
-        todo = NULL, i = 1L, n_ok = 0L, n_failed = 0L, n_empty = 0L,
-        entries = entries), envir = new.env(parent = emptyenv()))
+        base = base, manual = manual, items = NULL, manifest = NULL,
+        entries = NULL, stored = NULL, fps = NULL, si = 1L, sweep_chunk = 25L,
+        cap_ctx = .parquet_indicator_dirs_init(base), enum_ctx = NULL,
+        todo = NULL, i = 1L, n_ok = 0L, n_failed = 0L, n_empty = 0L
+      ), envir = new.env(parent = emptyenv()))
       sweeping(TRUE)
-      # Synlighed: sweepen tager 10-20 s på fuldt lager, og R er optaget i
-      # bidder imens — uden denne besked føles klik "døde" uden forklaring
-      showNotification("Tjekker parquet-lager for \u00E6ndringer\u2026",
+      # Synlighed: sweepen (capability-tjek + enumerering + fingeraftryk) kan
+      # tage 10-20 s på fuldt lager, og R er optaget i bidder imens — uden
+      # denne ÉNE gennemgående besked føles klik "døde" uden forklaring, og
+      # flere separate notifikationer for hver fase ville virke usammenhængende.
+      showNotification("Tjekker parquet-lager for ændringer…",
                        id = sweep_id, duration = NULL, session = session)
-      .sweep_tick(g)
+      .cap_tick(g, base, manual)
     }
 
-    # Startup: kendt mappe fra sidste session → sweep i baggrunden.
-    # Første-gangs-brugere spørges ikke (ingen kendt sti endnu).
+    # Startup: kendt mappe fra sidste session → sweep i baggrunden, men først
+    # når "Start"-fanen faktisk vises (lazy_module) — ikke ved app_server-
+    # init. Ellers konkurrerer denne tick om later-køen med lazy-init af
+    # hvilken som helst anden fane brugeren navigerer direkte til (se
+    # modul-docstring). Første-gangs-brugere spørges ikke (ingen kendt sti).
     base0 <- last_parquet_dir_read()
     if (!is.null(base0) && dir.exists(base0)) {
-      local({
+      lazy_module("start", selected_tab, function() {
         g0 <- isolate(gen())
         # session-bundet: lukkes sessionen inden ticken fyrer (fx hurtig
         # reload), må gen() ikke røres — den reaktive er destrueret
         next_tick_session(session, function() {
           if (identical(g0, isolate(gen()))) .start_sweep(base0)
         })
-      })
+      }, session = session)
     }
 
     # Manuel knap (landingssiden): sweep on demand — dækker intradag-

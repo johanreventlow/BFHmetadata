@@ -287,7 +287,7 @@ build_median_delete_sql <- function() {
 DIAGRAM_COLS <- c(
   "indikator", "organisatorisk_navn_teknisk", "diagram_type",
   "periode_aggregering", "indgaar_i_aggregering",
-  "diagram_aktivt", "direktionens_tavle"
+  "diagram_aktivt", "direktionens_tavle", "maalgruppe"
 )
 
 #' Indikator-options til diagram-siden: id + label + niveau-udledt datasaet
@@ -315,17 +315,19 @@ build_diagram_admin_sql <- function() {
     'SELECT d."id" AS diagram_id, d."indikator", ',
     'd."organisatorisk_navn_teknisk", d."diagram_type", ',
     'd."periode_aggregering", d."indgaar_i_aggregering", ',
-    'd."diagram_aktivt", d."direktionens_tavle", ',
+    'd."diagram_aktivt", d."direktionens_tavle", d."maalgruppe", ',
     'i."indikator_navn", ',
     'COALESCE(o."organisatorisk_navn_langt", o."organisatorisk_navn_teknisk") ',
     "AS org_navn, ",
     't."diagram_type" AS type_navn, ',
+    'mg."maalgruppe_navn" AS maalgruppe_navn, ',
     "h_lvl.label_datasaet AS datasaet, h_lvl.label_datapakke AS datapakke ",
     'FROM "tblDiagrammer" d ',
     'LEFT JOIN "tblIndikatorer" i ON i."id" = d."indikator" ',
     'LEFT JOIN "tblOrganisationStruktur" o ',
     'ON o."Id" = d."organisatorisk_navn_teknisk" ',
     'LEFT JOIN "tblDiagramTyper" t ON t."Id" = d."diagram_type" ',
+    'LEFT JOIN "tblMaalgrupper" mg ON mg."Id" = d."maalgruppe" ',
     'LEFT JOIN h_lvl ON h_lvl.start_id = i."indikator_hierarki" ',
     'ORDER BY i."indikator_navn", org_navn'
   )
@@ -381,6 +383,56 @@ build_diagram_periode_sql <- function() {
 #' @noRd
 build_median_count_sql <- function() {
   'SELECT count(*) AS n FROM "tblDiagrammerMedian" WHERE "diagram" = $1'
+}
+
+# --- Mål-styring (tblDiagrammerMaal, admin) ----------------------------------
+# Kolonner der redigeres pr. mål-række (rækkefølge = parameter-orden).
+MAAL_COLS <- c("diagram", "maal_retning", "maal_vaerdi", "maal_gaeldende_fra")
+
+#' Alle mål med resolvet diagram-kontekst (indikator/enhed/type), til egen
+#' Mål-fane. Samme join-mønster som build_diagram_admin_sql, men fra
+#' tblDiagrammerMaal-siden (id = mål-rækkens egen pk, ikke diagrammets).
+#' @noRd
+build_maal_admin_sql <- function() {
+  paste0(
+    "WITH RECURSIVE ", .hierarki_niveau_cte(), " ",
+    'SELECT m."id" AS maal_id, m."diagram", m."maal_retning", ',
+    'm."maal_vaerdi", m."maal_gaeldende_fra", ',
+    'i."indikator_navn", ',
+    'COALESCE(o."organisatorisk_navn_langt", o."organisatorisk_navn_teknisk") ',
+    "AS org_navn, ",
+    't."diagram_type" AS type_navn, ',
+    "h_lvl.label_datasaet AS datasaet, h_lvl.label_datapakke AS datapakke ",
+    'FROM "tblDiagrammerMaal" m ',
+    'LEFT JOIN "tblDiagrammer" d ON d."id" = m."diagram" ',
+    'LEFT JOIN "tblIndikatorer" i ON i."id" = d."indikator" ',
+    'LEFT JOIN "tblOrganisationStruktur" o ',
+    'ON o."Id" = d."organisatorisk_navn_teknisk" ',
+    'LEFT JOIN "tblDiagramTyper" t ON t."Id" = d."diagram_type" ',
+    'LEFT JOIN h_lvl ON h_lvl.start_id = i."indikator_hierarki" ',
+    'ORDER BY i."indikator_navn", org_navn, m."maal_gaeldende_fra"'
+  )
+}
+
+#' @noRd
+build_maal_insert_sql <- function() {
+  ph <- paste(sprintf("$%d", seq_along(MAAL_COLS)), collapse = ", ")
+  qcols <- paste(sprintf('"%s"', MAAL_COLS), collapse = ", ")
+  sprintf('INSERT INTO "tblDiagrammerMaal" (%s) VALUES (%s) RETURNING "id"',
+          qcols, ph)
+}
+
+#' @noRd
+build_maal_update_sql <- function() {
+  sets <- vapply(seq_along(MAAL_COLS),
+    function(i) sprintf('"%s" = $%d', MAAL_COLS[i], i), "")
+  sprintf('UPDATE "tblDiagrammerMaal" SET %s WHERE "id" = $%d',
+          paste(sets, collapse = ", "), length(MAAL_COLS) + 1)
+}
+
+#' @noRd
+build_maal_delete_sql <- function() {
+  'DELETE FROM "tblDiagrammerMaal" WHERE "id" = $1'
 }
 
 #' Hele org-træet (id, parent) til hierarki-oprulning. Hentes én gang pr. scan.

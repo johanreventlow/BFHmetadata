@@ -38,23 +38,24 @@ parquet_files_present <- function(path) {
 }
 
 #' Find kandidat-indikatormapper direkte eller ét gruppeniveau nede.
+#' Synkron helper — brug `.parquet_indicator_dirs_init` +
+#' `.parquet_indicator_dirs_step` for en chunket, ikke-blokerende variant
+#' (fx i mod_compact's startup-sweep på store lagre).
 #' @noRd
 parquet_indicator_dirs <- function(base_path) {
-  if (length(base_path) != 1L || is.na(base_path) || !dir.exists(base_path)) {
-    return(character())
+  ctx <- .parquet_indicator_dirs_init(base_path)
+  if (is.null(ctx)) return(character())
+  while (!.parquet_indicator_dirs_step(ctx, length(ctx$candidates))) {
+    # step() med chunk = alle resterende kandidater kører synkront til slut
   }
-  first <- list.dirs(base_path, recursive = FALSE, full.names = TRUE)
-  first <- first[!startsWith(basename(first), "_")]
-  second <- unlist(lapply(first, function(path) {
-    dirs <- list.dirs(path, recursive = FALSE, full.names = TRUE)
-    dirs[!startsWith(basename(dirs), "_")]
-  }), use.names = FALSE)
-  candidates <- unique(c(first, second))
-  candidates[vapply(candidates, parquet_indicator_dir_has_data, logical(1))]
+  ctx$found
 }
 
 #' Har en kandidat data direkte eller i en dato-partition?
-#' Scanner højst ét niveau under kandidaten og kalder aldrig Arrow.
+#' Scanner højst ét niveau under kandidaten og kalder aldrig Arrow. Dette
+#' ENKELT-kald er det dyre skridt på et stort lager (hundredvis af
+#' kandidat-mapper), og er derfor enheden chunking'en i
+#' `.parquet_indicator_dirs_step` arbejder i.
 #' @noRd
 parquet_indicator_dir_has_data <- function(path) {
   if (length(path) != 1L || is.na(path) || !dir.exists(path)) return(FALSE)
@@ -67,6 +68,46 @@ parquet_indicator_dir_has_data <- function(path) {
   if (has_parquet(path)) return(TRUE)
   partitions <- list.dirs(path, recursive = FALSE, full.names = TRUE)
   any(vapply(partitions, has_parquet, logical(1)))
+}
+
+#' Init-fase: KUN de billige top+1-niveau `list.dirs`-opremsninger (hurtige
+#' selv på store lagre — det er `parquet_indicator_dir_has_data`-tjekket pr.
+#' kandidat der er dyrt, ikke selve opremsningen). Returnerer en
+#' context-env klar til gentagne `.parquet_indicator_dirs_step`-kald, eller
+#' NULL hvis base_path er ugyldig/mangler (samme kontrakt som før: tomt
+#' resultat, ingen fejl).
+#' @noRd
+.parquet_indicator_dirs_init <- function(base_path) {
+  if (length(base_path) != 1L || is.na(base_path) || !dir.exists(base_path)) {
+    return(NULL)
+  }
+  first <- list.dirs(base_path, recursive = FALSE, full.names = TRUE)
+  first <- first[!startsWith(basename(first), "_")]
+  second <- unlist(lapply(first, function(path) {
+    dirs <- list.dirs(path, recursive = FALSE, full.names = TRUE)
+    dirs[!startsWith(basename(dirs), "_")]
+  }), use.names = FALSE)
+  candidates <- unique(c(first, second))
+  list2env(list(
+    candidates = candidates, i = 1L, found = character(0)
+  ), envir = new.env(parent = emptyenv()))
+}
+
+#' Chunket step: tjek op til `chunk` kandidater fra ctx$candidates via
+#' `parquet_indicator_dir_has_data`. Muterer ctx$found in-place og rykker
+#' ctx$i frem.
+#' @return TRUE når alle kandidater er tjekket (færdig), ellers FALSE
+#' @noRd
+.parquet_indicator_dirs_step <- function(ctx, chunk) {
+  n <- length(ctx$candidates)
+  to <- min(ctx$i + chunk - 1L, n)
+  if (ctx$i <= to) {
+    batch <- ctx$candidates[ctx$i:to]
+    hits <- batch[vapply(batch, parquet_indicator_dir_has_data, logical(1))]
+    if (length(hits) > 0) ctx$found <- c(ctx$found, hits)
+  }
+  ctx$i <- to + 1L
+  ctx$i > n
 }
 
 #' Beskriv om signaldata kan bruges på denne computer.

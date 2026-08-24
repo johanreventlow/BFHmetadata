@@ -12,34 +12,74 @@
 # et forældet spejl ignoreres altså bare (fallback til rå lager), det kan
 # aldrig give forkerte data.
 
+#' Er `d` en indikator-mappe? Kendes på dato=-partitioner eller
+#' .parquet-filer som direkte børn — der kigges KUN på navne, aldrig
+#' rekursivt ned i de ~67k partitionsmapper. Dette ENKELT-kald
+#' (`list.files`) er det dyre skridt på et stort lager (mange hundrede
+#' kald), og er derfor enheden chunking'en i `.compact_list_indicators_step`
+#' arbejder i.
+#' @noRd
+.compact_is_indicator_dir <- function(d) {
+  kids <- list.files(d)
+  any(startsWith(kids, "dato=")) || any(grepl("\\.parquet$", kids))
+}
+
 #' Enumerér indikator-mapper i lageret (direkte + 1 niveau ned, som
-#' parquet_indicator_path). En indikator-mappe kendes på dato=-partitioner
-#' eller .parquet-filer som direkte børn — der kigges KUN på navne, aldrig
-#' rekursivt ned i de ~67k partitionsmapper. Mapper med _-prefix (herunder
-#' _compact selv) springes over.
+#' parquet_indicator_path). Mapper med _-prefix (herunder _compact selv)
+#' springes over. Synkron helper — brug `.compact_list_indicators_init` +
+#' `.compact_list_indicators_step` for en chunket, ikke-blokerende variant
+#' (fx i mod_compact's startup-sweep på store lagre).
 #' @return data.frame med rel (relativ sti, fx "gruppe/ind") og src (absolut)
 #' @noRd
 compact_list_indicators <- function(base_path) {
-  is_indicator_dir <- function(d) {
-    kids <- list.files(d)
-    any(startsWith(kids, "dato=")) || any(grepl("\\.parquet$", kids))
+  ctx <- .compact_list_indicators_init(base_path)
+  while (!.compact_list_indicators_step(ctx, length(ctx$top))) {
+    # step() med chunk = alle resterende topmapper kører synkront til slut
   }
-  rel <- character(0); src <- character(0)
-  for (d1 in list.dirs(base_path, recursive = FALSE, full.names = TRUE)) {
-    if (startsWith(basename(d1), "_")) next
-    if (is_indicator_dir(d1)) {
-      rel <- c(rel, basename(d1)); src <- c(src, d1)
-      next
-    }
-    for (d2 in list.dirs(d1, recursive = FALSE, full.names = TRUE)) {
-      if (startsWith(basename(d2), "_")) next
-      if (is_indicator_dir(d2)) {
-        rel <- c(rel, file.path(basename(d1), basename(d2)))
-        src <- c(src, d2)
+  data.frame(rel = ctx$rel, src = ctx$src, stringsAsFactors = FALSE)
+}
+
+#' Init-fase: KUN den billige top-niveau `list.dirs`-opremsning (hurtig
+#' selv på store lagre — det er `.compact_is_indicator_dir`-tjekket pr.
+#' mappe der er dyrt, ikke selve opremsningen). Returnerer en context-env
+#' klar til gentagne `.compact_list_indicators_step`-kald.
+#' @noRd
+.compact_list_indicators_init <- function(base_path) {
+  top <- list.dirs(base_path, recursive = FALSE, full.names = TRUE)
+  top <- top[!startsWith(basename(top), "_")]
+  list2env(list(
+    top = top, i = 1L,
+    rel = character(0), src = character(0)
+  ), envir = new.env(parent = emptyenv()))
+}
+
+#' Chunket step: undersøg op til `chunk` topmapper fra ctx$top (og for
+#' hver der IKKE selv er en indikator-mappe, dens umiddelbare undermapper —
+#' samme to-niveau-logik som den oprindelige synkrone funktion). Muterer
+#' ctx$rel/ctx$src in-place og rykker ctx$i frem.
+#' @return TRUE når hele ctx$top er gennemgået (færdig), ellers FALSE
+#' @noRd
+.compact_list_indicators_step <- function(ctx, chunk) {
+  n <- length(ctx$top)
+  to <- min(ctx$i + chunk - 1L, n)
+  if (ctx$i <= to) {
+    for (k in ctx$i:to) {
+      d1 <- ctx$top[k]
+      if (.compact_is_indicator_dir(d1)) {
+        ctx$rel <- c(ctx$rel, basename(d1)); ctx$src <- c(ctx$src, d1)
+        next
+      }
+      for (d2 in list.dirs(d1, recursive = FALSE, full.names = TRUE)) {
+        if (startsWith(basename(d2), "_")) next
+        if (.compact_is_indicator_dir(d2)) {
+          ctx$rel <- c(ctx$rel, file.path(basename(d1), basename(d2)))
+          ctx$src <- c(ctx$src, d2)
+        }
       }
     }
   }
-  data.frame(rel = rel, src = src, stringsAsFactors = FALSE)
+  ctx$i <- to + 1L
+  ctx$i > n
 }
 
 #' Destination i spejlet for en indikators relative sti.

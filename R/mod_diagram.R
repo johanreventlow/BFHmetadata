@@ -72,6 +72,9 @@
     selectInput(ns("d_periode_aggregering"), "Periode-aggregering",
       choices = c("(ingen)" = "", opts$periode),
       selected = v("periode_aggregering") %||% ""),
+    selectInput(ns("d_maalgruppe"), "Målgruppe",
+      choices = c("(ingen)" = "", ch(opts$maalgruppe)),
+      selected = v("maalgruppe") %||% ""),
     div(class = "d-flex flex-wrap gap-4 pt-1",
       checkboxInput(ns("d_indgaar_i_aggregering"), "Indg\u00E5r i aggregering",
         value = isTRUE(v("indgaar_i_aggregering"))),
@@ -98,13 +101,15 @@
     periode_aggregering = chr_or_na(gv("periode_aggregering")),
     indgaar_i_aggregering = isTRUE(gv("indgaar_i_aggregering")),
     diagram_aktivt = isTRUE(gv("diagram_aktivt")),
-    direktionens_tavle = isTRUE(gv("direktionens_tavle")))
+    direktionens_tavle = isTRUE(gv("direktionens_tavle")),
+    maalgruppe = int_or_na(gv("maalgruppe")))
 }
 
 # Grid-titler → tblDiagrammer-kolonner for inline-redigering (excelR)
 .DIAGRAM_GRID_FIELDS <- c(
   Indikator = "indikator", Enhed = "organisatorisk_navn_teknisk",
   Type = "diagram_type", Periode = "periode_aggregering",
+  Målgruppe = "maalgruppe",
   Aggregering = "indgaar_i_aggregering", Aktiv = "diagram_aktivt",
   Tavle = "direktionens_tavle"
 )
@@ -128,7 +133,8 @@
     },
     indgaar_i_aggregering = isTRUE(row$indgaar_i_aggregering),
     diagram_aktivt = isTRUE(row$diagram_aktivt),
-    direktionens_tavle = isTRUE(row$direktionens_tavle)
+    direktionens_tavle = isTRUE(row$direktionens_tavle),
+    maalgruppe = int_or_na(row$maalgruppe)
   )
 }
 
@@ -146,6 +152,7 @@ diagram_excel_data <- function(d) {
   out[["Enhed"]] <- chr_or_empty(d$organisatorisk_navn_teknisk)
   out[["Type"]] <- chr_or_empty(d$diagram_type)
   out[["Periode"]] <- chr_or_empty(d$periode_aggregering)
+  out[["Målgruppe"]] <- chr_or_empty(d$maalgruppe)
   out[["Aggregering"]] <- d$indgaar_i_aggregering %in% TRUE
   out[["Aktiv"]] <- d$diagram_aktivt %in% TRUE
   out[["Tavle"]] <- d$direktionens_tavle %in% TRUE
@@ -175,24 +182,26 @@ diagram_excel_columns <- function(d, opts, periode) {
     stats::na.omit(as.character(d$periode_aggregering))))
   per_src <- data.frame(id = c("", per_vals), name = c("(ingen)", per_vals),
                         stringsAsFactors = FALSE)
+  mg_src <- src_of(opts$maalgruppe, d$maalgruppe, "Ukendt m\u00E5lgruppe")
   titles <- c("diagram_id", "Datapakke", "Datas\u00E6t", names(.DIAGRAM_GRID_FIELDS))
   out <- data.frame(
     title = titles,
-    type = c("hidden", "text", "text", rep("dropdown", 4),
+    type = c("hidden", "text", "text", rep("dropdown", 5),
              rep("checkbox", 3)),
-    readOnly = c(TRUE, TRUE, TRUE, rep(FALSE, 7)),
+    readOnly = c(TRUE, TRUE, TRUE, rep(FALSE, 8)),
     align = "left",
     autocomplete = titles %in% c("Indikator", "Enhed"),
     stringsAsFactors = FALSE)
   out$source <- c(rep(list(NA), 3),
                   list(ind_src), list(org_src), list(type_src), list(per_src),
-                  rep(list(NA), 3))
+                  list(mg_src), rep(list(NA), 3))
   # Fraktil-bredder målt på VISTE labels (ikke id'erne)
   disp <- diagram_excel_data(d)
   disp[["Indikator"]] <- .excel_dropdown_display(disp[["Indikator"]], ind_src)
   disp[["Enhed"]] <- .excel_dropdown_display(disp[["Enhed"]], org_src)
   disp[["Type"]] <- .excel_dropdown_display(disp[["Type"]], type_src)
   disp[["Periode"]] <- .excel_dropdown_display(disp[["Periode"]], per_src)
+  disp[["Målgruppe"]] <- .excel_dropdown_display(disp[["Målgruppe"]], mg_src)
   out$width <- unname(excel_col_widths(disp)[titles])
   out
 }
@@ -429,6 +438,13 @@ mod_diagram_server <- function(id, db) {
           vals[[field]] <- iv
         } else if (identical(field, "periode_aggregering")) {
           vals[[field]] <- if (is.na(val)) NA_character_ else val
+        } else if (identical(field, "maalgruppe")) {
+          # Valgfri FK ("(ingen)" er gyldig) — tom celle → NA, ellers heltal
+          vals[[field]] <- if (is.na(val)) {
+            NA_integer_
+          } else {
+            suppressWarnings(as.integer(val))
+          }
         } else {
           vals[[field]] <- identical(val, "TRUE")
         }

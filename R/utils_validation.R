@@ -29,6 +29,24 @@ validate_diagram <- function(vals) {
   errs
 }
 
+#' Validér mål-form-værdier (tblDiagrammerMaal). Returnerer character() hvis OK.
+#' Diagram + værdi er obligatoriske; retning/dato må være tomme (skema
+#' tillader NULL).
+#' @noRd
+validate_maal <- function(vals) {
+  errs <- character(0)
+  if (is.null(vals$diagram) || is.na(vals$diagram)) {
+    errs <- c(errs, "Diagram er obligatorisk")
+  }
+  vv <- vals$maal_vaerdi
+  if (is.null(vv) || is.na(vv)) {
+    errs <- c(errs, "Målværdi er obligatorisk")
+  } else if (is.na(suppressWarnings(as.numeric(vv)))) {
+    errs <- c(errs, "Målværdi skal være et tal")
+  }
+  errs
+}
+
 #' @noRd
 .preserved_filter_selection <- function(current, choices, fallback = "") {
   if (length(current) != 1L || is.na(current)) return(fallback)

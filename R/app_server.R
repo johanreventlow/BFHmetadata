@@ -7,15 +7,18 @@ app_server <- function(input, output, session) {
   store <- new_cache_store()
   db <- make_db_cached(make_db(pool), store = store)
 
-  # Startup-kompaktering: spørg (modal) om det delte _compact-spejl skal
-  # opfriskes, når det er forældet. Eager — skal kunne spørge på landings-
-  # siden; koster ingen DB-kald, kun et lokalt manifest-tjek.
-  mod_compact_server("compact")
-
   # Lazy-init: modulernes opstart-queries køres først når fanen åbnes.
   # Appen lander på "Start", så en app-start koster nu ingen DB-kald ud over
   # forbindelsen selv.
   selected_tab <- reactive(input$nav)
+
+  # Startup-kompaktering: spørg (modal) om det delte _compact-spejl skal
+  # opfriskes, når det er forældet. Doven via selected_tab ("start") —
+  # ellers konkurrerer parquet-sweepen om later-køen med lazy-init af en
+  # fane brugeren navigerer direkte til (fx Indikatorer/Diagrammer), og på
+  # et stort lokalt lager kan den optage køen i minutter.
+  mod_compact_server("compact", selected_tab)
+
   lazy_module("indikatorer", selected_tab,
               function() mod_indikator_crud_server("indik", db),
               session = session, loading = "Henter indikator-oversigt\u2026")
@@ -25,6 +28,9 @@ app_server <- function(input, output, session) {
   lazy_module("diagrammer", selected_tab,
               function() mod_diagram_server("diagram", db),
               session = session, loading = "Henter diagram-liste\u2026")
+  lazy_module("maal", selected_tab,
+              function() mod_diagram_maal_server("maal", db),
+              session = session, loading = "Henter m\u00e5l-oversigt\u2026")
   lazy_module("indikator_hierarki", selected_tab, function() {
     # Delt cache-lager: hierarki-skrivninger rydder cachede læsninger (fx
     # indikator-modalens datasæt-dropdown), så ændringer slår straks igennem.
@@ -63,6 +69,7 @@ app_server <- function(input, output, session) {
                bslib::nav_select("nav", "indikator_hierarki"))
   observeEvent(input$go_signal, bslib::nav_select("nav", "signal"))
   observeEvent(input$go_diagrammer, bslib::nav_select("nav", "diagrammer"))
+  observeEvent(input$go_maal, bslib::nav_select("nav", "maal"))
   observeEvent(input$go_org_struktur, bslib::nav_select("nav", "org_struktur"))
 
   output$write_badge <- renderUI(.write_badge_ui(write_enabled()))

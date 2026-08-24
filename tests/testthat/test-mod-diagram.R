@@ -17,9 +17,11 @@ fake_diagram_db <- function(dup_count = 0L, median_count = 0L) {
     indgaar_i_aggregering = c(TRUE, FALSE),
     diagram_aktivt = c(TRUE, FALSE),
     direktionens_tavle = c(FALSE, FALSE),
+    maalgruppe = c(1L, NA),
     indikator_navn = c("Tryksår", "Fald"),
     org_navn = c("Kirurgi", "Medicin"),
     type_navn = c("Seriediagram", "Søjlediagram"),
+    maalgruppe_navn = c("akut indlagte", NA),
     datasaet = c("Tryksår-datasæt", "Fald-datasæt"),
     datapakke = c("Kliniske indikatorer", "Kliniske indikatorer"),
     stringsAsFactors = FALSE)
@@ -36,7 +38,11 @@ fake_diagram_db <- function(dup_count = 0L, median_count = 0L) {
         id = c(19L, 20L, 21L, 22L),
         label = c("Hospital", "Kirurgi", "Medicin", "Onkologi")),
       type = data.frame(id = c(1L, 2L),
-                        label = c("Seriediagram", "Søjlediagram"))),
+                        label = c("Seriediagram", "Søjlediagram")),
+      maalgruppe = data.frame(
+        id = c(1L, 2L, 3L, 4L),
+        label = c("akut indlagte", "planlagt indlagte",
+                  "akut ambulante", "planlagt ambulante"))),
     # Org-træ: Hospital(19) → Kirurgi(20) + Medicin(21); Medicin → Onkologi(22)
     org_struct = function() data.frame(
       id = c(19L, 20L, 21L, 22L),
@@ -109,6 +115,16 @@ test_that("låst indikator bevarer skjult værdi og deaktiveret visning", {
   expect_match(html, 'value="9999"', fixed = TRUE)
   expect_match(html, "Ukendt indikator #9999", fixed = TRUE)
   expect_match(html, "disabled", fixed = TRUE)
+})
+
+test_that("Målgruppe-felt: valgfri dropdown med '(ingen)' + fk-choices", {
+  opts <- fake_diagram_db()$diagram_form_options()
+  opts$periode <- c("måned", "uge")
+  html <- htmltools::renderTags(.diagram_form_ui(
+    NS("diagram"), list(maalgruppe = 2L), opts))$html
+  expect_match(html, "Målgruppe", fixed = TRUE)
+  expect_match(html, "planlagt indlagte", fixed = TRUE)
+  expect_match(html, 'value="2"[^>]* selected', perl = TRUE)
 })
 
 test_that("laast indikator bevarer en valgt indikator med label vaelg", {
@@ -244,6 +260,32 @@ test_that("inline Periode ryddet gemmes som NA", {
     upd <- db$.calls()$updated
     expect_identical(upd$id, 1L)
     expect_true(is.na(upd$values$periode_aggregering))
+  })
+})
+
+test_that("inline Målgruppe-ændring gemmer heltal-fk", {
+  db <- fake_diagram_db()
+  testServer(mod_diagram_server, args = list(db = db), {
+    session$setInputs(filter_status = "alle")
+    session$setInputs(tbl = diagram_grid_edit(
+      isolate(filtered()), 2L, "Målgruppe", "3"))
+    upd <- db$.calls()$updated
+    expect_identical(upd$id, 2L)
+    expect_identical(upd$values$maalgruppe, 3L)
+    # urørte felter bevaret
+    expect_identical(upd$values$indikator, 11L)
+  })
+})
+
+test_that("inline Målgruppe ryddet ('(ingen)') gemmes som NA — valgfri fk", {
+  db <- fake_diagram_db()
+  testServer(mod_diagram_server, args = list(db = db), {
+    session$setInputs(filter_status = "alle")
+    session$setInputs(tbl = diagram_grid_edit(
+      isolate(filtered()), 1L, "Målgruppe", NULL))
+    upd <- db$.calls()$updated
+    expect_identical(upd$id, 1L)
+    expect_true(is.na(upd$values$maalgruppe))
   })
 })
 
@@ -457,8 +499,10 @@ test_that("indikator uden hierarki (NA datasaet/datapakke) vises under 'Alle' me
     diagram_id = 3L, indikator = 12L, organisatorisk_navn_teknisk = 22L,
     diagram_type = 1L, periode_aggregering = NA_character_,
     indgaar_i_aggregering = FALSE, diagram_aktivt = TRUE,
-    direktionens_tavle = FALSE, indikator_navn = "Uden hierarki",
+    direktionens_tavle = FALSE, maalgruppe = NA_integer_,
+    indikator_navn = "Uden hierarki",
     org_navn = "Onkologi", type_navn = "Seriediagram",
+    maalgruppe_navn = NA_character_,
     datasaet = NA_character_, datapakke = NA_character_,
     stringsAsFactors = FALSE))
   db$list_diagrams_admin <- function() admin_na

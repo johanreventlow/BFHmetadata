@@ -26,7 +26,8 @@ test_that("startup: aldrig kompakteret → sweep finder alt nyt → modal vises"
   base <- make_store_fixture()
   last_parquet_dir_write(base)
   q <- .with_queue()
-  shiny::testServer(mod_compact_server, args = list(), {
+  shiny::testServer(mod_compact_server, args = list(selected_tab = reactive("start")), {
+    session$flushReact()           # lazy_module("start"): observer → kø
     expect_false(asked())          # sweep ligger i køen endnu
     .run_queued(q)                 # startup-tick + sweep-ticks
     expect_true(asked())
@@ -41,7 +42,8 @@ test_that("startup: kompakteret og INTET ændret → ingen modal (ingen daglig n
   run_compaction(base)
   last_parquet_dir_write(base)
   q <- .with_queue()
-  shiny::testServer(mod_compact_server, args = list(), {
+  shiny::testServer(mod_compact_server, args = list(selected_tab = reactive("start")), {
+    session$flushReact()
     .run_queued(q)
     expect_false(asked())          # uændret lager → tavshed, også i morgen
   })
@@ -50,7 +52,8 @@ test_that("startup: kompakteret og INTET ændret → ingen modal (ingen daglig n
 test_that("startup: ingen kendt mappe (første brug) → hverken sweep eller modal", {
   withr::local_options(list(bfhmeta.cache_dir = withr::local_tempdir()))
   q <- .with_queue()
-  shiny::testServer(mod_compact_server, args = list(), {
+  shiny::testServer(mod_compact_server, args = list(selected_tab = reactive("start")), {
+    session$flushReact()
     .run_queued(q)
     expect_false(asked())
   })
@@ -67,7 +70,8 @@ test_that("go: kun ÆNDREDE kompakteres; uændredes spejl røres ikke; manifest 
   Sys.setFileTime(file.path(base, "ind_b", "p.parquet"), Sys.time() + 30)
   last_parquet_dir_write(base)
   q <- .with_queue()
-  shiny::testServer(mod_compact_server, args = list(), {
+  shiny::testServer(mod_compact_server, args = list(selected_tab = reactive("start")), {
+    session$flushReact()
     .run_queued(q)
     expect_true(asked())                         # ind_b er ændret → modal
     session$setInputs(go = 1)
@@ -88,7 +92,8 @@ test_that("cancel: resten kompakteres ikke; gammelt manifest består intakt", {
   base <- make_store_fixture()
   last_parquet_dir_write(base)
   q <- .with_queue()
-  shiny::testServer(mod_compact_server, args = list(), {
+  shiny::testServer(mod_compact_server, args = list(selected_tab = reactive("start")), {
+    session$flushReact()
     .run_queued(q)                               # sweep: alt er nyt
     expect_true(asked())
     session$setInputs(go = 1)                    # første indikator synkront
@@ -108,13 +113,15 @@ test_that("session lukkes før/under sweep og kompaktering → ventende ticks d�
   last_parquet_dir_write(base)
   q <- .with_queue()
   # Luk sessionen FØR startup-sweep-ticken overhovedet er kørt
-  shiny::testServer(mod_compact_server, args = list(), {
+  shiny::testServer(mod_compact_server, args = list(selected_tab = reactive("start")), {
+    session$flushReact()
     session$close()
   })
   expect_no_error(.run_queued(q))          # startup-tick dør stille
   # Og midt i selve kompakteringen
   q2 <- .with_queue()
-  shiny::testServer(mod_compact_server, args = list(), {
+  shiny::testServer(mod_compact_server, args = list(selected_tab = reactive("start")), {
+    session$flushReact()
     .run_queued(q2)                        # sweep → modal
     expect_true(asked())
     session$setInputs(go = 1)              # første indikator synkront
@@ -131,7 +138,8 @@ test_that("manuel knap: sweep on demand; uændret lager giver 'intet at gøre'-b
   run_compaction(base)
   last_parquet_dir_write(base)
   q <- .with_queue()
-  shiny::testServer(mod_compact_server, args = list(), {
+  shiny::testServer(mod_compact_server, args = list(selected_tab = reactive("start")), {
+    session$flushReact()
     .run_queued(q)                               # startup-sweep: intet ændret
     expect_false(asked())
     # Regenerér data intradag og tryk på knappen
@@ -156,8 +164,9 @@ test_that("startup med kendt lager men uden Arrow tilbyder ikke kompaktering", {
 
   shiny::testServer(
     mod_compact_server,
-    args = list(arrow_available = function() FALSE),
+    args = list(selected_tab = reactive("start"), arrow_available = function() FALSE),
     {
+      session$flushReact()
       .run_queued(q)
       expect_false(asked())
       expect_false(sweeping())

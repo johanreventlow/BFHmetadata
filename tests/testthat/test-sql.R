@@ -252,14 +252,15 @@ test_that("build_diagram_admin_sql joiner hierarki (datasaet/datapakke)", {
 test_that("build_diagram_insert_sql parametriserer alle kolonner + RETURNING", {
   sql <- build_diagram_insert_sql()
   for (col in DIAGRAM_COLS) expect_match(sql, sprintf('"%s"', col), fixed = TRUE)
-  expect_match(sql, "\\$7") # 7 kolonner -> $1..$7
+  expect_match(sql, paste0("\\$", length(DIAGRAM_COLS))) # n kolonner -> $1..$n
   expect_match(sql, 'RETURNING "id"', fixed = TRUE)
 })
 
 test_that("build_diagram_update_sql saetter alle kolonner, id sidst", {
   sql <- build_diagram_update_sql()
   expect_match(sql, 'UPDATE "tblDiagrammer" SET', fixed = TRUE)
-  expect_match(sql, '"id" = \\$8') # 7 kolonner + id
+  # n kolonner + id
+  expect_match(sql, paste0('"id" = \\$', length(DIAGRAM_COLS) + 1))
 })
 
 test_that("build_diagram_delete_sql og duplicate/periode-byggere", {
@@ -277,6 +278,30 @@ test_that("build_diagram_delete_sql og duplicate/periode-byggere", {
   expect_match(per, "IS NOT NULL", fixed = TRUE)
   cnt <- build_median_count_sql()
   expect_match(cnt, 'FROM "tblDiagrammerMedian" WHERE "diagram" = \\$1')
+})
+
+test_that("build_maal_insert_sql parametriserer alle kolonner + RETURNING", {
+  sql <- build_maal_insert_sql()
+  for (col in MAAL_COLS) expect_match(sql, sprintf('"%s"', col), fixed = TRUE)
+  expect_match(sql, paste0("\\$", length(MAAL_COLS)))
+  expect_match(sql, 'RETURNING "id"', fixed = TRUE)
+})
+
+test_that("build_maal_update_sql saetter alle kolonner, id sidst", {
+  sql <- build_maal_update_sql()
+  expect_match(sql, 'UPDATE "tblDiagrammerMaal" SET', fixed = TRUE)
+  expect_match(sql, paste0('"id" = \\$', length(MAAL_COLS) + 1))
+})
+
+test_that("build_maal_delete_sql og build_maal_admin_sql", {
+  expect_identical(
+    build_maal_delete_sql(),
+    'DELETE FROM "tblDiagrammerMaal" WHERE "id" = $1'
+  )
+  sql <- build_maal_admin_sql()
+  expect_match(sql, '^WITH RECURSIVE')
+  expect_match(sql, 'FROM "tblDiagrammerMaal" m', fixed = TRUE)
+  expect_match(sql, 'JOIN "tblDiagrammer" d ON d."id" = m."diagram"', fixed = TRUE)
 })
 
 # --- Hierarki-CRUD (Fase C) --------------------------------------------------

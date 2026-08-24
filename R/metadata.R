@@ -87,6 +87,10 @@ OUTPUT_ENHED_CHOICES <- c(
   "Tid (minutter)", "Tid (tt:mm)", "Rate"
 )
 
+# Kanoniske maal_retning-værdier (tblDiagrammerMaal) — komparator for
+# diagrammets måltal. Dropdown, ej fritekst, for at undgå frie varianter.
+MAAL_RETNING_CHOICES <- c(">=", "<=", "=", "<", ">")
+
 # --- tblIndikatorer felt-metadata til CRUD-form ------------------------------
 # kind: pk | fk | text | textarea | bool | int | date | choice (fast værdisæt)
 INDIKATOR_FIELDS <- list(

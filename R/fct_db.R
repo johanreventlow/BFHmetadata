@@ -239,6 +239,9 @@ make_db <- function(pool) {
         )),
         type = DBI::dbGetQuery(pool, build_fk_options_sql(
           "tblDiagramTyper", '"diagram_type"'
+        )),
+        maalgruppe = DBI::dbGetQuery(pool, build_fk_options_sql(
+          "tblMaalgrupper", '"maalgruppe_navn"'
         ))
       )
     },
@@ -268,6 +271,27 @@ make_db <- function(pool) {
     delete_diagram = function(id) {
       assert_write_enabled()
       DBI::dbExecute(pool, build_diagram_delete_sql(), params = list(id))
+    },
+    # --- Mål-styring (admin) ----------------------------------------------
+    list_maal_admin = function() {
+      DBI::dbGetQuery(pool, build_maal_admin_sql())
+    },
+    # values: named list med alle MAAL_COLS (rækkefølge håndhæves her)
+    create_maal = function(values) {
+      assert_write_enabled()
+      DBI::dbGetQuery(pool, build_maal_insert_sql(),
+        params = unname(values[MAAL_COLS])
+      )$id[1]
+    },
+    update_maal = function(id, values) {
+      assert_write_enabled()
+      DBI::dbExecute(pool, build_maal_update_sql(),
+        params = c(unname(values[MAAL_COLS]), list(id))
+      )
+    },
+    delete_maal = function(id) {
+      assert_write_enabled()
+      DBI::dbExecute(pool, build_maal_delete_sql(), params = list(id))
     }
   )
 }
