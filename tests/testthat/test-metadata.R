@@ -61,9 +61,13 @@ test_that("indikator_hierarki-entry har korrekte kolonner og aktiv-flag", {
   expect_identical(cfg$level$col, "indikator_niveau")
   cols <- vapply(cfg$fields, function(f) f$col, "")
   expect_setequal(cols, c("hierarki_navn", "hierarki_navn_kort",
+                          "brug_kort_navn_i_titel",
                           "beskrivelse_kort", "beskrivelse_lang", "kilde_id"))
-  # 5 felter + parent + niveau + aktiv = 8 edit-kolonner
-  expect_length(hierarchy_edit_cols(cfg), 8)
+  # 6 felter + parent + niveau + aktiv = 9 edit-kolonner
+  expect_length(hierarchy_edit_cols(cfg), 9)
+  # titel-flaget er et checkbox-felt (boolean i DB)
+  typer <- stats::setNames(vapply(cfg$fields, function(f) f$type, ""), cols)
+  expect_identical(unname(typer["brug_kort_navn_i_titel"]), "checkbox")
 })
 
 test_that("indikator_hierarki har kaskade-filtre paa Datapakke/Datasæt-niveau", {

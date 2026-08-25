@@ -262,3 +262,60 @@ test_that("Foraelder-dropdown og parent_choices indrykkes efter dybde", {
                    paste0(strrep(" ", 4), "Samling"))
   expect_identical(names(ch)[ch == 1L], "Rod")
 })
+
+# --- Checkbox-felter (fx brug_kort_navn_i_titel) ----------------------------
+
+test_that("checkbox-felt kan inline-redigeres og normaliseres til logical", {
+  db <- fake_ih_db()
+  result <- .prepare_hierarchy_inline_update(
+    db$list_nodes(), db$niveau_options(), .ih_cfg(),
+    list(id = 1, field = "brug_kort_navn_i_titel", value = "TRUE"))
+  expect_true(result$ok)
+  expect_false(result$unchanged)
+  expect_identical(result$values$brug_kort_navn_i_titel, TRUE)
+
+  # excelR kan sende lowercase-strenge
+  lower <- .prepare_hierarchy_inline_update(
+    db$list_nodes(), db$niveau_options(), .ih_cfg(),
+    list(id = 2, field = "brug_kort_navn_i_titel", value = "false"))
+  expect_true(lower$ok)
+  expect_identical(lower$values$brug_kort_navn_i_titel, FALSE)
+})
+
+test_that("checkbox-felt afviser ugyldig vaerdi og opdager uaendret", {
+  db <- fake_ih_db()
+  bad <- .prepare_hierarchy_inline_update(
+    db$list_nodes(), db$niveau_options(), .ih_cfg(),
+    list(id = 1, field = "brug_kort_navn_i_titel", value = "maaske"))
+  expect_false(bad$ok)
+  expect_match(bad$error, "checkbox", ignore.case = TRUE)
+
+  same <- .prepare_hierarchy_inline_update(
+    db$list_nodes(), db$niveau_options(), .ih_cfg(),
+    list(id = 2, field = "brug_kort_navn_i_titel", value = "TRUE"))
+  expect_true(same$ok)
+  expect_true(same$unchanged)   # node 2 har allerede TRUE
+})
+
+test_that("checkbox-felt vises som logical i grid-data og checkbox-kolonne", {
+  db <- fake_ih_db()
+  cfg <- .ih_cfg()
+  tree_df <- hierarchy_order(db$list_nodes(), "id", "parent_id_raw",
+                             sort_col = cfg$display_col)
+
+  g <- hierarchy_excel_data(tree_df, cfg)
+  expect_type(g[["Kort navn i titel"]], "logical")
+  expect_identical(g[["Kort navn i titel"]][match(2L, g$id)], TRUE)
+
+  cols <- hierarchy_excel_columns(cfg, tree_df, db$niveau_options())
+  expect_identical(cols$type[cols$title == "Kort navn i titel"], "checkbox")
+  expect_false(cols$readOnly[cols$title == "Kort navn i titel"])
+})
+
+test_that(".hierarchy_row_values normaliserer checkbox-NA til FALSE", {
+  cfg <- .ih_cfg()
+  row <- fake_ih_nodes()[1, , drop = FALSE]
+  row$brug_kort_navn_i_titel <- NA
+  vals <- .hierarchy_row_values(row, cfg)
+  expect_identical(vals$brug_kort_navn_i_titel, FALSE)
+})
