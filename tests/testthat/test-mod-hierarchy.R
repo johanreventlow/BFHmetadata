@@ -257,6 +257,7 @@ test_that("ny node i indikator-hierarkiet gemmer aktiv-flag fra formularen", {
     session$setInputs(new_node = 1)
     session$setInputs(
       h_hierarki_navn = "Nyt datasaet", h_hierarki_navn_kort = "Nyt",
+      h_brug_kort_navn_i_titel = TRUE,
       h_beskrivelse_kort = "", h_beskrivelse_lang = "", h_kilde_id = "",
       h_parent = "1", h_niveau = "20", h_aktiv = FALSE, h_save = 1)
     created <- db$.calls()$created
@@ -264,6 +265,7 @@ test_that("ny node i indikator-hierarkiet gemmer aktiv-flag fra formularen", {
     expect_identical(created$hierarki_navn, "Nyt datasaet")
     expect_identical(created$parent_id, 1L)
     expect_false(created$aktiv)
+    expect_true(created$brug_kort_navn_i_titel)
   })
 })
 

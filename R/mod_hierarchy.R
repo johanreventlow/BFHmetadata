@@ -17,6 +17,9 @@
 
   field_inputs <- lapply(cfg$fields, function(f) {
     fid <- ns(paste0("h_", f$col))
+    if (identical(f$type, "checkbox")) {
+      return(checkboxInput(fid, f$label, value = isTRUE(v(f$col, FALSE))))
+    }
     val <- v(f$col) %||% ""
     if (identical(f$type, "textarea")) {
       textAreaInput(fid, f$label, value = val)
@@ -69,7 +72,9 @@
     if (is.null(x) || identical(x, "")) NA_integer_ else as.integer(x)
   }
   vals <- stats::setNames(
-    lapply(cfg$fields, function(f) chr_or_na(gv(f$col))),
+    lapply(cfg$fields, function(f) {
+      if (identical(f$type, "checkbox")) isTRUE(gv(f$col)) else chr_or_na(gv(f$col))
+    }),
     vapply(cfg$fields, function(f) f$col, ""))
   vals[[cfg$parent_col]] <- int_or_na(gv("parent"))
   vals[[cfg$level$col]] <- int_or_na(gv("niveau"))

@@ -29,6 +29,16 @@
   grænse), så ingen knæk falder ud ved opgraderingen.
 
 ## Nye features
+* **Nyt hierarki-felt: "Kort navn i titel" (`brug_kort_navn_i_titel`).**
+  Indikator-hierarkiets grid og "Ny node"-formular kan nu redigere det nye
+  boolean-flag på `tblIndikatorHierarki` (migrering
+  `migration/08_brug_kort_navn_i_titel.sql`). Flaget er opt-in pr. datasæt:
+  BFHddl viser `hierarki_navn_kort` i chart-titlens datasæt-linje, når det er
+  sat (fx LUP → "Patienttilfredshed (LUP)"), mens det lange `hierarki_navn`
+  forbliver autoritativt til dataportal-generering. Den generiske
+  hierarki-editor har samtidig fået understøttelse for felttypen
+  `checkbox` (rendering, inline-validering og formular), så fremtidige
+  boolean-kolonner blot skal registreres i `HIERARCHY_TABLES`.
 * **Gem-og-reload-loop i redigerings-grids er stoppet (ekko-værn).** excelR's
   widget sender ved hvert re-render selv payloads på gridets Shiny-input (et
   data-ekko plus et selektions-ekko når markøren genskabes), og modulerne

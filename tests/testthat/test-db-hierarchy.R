@@ -62,6 +62,7 @@ test_that("indikator-hierarki roundtrip: create (aktiv) -> toggle aktiv -> delet
 
   vals <- list(hierarki_navn = "TEST_ih_roundtrip",
                hierarki_navn_kort = "TEST",
+               brug_kort_navn_i_titel = FALSE,
                beskrivelse_kort = NA_character_,
                beskrivelse_lang = NA_character_,
                kilde_id = "test-kilde",

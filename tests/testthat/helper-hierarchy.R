@@ -37,6 +37,7 @@ fake_ih_nodes <- function() data.frame(
   parent_id_raw = c(NA_integer_, 1L, 1L, 2L),
   hierarki_navn = c("Rod", "Datasaet A", "Datasaet B", "Samling"),
   hierarki_navn_kort = c("R", "A", "B", "S"),
+  brug_kort_navn_i_titel = c(FALSE, TRUE, FALSE, FALSE),
   beskrivelse_kort = c(NA_character_, "kort", NA_character_, NA_character_),
   beskrivelse_lang = rep(NA_character_, 4),
   kilde_id = rep(NA_character_, 4),

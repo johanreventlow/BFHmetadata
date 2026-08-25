@@ -343,12 +343,12 @@ test_that("hierarki-SQL for indikator_hierarki medtager aktiv-kolonnen", {
   expect_match(sql, 'h."parent_id" AS parent_id_raw', fixed = TRUE)
   expect_match(sql, 'h."aktiv" AS aktiv', fixed = TRUE)
   expect_match(sql, '"tblIndikatorNiveauer"', fixed = TRUE)
-  cols <- hierarchy_edit_cols(cfg) # 5 felter + parent + niveau + aktiv = 8
-  expect_length(cols, 8)
+  cols <- hierarchy_edit_cols(cfg) # 6 felter + parent + niveau + aktiv = 9
+  expect_length(cols, 9)
   ins <- build_hierarchy_insert_sql(cfg)
   for (col in cols) expect_match(ins, sprintf('"%s"', col), fixed = TRUE)
   upd <- build_hierarchy_update_sql(cfg)
-  expect_match(upd, '"Id" = \\$9') # 8 kolonner + id
+  expect_match(upd, '"Id" = \\$10') # 9 kolonner + id
   expect_identical(
     build_hierarchy_child_count_sql(cfg),
     'SELECT count(*) AS n FROM "tblIndikatorHierarki" WHERE "parent_id" = $1'

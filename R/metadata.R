@@ -251,6 +251,11 @@ HIERARCHY_TABLES <- list(
     fields = list(
       list(col = "hierarki_navn", type = "text", label = "Navn"),
       list(col = "hierarki_navn_kort", type = "text", label = "Kort navn"),
+      # Opt-in: BFHddl viser hierarki_navn_kort i chart-titlens
+      # datasaet-linje naar flaget er sat (fx LUP). Det lange navn
+      # forbliver autoritativt til dataportal-generering.
+      list(col = "brug_kort_navn_i_titel", type = "checkbox",
+           label = "Kort navn i titel"),
       list(col = "beskrivelse_kort", type = "textarea",
            label = "Kort beskrivelse"),
       list(col = "beskrivelse_lang", type = "textarea",

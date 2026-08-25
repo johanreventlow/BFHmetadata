@@ -2,16 +2,27 @@
 # validering og HTML-generering fri af Shiny-serveren, saa begge dele kan
 # testes uden en browser eller database.
 
+#' Felttype pr. lagringskolonne ("text"/"textarea"/"checkbox").
+#' @noRd
+.hierarchy_field_types <- function(cfg) {
+  stats::setNames(
+    vapply(cfg$fields, function(f) f$type %||% "text", ""),
+    vapply(cfg$fields, function(f) f$col, ""))
+}
+
 #' Udtræk en komplet, normaliseret lagringsrække fra et node-resultat.
 #' @noRd
 .hierarchy_row_values <- function(row, cfg) {
   cols <- hierarchy_edit_cols(cfg)
   values <- stats::setNames(vector("list", length(cols)), cols)
-  field_cols <- vapply(cfg$fields, function(field) field$col, "")
+  field_types <- .hierarchy_field_types(cfg)
 
-  for (col in field_cols) {
+  for (col in names(field_types)) {
     value <- row[[col]][1]
-    values[[col]] <- if (is.na(value) || identical(as.character(value), "")) {
+    values[[col]] <- if (identical(field_types[[col]], "checkbox")) {
+      # NOT NULL boolean i DB; NA (fx fake-data) normaliseres til FALSE
+      value %in% TRUE
+    } else if (is.na(value) || identical(as.character(value), "")) {
       NA_character_
     } else {
       as.character(value)
@@ -74,7 +85,9 @@
   reject <- function(error, id = NA_integer_, values = list()) {
     .hierarchy_inline_result(FALSE, id = id, values = values, error = error)
   }
-  text_fields <- vapply(cfg$fields, function(field) field$col, "")
+  field_types <- .hierarchy_field_types(cfg)
+  text_fields <- names(field_types)[field_types != "checkbox"]
+  checkbox_fields <- names(field_types)[field_types == "checkbox"]
   if (is.null(cfg$display_col) || length(cfg$display_col) != 1 ||
       is.na(cfg$display_col) || !nzchar(cfg$display_col) ||
       !(cfg$display_col %in% text_fields)) {
@@ -94,7 +107,10 @@
       !(field %in% allowed_fields)) {
     return(reject("Ukendt felt", id, values))
   }
-  if (field %in% text_fields) {
+  if (field %in% checkbox_fields) {
+    value <- .hierarchy_editor_logical(event$value)
+    if (is.null(value)) return(reject("Ugyldig checkbox-vaerdi", id, values))
+  } else if (field %in% text_fields) {
     raw <- event$value
     if (is.null(raw) || length(raw) != 1 || is.na(raw) ||
         identical(as.character(raw), "")) {
@@ -195,7 +211,15 @@ hierarchy_excel_data <- function(tree_df, cfg) {
   #   (non-breaking space): alm. mellemrum kollapses i HTML-celler
   out[["Struktur"]] <- paste0(
     strrep("\u00A0\u00A0", tree_df$depth), hierarchy_node_labels(tree_df, cfg))
-  for (t in field_titles) out[[t]] <- chr_or_empty(tree_df[[fm[[t]]]])
+  field_types <- .hierarchy_field_types(cfg)
+  for (t in field_titles) {
+    col <- fm[[t]]
+    out[[t]] <- if (identical(field_types[[col]], "checkbox")) {
+      tree_df[[col]] %in% TRUE
+    } else {
+      chr_or_empty(tree_df[[col]])
+    }
+  }
   out[["For\u00E6lder"]] <- chr_or_empty(tree_df$parent_id_raw)
   out[["Niveau"]] <- chr_or_empty(tree_df$niveau_id)
   if (!is.null(cfg$aktiv_col)) {
@@ -235,12 +259,15 @@ hierarchy_excel_columns <- function(cfg, tree_df, niveauer,
              sprintf("Ukendt niveau #%s", unknown_niv)),
     stringsAsFactors = FALSE)
   field_titles <- vapply(cfg$fields, function(f) f$label, "")
+  # Checkbox-felter renderes som checkbox i grid'et; alt andet som tekst
+  field_grid_types <- ifelse(
+    unname(.hierarchy_field_types(cfg)) == "checkbox", "checkbox", "text")
   has_aktiv <- !is.null(cfg$aktiv_col)
   out <- data.frame(
     title = c("id", "Struktur", field_titles, "For\u00E6lder", "Niveau",
               if (has_aktiv) "Aktiv"),
     # id: "hidden" — med i data/payload (pk-diff) men aldrig synlig
-    type = c("hidden", "text", rep("text", length(field_titles)),
+    type = c("hidden", "text", field_grid_types,
              "dropdown", "dropdown", if (has_aktiv) "checkbox"),
     readOnly = c(TRUE, TRUE, rep(FALSE, length(field_titles)), FALSE, FALSE,
                  if (has_aktiv) FALSE),
