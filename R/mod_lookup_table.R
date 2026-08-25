@@ -89,6 +89,9 @@ mod_lookup_table_server <- function(id, db, cfg,
     }
     status_msg <- reactiveVal("")
     sel_pk <- reactiveVal(NULL) # pk (chr) for senest valgte række
+    # Ekko-værn: excelR re-sender data+selektion efter hvert re-render — en
+    # identisk diff lige efter et re-render er grid'ets ekko, ikke brugeren.
+    echo_guard <- new_excel_echo_guard()
     adapter_locked <- reactiveVal(FALSE)
     ambiguity_message <- paste0(
       "Databasestatus kunne ikke bekr\u00E6ftes. ",
@@ -194,6 +197,9 @@ mod_lookup_table_server <- function(id, db, cfg,
       if (nrow(changes) == 0) {
         return()
       }
+      if (echo_guard$skip(changes)) {
+        return()
+      }
       revert <- FALSE
       for (k in seq_len(nrow(changes))) {
         col <- changes$col[k]
@@ -228,7 +234,12 @@ mod_lookup_table_server <- function(id, db, cfg,
       rows(d)
       # Én samlet re-render efter afviste celler: grid'et snapper tilbage til
       # den gemte tilstand (accepterede celler beholdes — de er i rows()).
-      if (revert) force_grid_render()
+      # arm(): re-renderet får excelR til at gen-sende payloads — kommer
+      # præcis samme diff tilbage, er det ekkoet og skal ikke behandles igen.
+      if (revert) {
+        echo_guard$arm(changes)
+        force_grid_render()
+      }
     })
 
     if (excel_adapter_enabled(cfg)) {

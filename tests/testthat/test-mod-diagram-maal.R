@@ -19,13 +19,15 @@ fake_maal_db <- function() {
     indikator_navn = c("Tryksår", "Fald"),
     org_navn = c("Kirurgi", "Medicin"),
     stringsAsFactors = FALSE)
-  calls <- list(created = NULL, updated = NULL, deleted = NULL)
+  calls <- list(created = NULL, updated = NULL, updates = list(), deleted = NULL)
   list(
     list_maal_admin = function() admin,
     list_diagrams_admin = function() diagrams,
     create_maal = function(values) { calls$created <<- values; 99L },
     update_maal = function(id, values) {
-      calls$updated <<- list(id = id, values = values); 1L
+      calls$updated <<- list(id = id, values = values)
+      calls$updates[[length(calls$updates) + 1L]] <<- calls$updated
+      1L
     },
     delete_maal = function(id) { calls$deleted <<- id; 1L },
     .calls = function() calls
@@ -205,5 +207,23 @@ test_that("filtrering på indikator/enhed/datapakke/datasæt reducerer listen", 
     session$setInputs(filter_datasaet = "Fald-datasæt")
     expect_equal(nrow(filtered()), 1)
     expect_identical(filtered()$maal_id, 2L)
+  })
+})
+
+test_that("identisk payload efter gem skippes som re-render-ekko (loop-værn)", {
+  # excelR gen-sender payloads efter hvert re-render, og reload() efter et gem
+  # re-renderer grid'et. Fake-db'ens admin ændres ikke af update_maal, så
+  # diffen er identisk anden gang — præcis som et ekko med en vedvarende
+  # repræsentationsforskel. Uden værn ville hver gentagelse gemme + reloade
+  # igen (gem→reload→ekko-loop); med værn behandles ekkoet ikke.
+  db <- fake_maal_db()
+  testServer(mod_diagram_maal_server, args = list(db = db), {
+    p <- maal_grid_edit(isolate(filtered()), 1L, "Retning", "<=")
+    session$setInputs(tbl = p)
+    expect_length(db$.calls()$updates, 1)
+    session$setInputs(tbl = p)               # ekkoet
+    expect_length(db$.calls()$updates, 1)    # ingen ny skrivning
+    session$setInputs(tbl = p)               # ægte gentagelse (værn forbrugt)
+    expect_length(db$.calls()$updates, 2)
   })
 })

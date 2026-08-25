@@ -29,6 +29,19 @@
   grænse), så ingen knæk falder ud ved opgraderingen.
 
 ## Nye features
+* **Gem-og-reload-loop i redigerings-grids er stoppet (ekko-værn).** excelR's
+  widget sender ved hvert re-render selv payloads på gridets Shiny-input (et
+  data-ekko plus et selektions-ekko når markøren genskabes), og modulerne
+  diff'er alle payloads og genindlæser efter gem/afvisning. En vedvarende
+  repræsentationsforskel (fx checkbox `true` vs. `TRUE`, tal- eller
+  datoformatering) kunne derfor blive til et selvkørende
+  gem→reload→ekko→gem-loop uden fejlmeddelelse, hvor appen "arbejdede" i ring,
+  indtil siden blev genindlæst manuelt. Fixet er i to lag: (1) et
+  klient-script dropper de payloads, et grid selv affyrer synkront under sit
+  re-render — de gengiver kun, hvad serveren netop har renderet; (2) et
+  server-side værn genkender en diff, der er identisk med den netop
+  behandlede lige efter et reload, og springer den over. Gælder alle fire
+  grid-moduler (opslagstabeller, hierarkier, diagrammer og mål).
 * **Flydende genoptagelse efter tabt forbindelse.** Når websocket-forbindelsen
   til Shiny-processen tabes (dvale, låst maskine, netværksskift), lagde Shiny
   et mørkt overlay over appen, som derefter var død indtil manuel

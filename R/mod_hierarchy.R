@@ -111,6 +111,11 @@ mod_hierarchy_server <- function(id, db, cfg) {
     table_revision <- reactiveVal(0L)
     selected_id <- reactiveVal(NULL)
     delete_id <- reactiveVal(NULL)
+    # Ekko-værn: excelR re-sender data+selektion efter hvert re-render — en
+    # identisk diff lige efter et reload er grid'ets ekko, ikke brugeren.
+    # Uden værnet kan fx en checkbox-payload ("true" vs "TRUE") ende i et
+    # evigt, tavst unchanged→reload→ekko-loop.
+    echo_guard <- new_excel_echo_guard()
     # Fejl-tolerant genindlæsning: DB-udfald må aldrig vælte sessionen —
     # behold senest hentede noder (revision bumpes stadig → grid snapper
     # tilbage til den kendte tilstand).
@@ -265,6 +270,8 @@ mod_hierarchy_server <- function(id, db, cfg) {
       changes <- excel_diff_cells(grid, excel_event_df(p), "id")
       fm <- hierarchy_grid_fields(cfg)
       changes <- changes[changes$col %in% names(fm), , drop = FALSE]
+      if (nrow(changes) == 0) return()
+      if (echo_guard$skip(changes)) return()
       for (k in seq_len(nrow(changes))) {
         .handle_inline_event(list(
           id = as.integer(changes$pk[k]),
@@ -272,6 +279,9 @@ mod_hierarchy_server <- function(id, db, cfg) {
           value = changes$value[k]
         ))
       }
+      # .handle_inline_event ender altid i reload() → re-render → excelR
+      # gen-sender payloads; en identisk diff derfra er ekkoet.
+      echo_guard$arm(changes)
     })
 
     .parent_choices <- function() {

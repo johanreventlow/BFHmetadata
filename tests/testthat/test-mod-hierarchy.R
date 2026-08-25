@@ -347,3 +347,24 @@ test_that("hierarki: aendring der kun ankommer via fullData gemmes", {
       expect_identical(selected_id(), 2L)   # selektionen registreres stadig
     })
 })
+
+test_that("identisk fantom-diff efter reload skippes som ekko (loop-værn)", {
+  # Checkbox-payloadens "true" ≠ grid-datas "TRUE" giver et diff, som
+  # .prepare_hierarchy_inline_update normaliserer til 'unchanged' → tavst
+  # reload. excelR gen-sender payloads efter hvert re-render, så uden værn
+  # kører unchanged→reload→ekko i ring uden fejlmeddelelse. Værnet skipper
+  # den identiske diff lige efter reloadet.
+  db <- fake_ih_db()
+  cfg <- HIERARCHY_TABLES$indikator_hierarki
+  testServer(mod_hierarchy_server, args = list(db = db, cfg = cfg), {
+    p <- .hierarchy_grid_edit(isolate(tree()), cfg, 2L, "Aktiv", "true")
+    session$setInputs(tbl = p)
+    expect_length(db$.calls()$updates, 0)      # unchanged → ingen skrivning
+    expect_identical(table_revision(), 1L)     # men ét reload
+    session$setInputs(tbl = p)                 # ekkoet
+    expect_identical(table_revision(), 1L)     # intet nyt reload → loop brudt
+    expect_length(db$.calls()$updates, 0)
+    session$setInputs(tbl = p)                 # ægte gentagelse (værn forbrugt)
+    expect_identical(table_revision(), 2L)     # → behandles igen som normalt
+  })
+})

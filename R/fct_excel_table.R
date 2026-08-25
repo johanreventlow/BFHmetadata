@@ -46,6 +46,67 @@
   "))
 }
 
+#' JS-ekko-værn for excelR-grids (inkluderes ÉN gang i app_ui, header).
+#'
+#' excelR's widget-JS sender ved hvert re-render selv payloads på grid'ets
+#' Shiny-input (data-ekko + selektions-ekko fra updateSelectionFromCoords).
+#' Sammen med modulernes diff+reload-mønster kan en vedvarende
+#' repræsentationsforskel (checkbox true/TRUE, tal-/datoformatering) blive
+#' til et evigt gem→reload→ekko-loop uden fejlmeddelelse. Scriptet dropper
+#' payloads affyret synkront under et jexcel-outputs re-render; se også
+#' new_excel_echo_guard() (server-side værn, forsvar-i-dybden).
+#' @noRd
+.excel_echo_guard_dependency <- function() {
+  htmltools::htmlDependency(
+    name = "bfh-excel-echo-guard",
+    version = "0.1.0",
+    src = c(file = app_sys("www")),
+    script = "bfh-excel-echo-guard.js"
+  )
+}
+
+#' Signatur for et diff-resultat fra excel_diff_cells — bruges af
+#' ekko-værnet til at genkende, at præcis samme diff kommer igen.
+#' Separatorer er kontroltegn, der ikke kan optræde i celleværdier fra
+#' payloadens JSON — en værdi kan altså ikke forfalske en anden signatur.
+#' @noRd
+excel_changes_signature <- function(changes) {
+  if (is.null(changes) || !is.data.frame(changes) || nrow(changes) == 0) {
+    return("")
+  }
+  paste(changes$pk, changes$col,
+        ifelse(is.na(changes$value), "\u0001NA", changes$value),
+        sep = "\u0002", collapse = "\u0003")
+}
+
+#' Server-side ekko-værn mod gem/reload-loops (forsvar-i-dybden bag
+#' .excel_echo_guard_dependency's JS-værn).
+#'
+#' Brug: kald arm(changes) når en behandlet diff kan udløse et re-render
+#' (reload/refresh) — og skip(changes) FØR behandling af næste ikke-tomme
+#' diff. Returnerer skip TRUE præcis når diffen er identisk med den armerede
+#' (dvs. payloadet er grid'ets re-render-ekko af den diff, vi netop har
+#' behandlet — at behandle den igen ville gentage cyklussen i det uendelige).
+#' Værnet forbruges ved første ikke-tomme diff (ens eller ej), så en ægte
+#' gentaget brugerhandling højst ignoreres én gang lige efter et fejlet gem.
+#' @return list(arm = function(changes), skip = function(changes))
+#' @noRd
+new_excel_echo_guard <- function() {
+  armed <- ""
+  list(
+    arm = function(changes) {
+      armed <<- excel_changes_signature(changes)
+      invisible(NULL)
+    },
+    skip = function(changes) {
+      sig <- excel_changes_signature(changes)
+      hit <- nzchar(sig) && identical(sig, armed)
+      armed <<- ""
+      hit
+    }
+  )
+}
+
 #' Kolonnebredder fra indholdets længde-fordeling.
 #'
 #' Bredden dækker q-fraktilen (default 95 %) af værdilængderne — enkelte

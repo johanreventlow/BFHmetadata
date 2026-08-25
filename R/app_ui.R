@@ -3,6 +3,7 @@
 app_ui <- function(request) {
   bslib::page_navbar(id = "nav", title = "BFH Metadata",
     header = tagList(.jexcel_theme_css(), .excel_adapter_dependency(),
+                     .excel_echo_guard_dependency(),
                      .reconnect_dependency(), .hidden_nav_css()),
     bslib::nav_panel("Start", value = "start", .landing_ui()),
     bslib::nav_panel("Signal-gennemgang", value = "signal",

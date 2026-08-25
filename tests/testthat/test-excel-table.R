@@ -194,3 +194,42 @@ test_that("lookup_excel_columns: fk-source med parent_id ordnes og indrykkes", {
   expect_equal(src$id, c(10L, 20L))
   expect_equal(src$name, c("Rod", paste0(strrep(" ", 2), "Barn")))
 })
+
+# --- Ekko-værn (gem/reload-loop) --------------------------------------------
+
+test_that("excel_changes_signature: stabil, tom ved intet diff, NA skelnes", {
+  chg <- data.frame(pk = c("1", "2"), col = c("Navn", "Niveau"),
+                    value = c("A", NA), stringsAsFactors = FALSE)
+  expect_identical(excel_changes_signature(chg), excel_changes_signature(chg))
+  expect_identical(excel_changes_signature(chg[0, ]), "")
+  expect_identical(excel_changes_signature(NULL), "")
+  # NA og strengen "NA" må ikke give samme signatur
+  chg_na <- chg; chg_na$value[2] <- "NA"
+  expect_false(identical(excel_changes_signature(chg),
+                         excel_changes_signature(chg_na)))
+})
+
+test_that("new_excel_echo_guard: skipper kun identisk diff lige efter arm", {
+  g <- new_excel_echo_guard()
+  chg <- data.frame(pk = "1", col = "Navn", value = "A",
+                    stringsAsFactors = FALSE)
+  other <- data.frame(pk = "1", col = "Navn", value = "B",
+                      stringsAsFactors = FALSE)
+  expect_false(g$skip(chg))          # intet armeret endnu
+  g$arm(chg)
+  expect_true(g$skip(chg))           # ekkoet skippes ...
+  expect_false(g$skip(chg))          # ... men kun én gang (værnet forbrugt)
+  g$arm(chg)
+  expect_false(g$skip(other))        # anden diff = ægte handling, forbruger værnet
+  expect_false(g$skip(chg))
+})
+
+test_that("echo-guard-dependency indlaeses og findes i app_ui", {
+  dep <- .excel_echo_guard_dependency()
+  expect_s3_class(dep, "html_dependency")
+  expect_equal(dep$script, "bfh-excel-echo-guard.js")
+  expect_true(file.exists(file.path(dep$src$file, dep$script)))
+  deps <- htmltools::findDependencies(app_ui(NULL))
+  expect_true("bfh-excel-echo-guard" %in%
+                vapply(deps, function(d) d$name, character(1)))
+})

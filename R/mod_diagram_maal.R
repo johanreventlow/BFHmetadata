@@ -146,6 +146,9 @@ mod_diagram_maal_server <- function(id, db) {
     warn_msg <- reactiveVal("")
     grid_sel <- reactiveVal(NULL)
     grid_refresh <- reactiveVal(0)
+    # Ekko-værn: excelR re-sender data+selektion efter hvert re-render — en
+    # identisk diff lige efter et reload er grid'ets ekko, ikke brugeren.
+    echo_guard <- new_excel_echo_guard()
 
     reload <- function() {
       safe_operation("genindlæs mål", admin(db$list_maal_admin()),
@@ -240,6 +243,7 @@ mod_diagram_maal_server <- function(id, db) {
       changes <- excel_diff_cells(maal_excel_data(d), excel_event_df(p), "maal_id")
       changes <- changes[changes$col %in% names(.MAAL_GRID_FIELDS), , drop = FALSE]
       if (nrow(changes) == 0) return()
+      if (echo_guard$skip(changes)) return()
       revert <- FALSE
       for (k in seq_len(nrow(changes))) {
         rid <- as.integer(changes$pk[k])
@@ -291,6 +295,10 @@ mod_diagram_maal_server <- function(id, db) {
       }
       reload()
       if (revert) grid_refresh(grid_refresh() + 1)
+      # reload() re-renderer grid'et (admin → filtered → renderExcel), og
+      # excelR gen-sender payloads efter re-render — en identisk diff derfra
+      # er ekkoet og må ikke behandles igen (gem→reload→ekko-loop).
+      echo_guard$arm(changes)
     })
 
     observeEvent(input$delete_row, {
