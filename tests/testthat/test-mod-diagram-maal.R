@@ -11,6 +11,7 @@ fake_maal_db <- function() {
     indikator_navn = c("Tryksår", "Fald"),
     org_navn = c("Kirurgi", "Medicin"),
     type_navn = c("Seriediagram", "Søjlediagram"),
+    maalgruppe_navn = c("Klinikere", NA),
     datasaet = c("Tryksår-datasæt", "Fald-datasæt"),
     datapakke = c("Kliniske indikatorer", "Kliniske indikatorer"),
     stringsAsFactors = FALSE)
@@ -18,6 +19,7 @@ fake_maal_db <- function() {
     diagram_id = c(1L, 2L),
     indikator_navn = c("Tryksår", "Fald"),
     org_navn = c("Kirurgi", "Medicin"),
+    maalgruppe_navn = c("Klinikere", NA),
     stringsAsFactors = FALSE)
   calls <- list(created = NULL, updated = NULL, updates = list(), deleted = NULL)
   list(
@@ -72,9 +74,36 @@ test_that("mål-grid: skjult pk, Retning som dropdown, resten readOnly-kontekst"
     types <- vapply(cols, function(c) c$type, "")
     expect_identical(types[titles == "maal_id"], "hidden")
     expect_identical(types[titles == "Retning"], "dropdown")
-    expect_true(all(vapply(cols[titles %in% c("Indikator", "Enhed", "Type")],
-                           function(c) isTRUE(c$readOnly), logical(1))))
+    expect_true(all(vapply(
+      cols[titles %in% c("Indikator", "Enhed", "Type", "Målgruppe")],
+      function(c) isTRUE(c$readOnly), logical(1))))
     expect_false(isTRUE(cols[[which(titles == "Værdi")]]$readOnly)) # editable
+  })
+})
+
+test_that("mål-grid viser diagrammets målgruppe (tom ved NA)", {
+  g <- maal_excel_data(data.frame(
+    maal_id = 1:2, datapakke = "p", datasaet = "d",
+    indikator_navn = c("A", "B"), org_navn = "E", type_navn = "Serie",
+    maalgruppe_navn = c("Klinikere", NA),
+    maal_retning = ">=", maal_vaerdi = 1,
+    maal_gaeldende_fra = as.Date(NA), stringsAsFactors = FALSE))
+  expect_identical(g[["Målgruppe"]], c("Klinikere", ""))
+  # Ældre kaldere uden kolonnen (fx cachede admin-df'er): tom, aldrig fejl
+  g2 <- maal_excel_data(data.frame(
+    maal_id = 1L, datapakke = "p", datasaet = "d", indikator_navn = "A",
+    org_navn = "E", type_navn = "Serie", maal_retning = ">=",
+    maal_vaerdi = 1, maal_gaeldende_fra = as.Date(NA),
+    stringsAsFactors = FALSE))
+  expect_identical(g2[["Målgruppe"]], "")
+})
+
+test_that("Nyt mål-vælgeren medtager målgruppe i diagram-labelen", {
+  db <- fake_maal_db()
+  testServer(mod_diagram_maal_server, args = list(db = db), {
+    ch <- .diagram_choices()
+    expect_identical(ch$label[ch$id == 1L], "Tryksår – Kirurgi · Klinikere (#1)")
+    expect_identical(ch$label[ch$id == 2L], "Fald – Medicin (#2)") # NA → udelades
   })
 })
 

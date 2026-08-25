@@ -302,6 +302,10 @@ test_that("build_maal_delete_sql og build_maal_admin_sql", {
   expect_match(sql, '^WITH RECURSIVE')
   expect_match(sql, 'FROM "tblDiagrammerMaal" m', fixed = TRUE)
   expect_match(sql, 'JOIN "tblDiagrammer" d ON d."id" = m."diagram"', fixed = TRUE)
+  # Diagrammets målgruppe joines med (vises som kontekst i Mål-grid'et)
+  expect_match(sql, 'mg."maalgruppe_navn" AS maalgruppe_navn', fixed = TRUE)
+  expect_match(sql, 'LEFT JOIN "tblMaalgrupper" mg ON mg."Id" = d."maalgruppe"',
+               fixed = TRUE)
 })
 
 # --- Hierarki-CRUD (Fase C) --------------------------------------------------

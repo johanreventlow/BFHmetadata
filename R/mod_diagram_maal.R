@@ -86,6 +86,11 @@ maal_excel_data <- function(d) {
   out[["Indikator"]] <- chr_or_empty(d$indikator_navn)
   out[["Enhed"]] <- chr_or_empty(d$org_navn)
   out[["Type"]] <- chr_or_empty(d$type_navn)
+  # %||%-fallback: ældre kaldere/caches uden kolonnen viser blot tomt frem
+  # for at vælte hele grid-renderingen på en manglende kolonne.
+  out[["Målgruppe"]] <- chr_or_empty(
+    d$maalgruppe_navn %||% rep(NA_character_, nrow(d))
+  )
   out[["Retning"]] <- chr_or_empty(d$maal_retning)
   out[["Værdi"]] <- chr_or_empty(d$maal_vaerdi)
   out[["Gældende fra"]] <- ifelse(
@@ -97,22 +102,25 @@ maal_excel_data <- function(d) {
 
 #' Kolonne-spec til mål-grid'et: Retning som dropdown (fast værdisæt),
 #' Værdi/dato som tekst (valideres server-side ved gem). Kontekst-kolonner
-#' (Indikator/Enhed/Type/Datapakke/Datasæt) er readOnly — mål oprettes/
-#' flyttes mellem diagrammer via "Nyt mål"-modalen, ikke inline.
+#' (Datapakke/Datasæt/Indikator/Enhed/Type/Målgruppe) er readOnly — mål
+#' oprettes/flyttes mellem diagrammer via "Nyt mål"-modalen, ikke inline.
+#' Målgruppen er diagrammets (tblDiagrammer.maalgruppe) og redigeres på
+#' Diagram-fanen; her vises den, så mål på samme indikator/enhed med
+#' forskellige målgrupper kan skelnes.
 #' @noRd
 maal_excel_columns <- function(d) {
   retning_src <- data.frame(
     id = c("", MAAL_RETNING_CHOICES), name = c("(ingen)", MAAL_RETNING_CHOICES),
     stringsAsFactors = FALSE)
   titles <- c("maal_id", "Datapakke", "Datasæt", "Indikator", "Enhed", "Type",
-             names(.MAAL_GRID_FIELDS))
+             "Målgruppe", names(.MAAL_GRID_FIELDS))
   out <- data.frame(
     title = titles,
-    type = c("hidden", rep("text", 5), "dropdown", "text", "text"),
-    readOnly = c(TRUE, rep(TRUE, 5), FALSE, FALSE, FALSE),
+    type = c("hidden", rep("text", 6), "dropdown", "text", "text"),
+    readOnly = c(TRUE, rep(TRUE, 6), FALSE, FALSE, FALSE),
     align = "left",
     stringsAsFactors = FALSE)
-  out$source <- c(rep(list(NA), 6), list(retning_src), rep(list(NA), 2))
+  out$source <- c(rep(list(NA), 7), list(retning_src), rep(list(NA), 2))
   disp <- maal_excel_data(d)
   disp[["Retning"]] <- .excel_dropdown_display(disp[["Retning"]], retning_src)
   out$width <- unname(excel_col_widths(disp)[titles])
@@ -164,12 +172,16 @@ mod_diagram_maal_server <- function(id, db) {
     }, ignoreInit = TRUE)
 
     # Diagram-vælgeren til "Nyt mål": {id, label} bygget af diagram-adminen
-    # (samme kilde som Diagrammer-fanen), ikke rå diagram-id'er.
+    # (samme kilde som Diagrammer-fanen), ikke rå diagram-id'er. Målgruppen
+    # medtages i labelen, når diagrammet har en — ellers kan to diagrammer på
+    # samme indikator/enhed (forskellige målgrupper) ikke skelnes i listen.
     .diagram_choices <- reactive({
       d <- db$list_diagrams_admin()
+      mg <- d$maalgruppe_navn %||% rep(NA_character_, nrow(d))
       lbl <- paste0(
         ifelse(is.na(d$indikator_navn), "?", d$indikator_navn), " – ",
         ifelse(is.na(d$org_navn), "?", d$org_navn),
+        ifelse(is.na(mg), "", paste0(" · ", mg)),
         " (#", d$diagram_id, ")"
       )
       data.frame(id = d$diagram_id, label = lbl, stringsAsFactors = FALSE)

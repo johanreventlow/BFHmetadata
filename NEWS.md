@@ -29,6 +29,11 @@
   grænse), så ingen knæk falder ud ved opgraderingen.
 
 ## Nye features
+* **Mål-fanen viser nu diagrammets målgruppe.** Ny readOnly-kolonne
+  "Målgruppe" i mål-grid'et (mellem Type og Retning), så to mål på samme
+  indikator/enhed med forskellige målgrupper kan skelnes. "Nyt mål"-modalens
+  diagram-vælger medtager også målgruppen i labelen, når diagrammet har en.
+  Målgruppen hører til diagrammet og redigeres fortsat på Diagram-fanen.
 * **Nyt hierarki-felt: "Kort navn i titel" (`brug_kort_navn_i_titel`).**
   Indikator-hierarkiets grid og "Ny node"-formular kan nu redigere det nye
   boolean-flag på `tblIndikatorHierarki` (migrering

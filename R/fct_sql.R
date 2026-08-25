@@ -402,6 +402,9 @@ build_maal_admin_sql <- function() {
     'COALESCE(o."organisatorisk_navn_langt", o."organisatorisk_navn_teknisk") ',
     "AS org_navn, ",
     't."diagram_type" AS type_navn, ',
+    # Diagrammets målgruppe: målet gælder for det diagram — uden kolonnen kan
+    # to mål på samme indikator/enhed (forskellige målgrupper) ikke skelnes.
+    'mg."maalgruppe_navn" AS maalgruppe_navn, ',
     "h_lvl.label_datasaet AS datasaet, h_lvl.label_datapakke AS datapakke ",
     'FROM "tblDiagrammerMaal" m ',
     'LEFT JOIN "tblDiagrammer" d ON d."id" = m."diagram" ',
@@ -409,6 +412,7 @@ build_maal_admin_sql <- function() {
     'LEFT JOIN "tblOrganisationStruktur" o ',
     'ON o."Id" = d."organisatorisk_navn_teknisk" ',
     'LEFT JOIN "tblDiagramTyper" t ON t."Id" = d."diagram_type" ',
+    'LEFT JOIN "tblMaalgrupper" mg ON mg."Id" = d."maalgruppe" ',
     'LEFT JOIN h_lvl ON h_lvl.start_id = i."indikator_hierarki" ',
     'ORDER BY i."indikator_navn", org_navn, m."maal_gaeldende_fra"'
   )
