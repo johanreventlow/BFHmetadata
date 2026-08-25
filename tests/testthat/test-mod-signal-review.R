@@ -1475,3 +1475,40 @@ test_that("repareret korrupt indikator genlæses ved rescan", {
     expect_setequal(signal_list()$diagram_id, c(1L, 2L, 3L))
   })
 })
+
+test_that("hide_median_tied skjuler diagrammer med halvdelen af obs. på medianen", {
+  skip_if_not_installed("arrow")
+  base <- withr::local_tempdir()
+  # a: varieret serie (ingen obs. på medianen); b: 16 af 24 obs. på medianen
+  arrow::write_parquet(data.frame(dato = as.Date("2020-01-01") + 0:23 * 30,
+    vaerdi = rep(c(4, 6), 12), taeller = NA_real_,
+    naevner = NA_real_, enhed = "e"),
+    { dir.create(file.path(base, "a")); file.path(base, "a", "p.parquet") })
+  arrow::write_parquet(data.frame(dato = as.Date("2020-01-01") + 0:23 * 30,
+    vaerdi = c(rep(5, 16), 6:9, 6:9), taeller = NA_real_,
+    naevner = NA_real_, enhed = "e"),
+    { dir.create(file.path(base, "b")); file.path(base, "b", "p.parquet") })
+  idx <- data.frame(diagram_id = c(10L, 20L), indikator_id = 1:2,
+    indikator_navn = c("Varieret", "Flad"), indikator_navn_teknisk = c("a", "b"),
+    datasaet = "d", datapakke = "p", org_id = 5L, org_teknisk = "E",
+    org_navn = "E", org_niveau = 5L, overafdeling = "OA", afdeling = NA,
+    afsnit = NA, stringsAsFactors = FALSE)
+  db <- make_fake_signal_db(base, idx)
+  shiny::testServer(mod_signal_review_server, args = list(db = db), {
+    session$setInputs(parquet_dir = base, window_mode = "all", window_n = 24,
+      f_overafdeling = "", f_afsnit = "", f_datapakke = "", f_datasaet = "",
+      f_indikator_navn = "", scan = 1)
+    drain_scan()
+    expect_identical(
+      scanned_list()$majority_on_median[match(c(10L, 20L),
+        scanned_list()$diagram_id)],
+      c(FALSE, TRUE))
+    # vis alle ok-scannede, så testen ikke afhænger af signal-status
+    session$setInputs(show_no_signal = TRUE)
+    expect_setequal(view_list()$diagram_id, c(10L, 20L))
+    session$setInputs(hide_median_tied = TRUE)
+    expect_equal(view_list()$diagram_id, 10L)
+    session$setInputs(hide_median_tied = FALSE)
+    expect_setequal(view_list()$diagram_id, c(10L, 20L))
+  })
+})

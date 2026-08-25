@@ -204,6 +204,13 @@ scan_diagram <- function(row, base_path, medians_df, variants_df, window_n = NUL
               n_obs = length(unique(as.Date(slice$dato))), slice = slice,
               qic_result = sig$qic_result, summary = sig$summary_all,
               n_ignored_breaks = as.integer(n_ignored),
+              # Halvdelen el. flere obs. på medianen (pr. fase) — driver
+              # "skjul median-flade diagrammer"-filteret i gennemgangen.
+              # Beregnes på median uanset at grafens centerlinje kan være
+              # auto-skiftet til gennemsnit (se scan_majority_on_median).
+              majority_on_median = scan_majority_on_median(
+                sig$qic_result$qic_data
+              ),
               aggregated = aggregated, n_agg_units = as.integer(n_agg_units)
             )
           }
@@ -303,24 +310,74 @@ preview_break_parts <- function(diagram_id, base_meds, extra_date, x_dates) {
   resolve_median_breaks(diagram_id, all_meds, x_dates)
 }
 
+#' Ligger halvdelen eller flere af observationerne på medianen?
+#'
+#' Spejler BFHcharts' auto-mean-regel (detect_majority_at_median_per_phase):
+#' pr. fase tælles endelige, inkluderede observationer, og fasen udløser når
+#' mindst threshold af dem ligger (|y - median| < tol) på FASENS median.
+#' Medianen beregnes ALTID her ud fra y-værdierne — diagrammets cl kan netop
+#' i disse tilfælde være auto-skiftet til gennemsnit (BFHcharts), og
+#' filter-reglen skal se på medianen, ikke den justerede centerlinje.
+#' Konstant-serier (alle ens — BFHcharts' no-variation-sti, som auto-mean
+#' springer over) udløser også: ratio er 1.
+#' @param qic_data bfh_qic-resultatets $qic_data (kolonner y, evt. part/include)
+#' @return TRUE hvis mindst én fase udløser; FALSE ellers (også NULL/tom)
+#' @noRd
+scan_majority_on_median <- function(qic_data, threshold = 0.5, tol = 1e-9) {
+  if (is.null(qic_data) || !is.data.frame(qic_data) ||
+      !"y" %in% names(qic_data) || nrow(qic_data) == 0) {
+    return(FALSE)
+  }
+  part <- if ("part" %in% names(qic_data)) {
+    qic_data$part
+  } else {
+    rep(1L, nrow(qic_data))
+  }
+  include <- if ("include" %in% names(qic_data)) {
+    !is.na(qic_data$include) & qic_data$include
+  } else {
+    rep(TRUE, nrow(qic_data))
+  }
+  for (p in unique(part)) {
+    y <- qic_data$y[part %in% p & include]
+    y <- y[is.finite(y)]
+    if (length(y) == 0) next
+    med <- stats::median(y)
+    if (sum(abs(y - med) < tol) / length(y) >= threshold) {
+      return(TRUE)
+    }
+  }
+  FALSE
+}
+
 #' Filtrér den scannede liste til visning. show_all = FALSE → kun diagrammer
 #' med signal; TRUE → alle rækker (scanned indeholder kun ok-scannede —
 #' ingen_data/fejl optages aldrig, de har ingen tegnbar graf).
 #' show_breaks = TRUE medtager desuden diagrammer UDEN signal der har
 #' eksisterende median-knæk (has_breaks-kolonnen); mangler kolonnen
 #' (ældre kaldere) degraderes til kun-signal.
+#' hide_median_tied = TRUE skjuler diagrammer hvor halvdelen eller flere af
+#' observationerne ligger på medianen (majority_on_median-kolonnen, se
+#' scan_majority_on_median) — gælder i ALLE visningstilstande, også show_all.
+#' Mangler kolonnen (ældre kaldere), skjules intet.
 #' NULL ind → NULL ud (skelner "ej scannet endnu" fra "tom visning").
 #' @noRd
-scan_view_filter <- function(scanned, show_all = FALSE, show_breaks = FALSE) {
+scan_view_filter <- function(scanned, show_all = FALSE, show_breaks = FALSE,
+                             hide_median_tied = FALSE) {
   if (is.null(scanned)) {
     return(NULL)
   }
-  if (isTRUE(show_all)) {
-    return(scanned)
+  keep <- if (isTRUE(show_all)) {
+    rep(TRUE, nrow(scanned))
+  } else {
+    k <- scanned$signal %in% TRUE
+    if (isTRUE(show_breaks) && "has_breaks" %in% names(scanned)) {
+      k <- k | scanned$has_breaks %in% TRUE
+    }
+    k
   }
-  keep <- scanned$signal %in% TRUE
-  if (isTRUE(show_breaks) && "has_breaks" %in% names(scanned)) {
-    keep <- keep | scanned$has_breaks %in% TRUE
+  if (isTRUE(hide_median_tied) && "majority_on_median" %in% names(scanned)) {
+    keep <- keep & !(scanned$majority_on_median %in% TRUE)
   }
   scanned[keep, , drop = FALSE]
 }
