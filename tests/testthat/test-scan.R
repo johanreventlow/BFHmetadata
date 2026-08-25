@@ -543,3 +543,83 @@ test_that("signal_cascade_choices begraenser valg til dimensioner ovenfor", {
   ch4 <- signal_cascade_choices(idx, list(datasaet = c("D1", "D3")))
   expect_identical(ch4$indikator_navn, c("I1", "I3"))
 })
+
+# --- Median-flade serier (halvdelen el. flere obs. på medianen) --------------
+
+test_that("scan_majority_on_median: udløser ved >= halvdelen på medianen", {
+  qd <- function(y, ...) data.frame(y = y, ...)
+  # 16 af 24 på medianen (5) → TRUE
+  expect_true(scan_majority_on_median(qd(c(rep(5, 16), 6:9, 6:9))))
+  # præcis halvdelen (3 af 6 på median 2) → TRUE ("eller flere")
+  expect_true(scan_majority_on_median(qd(c(1, 2, 2, 2, 3, 4))))
+  # konstant serie (alle ens) → TRUE (no-variation ⊂ reglen)
+  expect_true(scan_majority_on_median(qd(rep(7, 10))))
+  # varieret serie uden obs. på medianen → FALSE
+  expect_false(scan_majority_on_median(qd(rep(c(4, 6), 12))))
+  # under halvdelen på medianen → FALSE
+  expect_false(scan_majority_on_median(qd(c(1, 2, 2, 3, 4))))
+})
+
+test_that("scan_majority_on_median: pr. fase, include-maske og kant-input", {
+  # Fase 1 varieret, fase 2 median-flad → TRUE (én udløsende fase er nok)
+  qd2 <- data.frame(y = c(1, 2, 3, 4, 5, 5, 5, 6),
+                    part = c(1, 1, 1, 1, 2, 2, 2, 2))
+  expect_true(scan_majority_on_median(qd2))
+  # Samme serie i ÉN fase: median 4.5, ingen obs. på den → FALSE
+  expect_false(scan_majority_on_median(data.frame(y = c(1, 2, 3, 4, 5, 5, 5, 6))))
+  # include = FALSE-rækker tæller ikke med (hverken tæller eller nævner):
+  # uden masken er 4 af 8 på medianen (5) → TRUE; med masken 1 af 5 → FALSE
+  y4 <- c(5, 5, 5, 5, 1, 2, 3, 9)
+  expect_true(scan_majority_on_median(data.frame(y = y4)))
+  qd3 <- data.frame(y = y4,
+                    include = c(TRUE, FALSE, FALSE, FALSE,
+                                TRUE, TRUE, TRUE, TRUE))
+  expect_false(scan_majority_on_median(qd3))
+  # NULL / tom / manglende y-kolonne → FALSE (aldrig fejl)
+  expect_false(scan_majority_on_median(NULL))
+  expect_false(scan_majority_on_median(data.frame(y = numeric(0))))
+  expect_false(scan_majority_on_median(data.frame(x = 1:3)))
+  # kun NA/ikke-endelige y → FALSE
+  expect_false(scan_majority_on_median(data.frame(y = c(NA_real_, Inf))))
+})
+
+test_that("scan_diagram sætter majority_on_median for median-flad serie", {
+  vdf <- data.frame(org_id = 5L, teknisk = "Afd X", kort = NA, langt = NA,
+                    fra_data = NA, stringsAsFactors = FALSE)
+  mk <- function(vals) data.frame(
+    dato = as.Date("2020-01-01") + seq_along(vals) * 30, vaerdi = vals,
+    taeller = NA_real_, naevner = NA_real_,
+    enhed = "afd x", stringsAsFactors = FALSE)
+  row <- list(diagram_id = 1L, indikator_navn_teknisk = "x", org_id = 5L)
+  flad <- scan_diagram(row, tempdir(), NULL, vdf,
+                       slice_loader = function() mk(c(rep(5, 16), 6:9, 6:9)))
+  expect_equal(flad$status, "ok")
+  expect_true(flad$majority_on_median)
+  vari <- scan_diagram(row, tempdir(), NULL, vdf,
+                       slice_loader = function() mk(rep(c(4, 6), 12)))
+  expect_equal(vari$status, "ok")
+  expect_false(vari$majority_on_median)
+})
+
+test_that("scan_view_filter: hide_median_tied skjuler i alle visningstilstande", {
+  sl <- data.frame(diagram_id = 1:4,
+                   signal = c(TRUE, TRUE, FALSE, FALSE),
+                   has_breaks = c(FALSE, FALSE, TRUE, FALSE),
+                   majority_on_median = c(FALSE, TRUE, TRUE, FALSE))
+  # default-visning (kun signal): flagget signal-diagram skjules
+  expect_equal(scan_view_filter(sl, FALSE, hide_median_tied = TRUE)$diagram_id, 1L)
+  expect_equal(scan_view_filter(sl, FALSE)$diagram_id, 1:2)   # uden filter
+  # + knæk-visning: flagget knæk-diagram skjules også
+  expect_equal(
+    scan_view_filter(sl, FALSE, show_breaks = TRUE, hide_median_tied = TRUE)$diagram_id,
+    1L)
+  # show_all: filteret gælder stadig
+  expect_equal(scan_view_filter(sl, TRUE, hide_median_tied = TRUE)$diagram_id,
+               c(1L, 4L))
+  expect_equal(scan_view_filter(sl, TRUE)$diagram_id, 1:4)
+  # ældre kaldere uden kolonnen: intet skjules
+  expect_equal(
+    scan_view_filter(sl[, c("diagram_id", "signal")], FALSE,
+                     hide_median_tied = TRUE)$diagram_id,
+    1:2)
+})

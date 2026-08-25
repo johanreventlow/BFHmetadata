@@ -54,6 +54,13 @@ mod_signal_review_ui <- function(id) {
         "Vis ogs\u00E5 uden signal, men med median-kn\u00E6k",
         value = FALSE
       ),
+      # Median-flade serier: run chart-reglerne er up\u00E5lidelige n\u00E5r halvdelen
+      # eller flere obs. ligger p\u00E5 medianen (graferne skifter selv til
+      # gennemsnits-centerlinje i de tilf\u00E6lde) \u2014 filteret ser p\u00E5 medianen.
+      checkboxInput(ns("hide_median_tied"),
+        "Skjul: halvdelen el. flere obs. p\u00E5 medianen",
+        value = FALSE
+      ),
       checkboxInput(ns("sort_by_type"),
         "Sort\u00E9r efter signal-type (serie/kryds)",
         value = FALSE
@@ -106,10 +113,15 @@ mod_signal_review_server <- function(
     # Visnings-tilstand (styret via observers, så cursor kan remappes
     # deterministisk ved hvert skifte): all = alle ok-scannede, breaks =
     # medtag knæk-diagrammer uden signal, by_type = sortér efter signal-type.
-    view_state <- reactiveVal(list(all = FALSE, breaks = FALSE, by_type = FALSE))
+    view_state <- reactiveVal(list(
+      all = FALSE, breaks = FALSE, by_type = FALSE, hide_tied = FALSE
+    ))
     .view_of <- function(sl, st) {
       scan_view_sort(
-        scan_view_filter(sl, show_all = st$all, show_breaks = st$breaks),
+        scan_view_filter(sl,
+          show_all = st$all, show_breaks = st$breaks,
+          hide_median_tied = st$hide_tied
+        ),
         by_type = st$by_type
       )
     }
@@ -167,6 +179,10 @@ mod_signal_review_server <- function(
     )
     observeEvent(input$sort_by_type,
       .apply_view_change(list(by_type = isTRUE(input$sort_by_type))),
+      ignoreInit = TRUE
+    )
+    observeEvent(input$hide_median_tied,
+      .apply_view_change(list(hide_tied = isTRUE(input$hide_median_tied))),
       ignoreInit = TRUE
     )
 
@@ -401,6 +417,7 @@ mod_signal_review_server <- function(
         ctx$status[i] <- res$status %||% NA_character_
         ctx$stype[i] <- res$signal_type %||% NA_character_
         ctx$brk[i] <- (res$n_breaks %||% 0L) > 0L
+        ctx$mtied[i] <- isTRUE(res$majority_on_median)
       }
       cache(cc)
       ctx$gi <- ctx$gi + 1L
@@ -415,6 +432,7 @@ mod_signal_review_server <- function(
       sl$status <- ctx$status[ok_idx]
       sl$signal_type <- ctx$stype[ok_idx]
       sl$has_breaks <- ctx$brk[ok_idx] %in% TRUE
+      sl$majority_on_median <- ctx$mtied[ok_idx] %in% TRUE
       scanned_list(sl)
       scan_progress(list(
         done = ctx$gi - 1L, total = length(ctx$groups),
@@ -500,7 +518,8 @@ mod_signal_review_server <- function(
           sig = rep(NA, nrow(cand)),
           status = rep(NA_character_, nrow(cand)),
           stype = rep(NA_character_, nrow(cand)),
-          brk = rep(FALSE, nrow(cand))
+          brk = rep(FALSE, nrow(cand)),
+          mtied = rep(FALSE, nrow(cand))
         ),
         envir = new.env(parent = emptyenv())
       )
@@ -509,6 +528,7 @@ mod_signal_review_server <- function(
       empty$status <- character(0)
       empty$signal_type <- character(0)
       empty$has_breaks <- logical(0)
+      empty$majority_on_median <- logical(0)
       scanned_list(empty)
       scanned_n(wn) # vindue låst til denne scan (bruges af .scan_of_current/Task 7)
       cursor(1L)
@@ -736,6 +756,11 @@ mod_signal_review_server <- function(
         }
         if ("has_breaks" %in% names(sl)) {
           sl$has_breaks[i] <- (res$n_breaks %||% 0L) > 0L
+        }
+        # Et gemt/fjernet knæk ændrer faserne — og dermed hvilke faser der
+        # har halvdelen af obs. på medianen (filteret er pr. fase).
+        if ("majority_on_median" %in% names(sl)) {
+          sl$majority_on_median[i] <- isTRUE(res$majority_on_median)
         }
         scanned_list(sl)
       }

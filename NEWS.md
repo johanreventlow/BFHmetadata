@@ -29,6 +29,13 @@
   grænse), så ingen knæk falder ud ved opgraderingen.
 
 ## Nye features
+* **Signal-gennemgang: filtrér median-flade diagrammer fra visningen.** Nyt
+  afkrydsningsfelt "Skjul: halvdelen el. flere obs. på medianen" skjuler
+  diagrammer, hvor mindst halvdelen af observationerne (pr. fase) ligger på
+  medianen — dér er run chart-reglerne upålidelige, og graferne skifter selv
+  centerlinjen til gennemsnit. Filter-reglen ser altid på medianen (spejler
+  BFHcharts' auto-mean-betingelse, inkl. helt konstante serier) og virker i
+  alle visningstilstande, også "Vis alle".
 * **Gem-og-reload-loop i redigerings-grids er stoppet (ekko-værn).** excelR's
   widget sender ved hvert re-render selv payloads på gridets Shiny-input (et
   data-ekko plus et selektions-ekko når markøren genskabes), og modulerne
