@@ -2,6 +2,20 @@
 app_server <- function(input, output, session) {
   pool <- db_connect()
   onStop(function() pool::poolClose(pool))
+
+  # Flydende reconnect: tabes websocket'en (dvale/laast maskine/timeout)
+  # undertrykker bfh-reconnect.js det moerke overlay og genindlaeser selv,
+  # naar serveren svarer igen — og beder her om at faa den fane genaabnet,
+  # brugeren stod paa (gemt i sessionStorage). allowReconnect(TRUE) er no-op
+  # ved lokal koersel, men giver seamless resume paa hosting der
+  # understoetter det (Connect/Shiny Server Pro).
+  session$allowReconnect(TRUE)
+  observeEvent(input$bfh_restore_nav, {
+    fane <- input$bfh_restore_nav
+    if (is.character(fane) && length(fane) == 1L && nzchar(fane)) {
+      bslib::nav_select("nav", fane, session = session)
+    }
+  })
   # Delt cache-lager: alle modulers læse-accessors deler cache, og enhver
   # skrivning (uanset modul) rydder den → ingen stale visning på tværs af faner.
   store <- new_cache_store()

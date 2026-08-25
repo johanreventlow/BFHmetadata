@@ -29,6 +29,17 @@
   grænse), så ingen knæk falder ud ved opgraderingen.
 
 ## Nye features
+* **Flydende genoptagelse efter tabt forbindelse.** Når websocket-forbindelsen
+  til Shiny-processen tabes (dvale, låst maskine, netværksskift), lagde Shiny
+  et mørkt overlay over appen, som derefter var død indtil manuel
+  genindlæsning. Nu undertrykkes overlayet; en diskret toast i hjørnet viser
+  "genopretter…", klienten poller serveren og genindlæser siden automatisk,
+  når den svarer igen — og den fane, brugeren stod på, genåbnes (gemt i
+  sessionStorage). Står en redigerings-modal åben, genindlæses der ikke bag
+  om ryggen på brugeren: toasten tilbyder i stedet en "Genindlæs"-knap, så
+  halvfærdig indtastning kan kopieres først. `session$allowReconnect(TRUE)`
+  er samtidig slået til, så hosting med reconnect-understøttelse (Connect/
+  Shiny Server Pro) kan genoptage sessionen helt uden genindlæsning.
 * Appen kan nu installeres og bruges til database-CRUD uden R-pakken Arrow og
   uden lokale parquet-data. Signal-gennemgangen viser særskilt, om data mangler,
   Arrow mangler, eller enkelte diagrammer har læsefejl; disse tilstande påvirker

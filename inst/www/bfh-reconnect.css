@@ -1,0 +1,33 @@
+/* Backup for e.preventDefault() i bfh-reconnect.js: overlayet maa aldrig
+   moerklaegge appen -- reconnect-toasten giver feedback i stedet. */
+#shiny-disconnected-overlay { display: none !important; }
+
+#bfh-reconnect-toast {
+  position: fixed;
+  bottom: 1rem;
+  right: 1rem;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .5rem .75rem;
+  border-radius: .5rem;
+  background: rgba(33, 37, 41, .92);
+  color: #fff;
+  font-size: .875rem;
+  box-shadow: 0 .25rem .75rem rgba(0, 0, 0, .25);
+}
+
+.bfh-reconnect-spinner {
+  display: inline-block;
+  width: .9rem;
+  height: .9rem;
+  border: 2px solid rgba(255, 255, 255, .35);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: bfh-reconnect-spin .8s linear infinite;
+}
+
+@keyframes bfh-reconnect-spin {
+  to { transform: rotate(360deg); }
+}
