@@ -286,7 +286,7 @@ build_median_delete_sql <- function() {
 # Kolonner der redigeres i diagram-formularen (rækkefølge = parameter-orden).
 DIAGRAM_COLS <- c(
   "indikator", "organisatorisk_navn_teknisk", "diagram_type",
-  "periode_aggregering", "indgaar_i_aggregering",
+  "periode_aggregering", "indgaar_i_aggregering", "aggreger_egne_og_boern",
   "diagram_aktivt", "direktionens_tavle", "maalgruppe"
 )
 
@@ -315,6 +315,7 @@ build_diagram_admin_sql <- function() {
     'SELECT d."id" AS diagram_id, d."indikator", ',
     'd."organisatorisk_navn_teknisk", d."diagram_type", ',
     'd."periode_aggregering", d."indgaar_i_aggregering", ',
+    'd."aggreger_egne_og_boern", ',
     'd."diagram_aktivt", d."direktionens_tavle", d."maalgruppe", ',
     'i."indikator_navn", ',
     'COALESCE(o."organisatorisk_navn_langt", o."organisatorisk_navn_teknisk") ',

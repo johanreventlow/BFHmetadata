@@ -15,6 +15,7 @@ fake_diagram_db <- function(dup_count = 0L, median_count = 0L) {
     diagram_type = c(1L, 2L),
     periode_aggregering = c("måned", NA),
     indgaar_i_aggregering = c(TRUE, FALSE),
+    aggreger_egne_og_boern = c(FALSE, FALSE),
     diagram_aktivt = c(TRUE, FALSE),
     direktionens_tavle = c(FALSE, FALSE),
     maalgruppe = c(1L, NA),
@@ -608,4 +609,39 @@ test_that("diagram-grid: indikator-dropdown filtreres per raekke paa datasaet", 
     expect_equal(h$data$datasaetCol, 2)
     expect_equal(h$data$indikatorCol, 3)
   })
+})
+
+test_that("aggreger_egne_og_boern: checkbox-kolonne i grid + inline-gem + modal-collect", {
+  db <- fake_diagram_db()
+  testServer(mod_diagram_server, args = list(id = "diagram", db = db), {
+    w <- jsonlite::fromJSON(output$tbl, simplifyVector = FALSE)
+    cols <- w$x$columns
+    titles <- vapply(cols, function(c) c$title, "")
+    expect_true("Egne+børn" %in% titles)
+    expect_identical(
+      vapply(cols, function(c) c$type, "")[titles == "Egne+børn"], "checkbox")
+  })
+  testServer(mod_diagram_server, args = list(db = db), {
+    session$setInputs(filter_status = "alle")
+    session$setInputs(tbl = diagram_grid_edit(
+      isolate(filtered()), 1L, "Egne+børn", "TRUE"))
+    upd <- db$.calls()$updated
+    expect_identical(upd$id, 1L)
+    expect_true(upd$values$aggreger_egne_og_boern)
+    # urørte felter bevaret
+    expect_true(upd$values$indgaar_i_aggregering)
+    expect_identical(upd$values$indikator, 10L)
+  })
+  # Modal-formularen samler flaget med (og udelades → FALSE, aldrig NA)
+  vals <- .collect_diagram_form(list(d_indikator = "5",
+    d_aggreger_egne_og_boern = TRUE))
+  expect_true(vals$aggreger_egne_og_boern)
+  expect_identical(names(vals), DIAGRAM_COLS)
+})
+
+test_that("diagram_excel_data: manglende aggreger_egne_og_boern-kolonne → FALSE, ej fejl", {
+  d <- fake_diagram_db()$list_diagrams_admin()
+  d$aggreger_egne_og_boern <- NULL
+  g <- diagram_excel_data(d)
+  expect_identical(g[["Egne+børn"]], c(FALSE, FALSE))
 })

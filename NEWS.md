@@ -29,6 +29,11 @@
   grænse), så ingen knæk falder ud ved opgraderingen.
 
 ## Nye features
+* **Diagrammer-fanen kan redigere `aggreger_egne_og_boern`.** Ny
+  checkbox-kolonne "Egne+børn" i diagram-grid'et (mellem Aggregering og
+  Aktiv) og et tilsvarende flueben "Aggregér egne data + børn" i
+  opret/redigér-modalen. Ældre admin-udtræk uden kolonnen viser FALSE i
+  stedet for at fejle.
 * **Oprulning: opt-in "egne rækker + børn"
   (`tblDiagrammer.aggreger_egne_og_boern`).** Hidtil vandt en enheds egne
   rådata alene: havde fx en afdeling egne rækker (henvisninger uden kendt

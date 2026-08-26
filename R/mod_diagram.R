@@ -78,6 +78,11 @@
     div(class = "d-flex flex-wrap gap-4 pt-1",
       checkboxInput(ns("d_indgaar_i_aggregering"), "Indg\u00E5r i aggregering",
         value = isTRUE(v("indgaar_i_aggregering"))),
+      # Opt-in: enhedens serie = egne r\u00E6kker + oprullede b\u00F8rn (m\u00E5 ALDRIG
+      # s\u00E6ttes for kilder der selv leverer flere org-niveauer \u2014 dobbeltt\u00E6ller)
+      checkboxInput(ns("d_aggreger_egne_og_boern"),
+        "Aggreg\u00E9r egne data + b\u00F8rn",
+        value = isTRUE(v("aggreger_egne_og_boern"))),
       checkboxInput(ns("d_diagram_aktivt"), "Diagram aktivt",
         value = isTRUE(v("diagram_aktivt", default = TRUE))),
       checkboxInput(ns("d_direktionens_tavle"), "Direktionens tavle",
@@ -100,6 +105,7 @@
     diagram_type = int_or_na(gv("diagram_type")),
     periode_aggregering = chr_or_na(gv("periode_aggregering")),
     indgaar_i_aggregering = isTRUE(gv("indgaar_i_aggregering")),
+    aggreger_egne_og_boern = isTRUE(gv("aggreger_egne_og_boern")),
     diagram_aktivt = isTRUE(gv("diagram_aktivt")),
     direktionens_tavle = isTRUE(gv("direktionens_tavle")),
     maalgruppe = int_or_na(gv("maalgruppe")))
@@ -110,7 +116,9 @@
   Indikator = "indikator", Enhed = "organisatorisk_navn_teknisk",
   Type = "diagram_type", Periode = "periode_aggregering",
   Målgruppe = "maalgruppe",
-  Aggregering = "indgaar_i_aggregering", Aktiv = "diagram_aktivt",
+  Aggregering = "indgaar_i_aggregering",
+  "Egne+børn" = "aggreger_egne_og_boern",
+  Aktiv = "diagram_aktivt",
   Tavle = "direktionens_tavle"
 )
 
@@ -132,6 +140,9 @@
       as.character(row$periode_aggregering)
     },
     indgaar_i_aggregering = isTRUE(row$indgaar_i_aggregering),
+    # NULL-tolerant (isTRUE(NULL) = FALSE): admin-df'er fra før kolonnen
+    # fandtes må ikke vælte patch-flowet
+    aggreger_egne_og_boern = isTRUE(row$aggreger_egne_og_boern),
     diagram_aktivt = isTRUE(row$diagram_aktivt),
     direktionens_tavle = isTRUE(row$direktionens_tavle),
     maalgruppe = int_or_na(row$maalgruppe)
@@ -154,6 +165,10 @@ diagram_excel_data <- function(d) {
   out[["Periode"]] <- chr_or_empty(d$periode_aggregering)
   out[["Målgruppe"]] <- chr_or_empty(d$maalgruppe)
   out[["Aggregering"]] <- d$indgaar_i_aggregering %in% TRUE
+  # %||%-fallback: ældre admin-df'er uden kolonnen viser blot FALSE frem
+  # for at vælte grid-renderingen
+  out[["Egne+børn"]] <-
+    (d$aggreger_egne_og_boern %||% rep(FALSE, nrow(d))) %in% TRUE
   out[["Aktiv"]] <- d$diagram_aktivt %in% TRUE
   out[["Tavle"]] <- d$direktionens_tavle %in% TRUE
   out
@@ -187,14 +202,14 @@ diagram_excel_columns <- function(d, opts, periode) {
   out <- data.frame(
     title = titles,
     type = c("hidden", "text", "text", rep("dropdown", 5),
-             rep("checkbox", 3)),
-    readOnly = c(TRUE, TRUE, TRUE, rep(FALSE, 8)),
+             rep("checkbox", 4)),
+    readOnly = c(TRUE, TRUE, TRUE, rep(FALSE, 9)),
     align = "left",
     autocomplete = titles %in% c("Indikator", "Enhed"),
     stringsAsFactors = FALSE)
   out$source <- c(rep(list(NA), 3),
                   list(ind_src), list(org_src), list(type_src), list(per_src),
-                  list(mg_src), rep(list(NA), 3))
+                  list(mg_src), rep(list(NA), 4))
   # Fraktil-bredder målt på VISTE labels (ikke id'erne)
   disp <- diagram_excel_data(d)
   disp[["Indikator"]] <- .excel_dropdown_display(disp[["Indikator"]], ind_src)
