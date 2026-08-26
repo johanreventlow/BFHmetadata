@@ -607,10 +607,31 @@ mod_signal_review_server <- function(
       }
       cd <- current_diagram()
       suffix <- if (isTRUE(scan_running())) " (scanner\u2026)" else ""
-      strong(sprintf(
-        "%d/%d%s \u2014 %s \u00B7 %s", cursor(), nrow(sl), suffix,
-        cd$indikator_navn, cd$org_navn
-      ))
+      # Hierarki-kontekst: datas\u00E6t (og evt. indikatorsamling \u2014 indikator-
+      # FK'en peger typisk p\u00E5 en samling under datas\u00E6ttet), s\u00E5 gennemgangen
+      # viser HVOR indikatoren h\u00F8rer til, ikke kun navnet. Defensivt mod
+      # manglende kolonner (\u00E6ldre index-udtr\u00E6k/fixtures) og NA/tomme labels.
+      .lbl <- function(prefix, val) {
+        v <- val %||% NA
+        if (length(v) == 1 && !is.na(v) && nzchar(v)) {
+          sprintf("%s: %s", prefix, v)
+        } else {
+          NULL
+        }
+      }
+      ctx <- c(
+        .lbl("Datas\u00E6t", cd$datasaet),
+        .lbl("Samling", cd$indikatorsamling)
+      )
+      div(
+        strong(sprintf(
+          "%d/%d%s \u2014 %s \u00B7 %s", cursor(), nrow(sl), suffix,
+          cd$indikator_navn, cd$org_navn
+        )),
+        if (length(ctx) > 0) {
+          div(class = "small text-muted", paste(ctx, collapse = " \u00B7 "))
+        }
+      )
     })
 
     # "Seneste N" tæller perioder, ej dage. Vis hvilken enhed N har for det

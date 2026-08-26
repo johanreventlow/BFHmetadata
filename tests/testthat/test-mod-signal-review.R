@@ -1512,3 +1512,51 @@ test_that("hide_median_tied skjuler diagrammer med halvdelen af obs. på mediane
     expect_setequal(view_list()$diagram_id, c(10L, 20L))
   })
 })
+
+test_that("nav-label viser datasæt og evt. indikatorsamling som kontekst", {
+  skip_if_not_installed("arrow")
+  base <- build_fixture()
+  idx <- data.frame(diagram_id = c(1L, 2L), indikator_id = c(1L, 2L),
+    indikator_navn = c("Sig", "Flad"),
+    indikator_navn_teknisk = c("ind_sig", "ind_flat"),
+    datasaet = c("Tryksår-datasæt", "Fald-datasæt"),
+    indikatorsamling = c("Forebyggelige skader", NA),
+    datapakke = "p", org_id = 5L, org_teknisk = "E",
+    org_navn = "E", org_niveau = 5L, overafdeling = "OA", afdeling = NA,
+    afsnit = NA, stringsAsFactors = FALSE)
+  db <- make_fake_signal_db(base, idx)
+  shiny::testServer(mod_signal_review_server, args = list(db = db), {
+    session$setInputs(parquet_dir = base, window_mode = "all", window_n = 24,
+      f_overafdeling = "", f_afsnit = "", f_datapakke = "", f_datasaet = "",
+      f_indikator_navn = "", scan = 1)
+    drain_scan()
+    session$setInputs(show_no_signal = TRUE)     # begge diagrammer i visning
+    html <- as.character(output$nav_label$html)
+    expect_match(html, "Datasæt: Tryksår-datasæt", fixed = TRUE)
+    expect_match(html, "Samling: Forebyggelige skader", fixed = TRUE)
+    session$setInputs(next_ = 1)                 # diagram uden samling
+    html2 <- as.character(output$nav_label$html)
+    expect_match(html2, "Datasæt: Fald-datasæt", fixed = TRUE)
+    expect_no_match(html2, "Samling:", fixed = TRUE)
+  })
+})
+
+test_that("nav-label tåler index uden indikatorsamling-kolonne (ældre udtræk)", {
+  skip_if_not_installed("arrow")
+  base <- build_fixture()
+  idx <- data.frame(diagram_id = 1L, indikator_id = 1L,
+    indikator_navn = "Sig", indikator_navn_teknisk = "ind_sig",
+    datasaet = "d", datapakke = "p", org_id = 5L, org_teknisk = "E",
+    org_navn = "E", org_niveau = 5L, overafdeling = "OA", afdeling = NA,
+    afsnit = NA, stringsAsFactors = FALSE)
+  db <- make_fake_signal_db(base, idx)
+  shiny::testServer(mod_signal_review_server, args = list(db = db), {
+    session$setInputs(parquet_dir = base, window_mode = "all", window_n = 24,
+      f_overafdeling = "", f_afsnit = "", f_datapakke = "", f_datasaet = "",
+      f_indikator_navn = "", scan = 1)
+    drain_scan()
+    html <- as.character(output$nav_label$html)
+    expect_match(html, "Datasæt: d", fixed = TRUE)
+    expect_no_match(html, "Samling:", fixed = TRUE)
+  })
+})

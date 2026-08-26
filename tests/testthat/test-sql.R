@@ -155,6 +155,9 @@ test_that("build_diagram_index_sql joiner indikator/hierarki/datapakke/org + org
   expect_match(sql, '"tblOrganisationStruktur"')
   expect_match(sql, "datapakke") # forælder-hierarki
   expect_match(sql, "datasaet")
+  # Indikatorsamling vises som kontekst i signal-gennemgangens nav-label
+  expect_match(sql, "label_indikatorsamling AS indikatorsamling", fixed = TRUE)
+  expect_match(sql, "WHERE niveau_navn = 'Indikatorsamling'", fixed = TRUE)
   expect_match(sql, "indikator_navn_teknisk")
   # Perioden STYRER signalberegningen (aggregering før signal) — uden den
   # beregnes signalet på en anden serie end BFHddl tegner.

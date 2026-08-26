@@ -29,6 +29,12 @@
   grænse), så ingen knæk falder ud ved opgraderingen.
 
 ## Nye features
+* **Signal-gennemgang viser indikatorens hierarki-kontekst.** Under
+  navigations-overskriften ("3/12 — Indikator · Enhed") står nu en dæmpet
+  linje med "Datasæt: …" og — når indikatoren hører til en — "Samling: …"
+  (indikatorsamlingen under datasættet), så man kan se hvor indikatoren
+  hører til, ikke kun navnet. Diagram-indekset beriges med
+  indikatorsamlingen via det niveau-bevidste forfader-opslag.
 * **Diagrammer-fanen kan redigere `aggreger_egne_og_boern`.** Ny
   checkbox-kolonne "Egne+børn" i diagram-grid'et (mellem Aggregering og
   Aktiv) og et tilsvarende flueben "Aggregér egne data + børn" i

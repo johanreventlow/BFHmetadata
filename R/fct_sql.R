@@ -29,7 +29,11 @@
     ' max("hierarki_navn") FILTER (WHERE niveau_navn = \'Datapakke\')',
     " AS label_datapakke,",
     ' max("hierarki_navn") FILTER (WHERE niveau_navn = \'Datas\u00E6t\')',
-    " AS label_datasaet",
+    " AS label_datasaet,",
+    # Indikatorsamling: niveauet UNDER datas\u00E6ttet (indikator-FK'en peger
+    # typisk direkte p\u00E5 en samling) \u2014 vises som kontekst i signal-gennemgang
+    ' max("hierarki_navn") FILTER (WHERE niveau_navn = \'Indikatorsamling\')',
+    " AS label_indikatorsamling",
     " FROM h_anc GROUP BY start_id",
     ")"
   )
@@ -223,6 +227,7 @@ build_diagram_index_sql <- function() {
     # fill_empty_periods, så signalet beregnes på samme serie som tegnes
     'i."nulfyld_tomme_perioder", ',
     "h_lvl.label_datasaet AS datasaet, h_lvl.label_datapakke AS datapakke, ",
+    "h_lvl.label_indikatorsamling AS indikatorsamling, ",
     'o."Id" AS org_id, o."organisatorisk_navn_teknisk" AS org_teknisk, ',
     'o."organisatorisk_navn_langt" AS org_navn, o."organisatorisk_niveau" AS org_niveau, ',
     "lvl.overafdeling, lvl.afdeling, lvl.afsnit ",
