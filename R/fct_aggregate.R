@@ -2,6 +2,9 @@
 # hierarki-oprulning til signal-gennemgang. Semantik pinnet af
 # tests/testthat/test-aggregate.R — aendres oprulningen i BFHddl, skal
 # denne fil OG testene synkroniseres med kilden.
+# Synkroniseret 2026-08-26 med BFHddl-branchen claude/aggreger-egne-og-boern:
+# opt-in-flaget tblDiagrammer.aggreger_egne_og_boern (egne raekker + boern,
+# se .egne_og_boern_flag).
 
 # Har denne gren mindst een efterkommer (eller noden selv) med
 # indgaar == TRUE for indikatoren?
@@ -50,6 +53,25 @@
     }
   }
   FALSE
+}
+
+# Har enheden opt-in-flaget "egne raekker + boern" for indikatoren?
+#
+# tblDiagrammer.aggreger_egne_og_boern (BFHddl-spejlet semantik): TRUE paa
+# en enheds diagram-raekke betyder, at enhedens serie er egne raadata-raekker
+# PLUS oprulning af flaggede boern - i stedet for at egne raekker vinder
+# alene. Manglende kolonne (aeldre flag-udtraek) -> FALSE (uaendret adfaerd).
+#
+# @noRd
+.egne_og_boern_flag <- function(org_id, indikator_id, agg_flags) {
+  if (is.null(agg_flags) || !"egne_og_boern" %in% names(agg_flags)) {
+    return(FALSE)
+  }
+  rows <- agg_flags[
+    agg_flags$org_id %in% org_id & agg_flags$indikator_id %in% indikator_id, ,
+    drop = FALSE
+  ]
+  any(rows$egne_og_boern %in% TRUE)
 }
 
 # Find aggregat-boern for et center og en indikator
@@ -212,22 +234,39 @@ aggregate_slice_for_center <- function(full_slice, center_org_id, indikator_id,
 
     variants <- enhed_variants_for(variants_df, kid)
     res <- slice_filter_enhed(full_slice, variants)
+    kid_enhed <- if (length(variants) > 0) {
+      variants[[1]]
+    } else {
+      as.character(kid)
+    }
 
     # Barnet mangler egne data - forsoeg rekursivt at aggregere dets
     # undertrae (uanset om barnet var TRUE-flagget eller gennemfald;
     # kilden skelner ikke her, jf. data_loader.R:817-820).
     if ((is.null(res) || nrow(res) == 0) && max_depth > 1L) {
-      kid_enhed <- if (length(variants) > 0) {
-        variants[[1]]
-      } else {
-        as.character(kid)
-      }
       res <- aggregate_slice_for_center(
         full_slice, kid, indikator_id, kid_enhed,
         org_struct, agg_flags, variants_df,
         max_depth = max_depth - 1L,
         .visited = visited
       )
+    } else if (!is.null(res) && nrow(res) > 0 && max_depth > 1L &&
+               .egne_og_boern_flag(kid, indikator_id, agg_flags)) {
+      # Opt-in (aggreger_egne_og_boern paa barnets raekke): barnet har egne
+      # data, OG dets undertrae skal laegges oveni (BFHddl-spejlet
+      # semantik). Uden flaget vinder egne data alene - default, som
+      # beskytter kilder der selv leverer flere org-niveauer.
+      subtree <- aggregate_slice_for_center(
+        full_slice, kid, indikator_id, kid_enhed,
+        org_struct, agg_flags, variants_df,
+        max_depth = max_depth - 1L,
+        .visited = visited
+      )
+      if (!is.null(subtree) && nrow(subtree) > 0) {
+        # bind_rows er nok: aggregate_child_data summerer alle parts pr.
+        # dato til sidst.
+        res <- dplyr::bind_rows(res, subtree)
+      }
     }
     res
   })

@@ -661,3 +661,33 @@ test_that("scan_diagram rapporterer n_na_periods for slice med NA", {
   expect_equal(res$status, "ok")
   expect_identical(res$n_na_periods, 1L)
 })
+
+test_that("scan_diagram: aggreger_egne_og_boern kombinerer egne raekker og boern", {
+  os <- data.frame(id = c(12L, 184L), parent_id = c(NA_integer_, 12L))
+  fl <- data.frame(org_id = c(12L, 184L), indikator_id = 7L,
+                   indgaar = TRUE, egne_og_boern = c(TRUE, FALSE))
+  vdf <- data.frame(org_id = c(12L, 184L),
+                    teknisk = c("Afd Y", "Afsnit YAMB"),
+                    kort = NA, langt = NA, fra_data = NA,
+                    stringsAsFactors = FALSE)
+  d <- as.Date("2020-01-01") + 0:11 * 30
+  df <- rbind(
+    data.frame(dato = d, taeller = 1, naevner = NA_real_, enhed = "Afd Y"),
+    data.frame(dato = d, taeller = 2, naevner = NA_real_,
+               enhed = "Afsnit YAMB"))
+  row <- list(diagram_id = 1L, indikator_navn_teknisk = "x", org_id = 12L,
+              indikator_id = 7L)
+  res <- scan_diagram(row, tempdir(), NULL, vdf, slice_loader = function() df,
+                      org_struct = os, agg_flags = fl)
+  expect_equal(res$status, "ok")
+  expect_true(res$aggregated)
+  expect_true(all(res$slice$taeller == 3))    # egne (1) + barn (2) pr. dato
+  # Uden flaget: kun egne raekker (uaendret adfaerd)
+  fl0 <- fl
+  fl0$egne_og_boern <- FALSE
+  res0 <- scan_diagram(row, tempdir(), NULL, vdf, slice_loader = function() df,
+                       org_struct = os, agg_flags = fl0)
+  expect_equal(res0$status, "ok")
+  expect_false(isTRUE(res0$aggregated))
+  expect_true(all(res0$slice$taeller == 1))
+})

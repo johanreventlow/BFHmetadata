@@ -214,3 +214,35 @@ test_that("aggregate_slice_for_center: cyklisk org-trae terminerer rent (.visite
 
   expect_null(aggregate_slice_for_center(slice, 1L, 9L, "center", os, fl, vr))
 })
+
+# --- aggreger_egne_og_boern (opt-in: egne raekker + boern) --------------------
+
+test_that("aggregate_slice_for_center: egne_og_boern-flag laegger undertrae oveni egne data", {
+  os <- .os(2, 1,  4, 2,  5, 2)               # 1 -> 2 -> {4, 5}
+  fl2 <- data.frame(org_id = c(2L, 4L, 5L), indikator_id = 9L,
+                    indgaar = TRUE, egne_og_boern = c(TRUE, FALSE, FALSE))
+  vr <- .variants(list(2L, "afd_a"), list(4L, "afsnit_a"), list(5L, "afsnit_b"))
+  slice <- data.frame(
+    dato = as.Date("2024-01-01"),
+    enhed = c("afd_a", "afsnit_a", "afsnit_b"),
+    taeller = c(5, 1, 3), naevner = c(10, 10, 10))
+  out <- aggregate_slice_for_center(slice, 1L, 9L, "center", os, fl2, vr)
+  expect_equal(out$taeller, 9)                # 5 (egne) + 1 + 3 (undertrae)
+  expect_equal(out$naevner, 30)
+  # Uden flaget vinder egne raekker alene (uaendret kontrakt — pinner
+  # beskyttelsen af kilder der selv leverer flere org-niveauer)
+  fl_old <- .fl(2, 9, TRUE,  4, 9, TRUE,  5, 9, TRUE)
+  out_old <- aggregate_slice_for_center(slice, 1L, 9L, "center", os, fl_old, vr)
+  expect_equal(out_old$taeller, 5)
+  expect_equal(out_old$naevner, 10)
+})
+
+test_that(".egne_og_boern_flag: TRUE kun ved eksplicit flag; manglende kolonne -> FALSE", {
+  fl <- data.frame(org_id = c(2L, 3L), indikator_id = 9L,
+                   indgaar = TRUE, egne_og_boern = c(TRUE, FALSE))
+  expect_true(.egne_og_boern_flag(2L, 9L, fl))
+  expect_false(.egne_og_boern_flag(3L, 9L, fl))
+  expect_false(.egne_og_boern_flag(2L, 8L, fl))     # anden indikator
+  expect_false(.egne_og_boern_flag(2L, 9L, .fl(2, 9, TRUE))) # kolonne mangler
+  expect_false(.egne_og_boern_flag(2L, 9L, NULL))
+})

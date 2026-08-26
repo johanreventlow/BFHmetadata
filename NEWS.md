@@ -29,6 +29,17 @@
   grænse), så ingen knæk falder ud ved opgraderingen.
 
 ## Nye features
+* **Oprulning: opt-in "egne rækker + børn"
+  (`tblDiagrammer.aggreger_egne_og_boern`).** Hidtil vandt en enheds egne
+  rådata alene: havde fx en afdeling egne rækker (henvisninger uden kendt
+  afsnit), taltes afsnittenes data hverken med i afdelingens serie eller i
+  hospitalstotalen. Med flaget sat på enhedens diagram-række lægges
+  undertræets aggregat oveni de egne rækker — synkroniseret 1:1 med BFHddl
+  (branch `claude/aggreger-egne-og-boern`), så signal-gennemgangen ser
+  samme serier som produktionsgraferne. Default FALSE = præcis hidtidig
+  adfærd (pinnet af tests); migration
+  `migration/09_aggreger_egne_og_boern.sql`. Flaget er sat for de 9
+  afdelings-rækker på "Henvist til rygestopkursus".
 * **Signal-gennemgang: NA-alarm.** Perioder, hvis beregningsgrundlag
   indeholder NA (fx en bidragyder med eksplicit manglende tal i en periode
   ved hierarki-oprulning, hvor summeringen bevidst bruger `na.rm = FALSE`),

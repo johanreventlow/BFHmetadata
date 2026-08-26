@@ -152,6 +152,32 @@ scan_diagram <- function(row, base_path, medians_df, variants_df, window_n = NUL
             NULL
           }
           aggregated <- !is.null(slice) && nrow(slice) > 0
+        } else if (!is.null(org_struct) && !is.null(agg_flags) &&
+                   "taeller" %in% names(slice) && any(!is.na(slice$taeller)) &&
+                   .egne_og_boern_flag(row$org_id, row$indikator_id,
+                                       agg_flags)) {
+          # Opt-in (aggreger_egne_og_boern paa diagrammets raekke): enheden
+          # HAR egne raekker, og boerne-aggregatet skal laegges oveni
+          # (BFHddl-spejlet semantik, pipeline 5.1b). Kun taelle-/rate-
+          # serier - vaerdi-serier kan ikke summeres. agg_kids saettes foer
+          # kaldet, saa n_agg_units nedenfor viser antal bidragydere.
+          agg_kids <- find_aggregation_children(
+            row$org_id, row$indikator_id, org_struct, agg_flags
+          )
+          if (length(agg_kids) > 0) {
+            agg <- aggregate_slice_for_center(
+              full, row$org_id, row$indikator_id,
+              row$org_teknisk %||% as.character(row$org_id),
+              org_struct, agg_flags, variants_df
+            )
+            if (!is.null(agg) && nrow(agg) > 0) {
+              slice <- aggregate_child_data(
+                dplyr::bind_rows(slice, agg),
+                center_enhed = row$org_teknisk %||% as.character(row$org_id)
+              )
+              aggregated <- TRUE
+            }
+          }
         }
         if (is.null(slice) || nrow(slice) == 0) {
           empty("ingen_data")

@@ -453,7 +453,10 @@ build_aggregation_flags_sql <- function() {
   paste0(
     'SELECT "organisatorisk_navn_teknisk" AS org_id, ',
     '"indikator" AS indikator_id, ',
-    '"indgaar_i_aggregering" AS indgaar FROM "tblDiagrammer"'
+    '"indgaar_i_aggregering" AS indgaar, ',
+    # Opt-in: enhedens serie = egne rækker + oprullede børn (se
+    # fct_aggregate.R; migration/09_aggreger_egne_og_boern.sql)
+    '"aggreger_egne_og_boern" AS egne_og_boern FROM "tblDiagrammer"'
   )
 }
 

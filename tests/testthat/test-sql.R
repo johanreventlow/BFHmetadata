@@ -385,6 +385,8 @@ test_that("build_aggregation_flags_sql henter flag pr. diagram-raekke UDEN aktiv
   expect_match(s, '"organisatorisk_navn_teknisk" AS org_id', fixed = TRUE)
   expect_match(s, '"indikator" AS indikator_id', fixed = TRUE)
   expect_match(s, '"indgaar_i_aggregering" AS indgaar', fixed = TRUE)
+  # Opt-in-flaget egne-raekker+boern skal med (BFHddl-spejlet semantik)
+  expect_match(s, '"aggreger_egne_og_boern" AS egne_og_boern', fixed = TRUE)
   expect_no_match(s, "diagram_aktivt") # BFHddl laeser flag med active_only=FALSE
 })
 
