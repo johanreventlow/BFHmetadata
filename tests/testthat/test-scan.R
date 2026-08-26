@@ -623,3 +623,41 @@ test_that("scan_view_filter: hide_median_tied skjuler i alle visningstilstande",
                      hide_median_tied = TRUE)$diagram_id,
     1:2)
 })
+
+# --- NA-alarm (perioder med NA i beregningsgrundlaget) -----------------------
+
+test_that("scan_na_periods spejler compute_signals kolonnevalg", {
+  d <- as.Date("2020-01-01") + 0:3 * 30
+  # Rate-serie: NA i tæller ELLER nævner tæller perioden med
+  rate <- data.frame(dato = d, taeller = c(1, NA, 3, 4),
+                     naevner = c(10, 10, NA, 10))
+  expect_identical(scan_na_periods(rate), 2L)
+  # Værdi-serie (nævner alle-NA → værdi-kolonnen vælges)
+  vaerdi <- data.frame(dato = d, vaerdi = c(1, NA, 3, 4),
+                       taeller = NA_real_, naevner = NA_real_)
+  expect_identical(scan_na_periods(vaerdi), 1L)
+  # Ren tælle-serie (hverken nævner-data eller værdi-kolonne)
+  taelle <- data.frame(dato = d, taeller = c(1, 2, NA, 4))
+  expect_identical(scan_na_periods(taelle), 1L)
+  # Flere NA-rækker på SAMME dato = én periode
+  dup <- data.frame(dato = d[c(1, 1, 2)], taeller = c(NA, NA, 5))
+  expect_identical(scan_na_periods(dup), 1L)
+  # Ingen NA / tomme / ukendte input → 0, aldrig fejl
+  expect_identical(scan_na_periods(data.frame(dato = d, taeller = 1:4)), 0L)
+  expect_identical(scan_na_periods(NULL), 0L)
+  expect_identical(scan_na_periods(data.frame(dato = d)[0, , drop = FALSE]), 0L)
+  expect_identical(scan_na_periods(data.frame(x = 1:3)), 0L)
+})
+
+test_that("scan_diagram rapporterer n_na_periods for slice med NA", {
+  vdf <- data.frame(org_id = 5L, teknisk = "Afd X", kort = NA, langt = NA,
+                    fra_data = NA, stringsAsFactors = FALSE)
+  vals <- c(10, 12, NA, 11, rep(c(9, 13), 10))
+  df <- data.frame(dato = as.Date("2020-01-01") + seq_along(vals) * 30,
+                   vaerdi = vals, taeller = NA_real_, naevner = NA_real_,
+                   enhed = "afd x", stringsAsFactors = FALSE)
+  row <- list(diagram_id = 1L, indikator_navn_teknisk = "x", org_id = 5L)
+  res <- scan_diagram(row, tempdir(), NULL, vdf, slice_loader = function() df)
+  expect_equal(res$status, "ok")
+  expect_identical(res$n_na_periods, 1L)
+})

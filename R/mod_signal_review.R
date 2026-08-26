@@ -82,6 +82,7 @@ mod_signal_review_ui <- function(id) {
     ),
     uiOutput(ns("agg_badge")),
     uiOutput(ns("break_warning")),
+    uiOutput(ns("na_warning")),
     ggiraph::girafeOutput(ns("chart"), height = "420px"),
     div(class = "small", tableOutput(ns("phase_stats"))),
     hr(),
@@ -418,6 +419,7 @@ mod_signal_review_server <- function(
         ctx$stype[i] <- res$signal_type %||% NA_character_
         ctx$brk[i] <- (res$n_breaks %||% 0L) > 0L
         ctx$mtied[i] <- isTRUE(res$majority_on_median)
+        ctx$nna[i] <- as.integer(res$n_na_periods %||% 0L)
       }
       cache(cc)
       ctx$gi <- ctx$gi + 1L
@@ -433,13 +435,15 @@ mod_signal_review_server <- function(
       sl$signal_type <- ctx$stype[ok_idx]
       sl$has_breaks <- ctx$brk[ok_idx] %in% TRUE
       sl$majority_on_median <- ctx$mtied[ok_idx] %in% TRUE
+      sl$n_na_periods <- ctx$nna[ok_idx]
       scanned_list(sl)
       scan_progress(list(
         done = ctx$gi - 1L, total = length(ctx$groups),
         found = sum(ctx$sig, na.rm = TRUE),
         n_cand = nrow(ctx$cand),
         ingen_data = sum(ctx$status == "ingen_data", na.rm = TRUE),
-        fejl = sum(ctx$status == "fejl", na.rm = TRUE)
+        fejl = sum(ctx$status == "fejl", na.rm = TRUE),
+        na_diagrammer = sum(ctx$nna > 0L, na.rm = TRUE)
       ))
       p <- scan_progress()
       if ((p$fejl %||% 0L) > 0L) {
@@ -519,7 +523,8 @@ mod_signal_review_server <- function(
           status = rep(NA_character_, nrow(cand)),
           stype = rep(NA_character_, nrow(cand)),
           brk = rep(FALSE, nrow(cand)),
-          mtied = rep(FALSE, nrow(cand))
+          mtied = rep(FALSE, nrow(cand)),
+          nna = rep(0L, nrow(cand))
         ),
         envir = new.env(parent = emptyenv())
       )
@@ -529,6 +534,7 @@ mod_signal_review_server <- function(
       empty$signal_type <- character(0)
       empty$has_breaks <- logical(0)
       empty$majority_on_median <- logical(0)
+      empty$n_na_periods <- integer(0)
       scanned_list(empty)
       scanned_n(wn) # vindue låst til denne scan (bruges af .scan_of_current/Task 7)
       cursor(1L)
@@ -669,6 +675,15 @@ mod_signal_review_server <- function(
             p$ingen_data %||% 0L, p$fejl %||% 0L
           ))
         },
+        # NA-alarm p\u00E5 scan-niveau: gennemgangen viser typisk kun signal-
+        # diagrammer, s\u00E5 NA-ramte diagrammer uden signal ville ellers aldrig
+        # blive set. Detaljen (antal perioder) st\u00E5r ved det enkelte diagram.
+        if ((p$na_diagrammer %||% 0L) > 0) {
+          tagList(br(), sprintf(
+            "\u26A0 %d diagram%s har NA-perioder i grundlaget",
+            p$na_diagrammer, if (identical(p$na_diagrammer, 1L)) "" else "mer"
+          ))
+        },
         if (agg_disabled) {
           tagList(br(), "\u26A0 Oprulning deaktiveret (org-tr\u00E6/flag kunne ikke hentes)")
         }
@@ -762,6 +777,9 @@ mod_signal_review_server <- function(
         if ("majority_on_median" %in% names(sl)) {
           sl$majority_on_median[i] <- isTRUE(res$majority_on_median)
         }
+        if ("n_na_periods" %in% names(sl)) {
+          sl$n_na_periods[i] <- as.integer(res$n_na_periods %||% 0L)
+        }
         scanned_list(sl)
       }
       # Visningens sammensætning kan være ændret → et klik-stempel fra før
@@ -847,6 +865,29 @@ mod_signal_review_server <- function(
         sprintf(
           "Aggregeret fra %d underliggende enheder",
           sc$n_agg_units %||% 0L
+        )
+      )
+    })
+
+    # NA-alarm: perioder hvis beregningsgrundlag indeholder NA, udgår tavst
+    # af grafen (ikke-endelige y filtreres fra ved tegning). Ved oprulning
+    # opstår NA, når en bidragyder har en eksplicit NA-værdi i perioden
+    # (na.rm = FALSE-princippet: hellere et synligt hul end et tavst
+    # underestimat). Denne advarsel gør hullet synligt for gennemgangen.
+    output$na_warning <- renderUI({
+      sc <- .scan_of_current()
+      n <- sc$n_na_periods %||% 0L
+      if (is.null(sc) || n == 0L) {
+        return(NULL)
+      }
+      div(
+        class = "alert alert-warning py-1 px-2 small mb-2",
+        sprintf(
+          paste(
+            "%d period%s udgår af beregningen: grundlaget indeholder NA",
+            "(fx en bidragyder uden tal i perioden ved oprulning)."
+          ),
+          n, if (identical(n, 1L)) "e" else "er"
         )
       )
     })

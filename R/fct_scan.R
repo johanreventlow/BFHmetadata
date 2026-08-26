@@ -211,6 +211,10 @@ scan_diagram <- function(row, base_path, medians_df, variants_df, window_n = NUL
               majority_on_median = scan_majority_on_median(
                 sig$qic_result$qic_data
               ),
+              # NA-alarm: perioder hvis grundlag indeholder NA (udgår tavst
+              # af grafen — na.rm=FALSE-princippet ved oprulning). UI viser
+              # advarsel ved grafen + tæller i scan-oversigten.
+              n_na_periods = scan_na_periods(slice),
               aggregated = aggregated, n_agg_units = as.integer(n_agg_units)
             )
           }
@@ -308,6 +312,36 @@ preview_break_parts <- function(diagram_id, base_meds, extra_date, x_dates) {
   laas <- c(as.Date(base_meds$laas_median), as.Date(extra_date))
   all_meds <- data.frame(diagram = diagram_id, laas_median = laas)
   resolve_median_breaks(diagram_id, all_meds, x_dates)
+}
+
+#' Antal perioder (unikke datoer) hvis beregningsgrundlag indeholder NA.
+#'
+#' Summeringen ved hierarki-oprulning bruger bevidst na.rm = FALSE
+#' (aggregate_child_data): en bidragyder med eksplicit NA i en periode gør
+#' totalen NA, så manglende data ikke tavst bliver til 0. Punktet udgår
+#' derefter tavst af grafen (ikke-endelige y filtreres fra) — denne tæller
+#' gør det synligt. Kolonnevalget spejler compute_signal: nævner-med-data →
+#' rate (tæller/nævner), ellers værdi hvis kolonnen findes, ellers tæller.
+#' @param slice det færdige slice (efter aggregering/vindue) — samme som
+#'   gives til compute_signal
+#' @return antal unikke datoer med NA i grundlaget (0 ved NULL/tom/ukendt)
+#' @noRd
+scan_na_periods <- function(slice) {
+  if (is.null(slice) || !is.data.frame(slice) || nrow(slice) == 0 ||
+      !"dato" %in% names(slice)) {
+    return(0L)
+  }
+  has_n <- "naevner" %in% names(slice) && any(!is.na(slice$naevner))
+  bad <- if (has_n) {
+    is.na(slice$taeller) | is.na(slice$naevner)
+  } else if ("vaerdi" %in% names(slice)) {
+    is.na(slice$vaerdi)
+  } else if ("taeller" %in% names(slice)) {
+    is.na(slice$taeller)
+  } else {
+    return(0L)
+  }
+  length(unique(as.Date(slice$dato[bad])))
 }
 
 #' Ligger halvdelen eller flere af observationerne på medianen?

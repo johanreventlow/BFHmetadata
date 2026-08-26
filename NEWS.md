@@ -29,6 +29,13 @@
   grænse), så ingen knæk falder ud ved opgraderingen.
 
 ## Nye features
+* **Signal-gennemgang: NA-alarm.** Perioder, hvis beregningsgrundlag
+  indeholder NA (fx en bidragyder med eksplicit manglende tal i en periode
+  ved hierarki-oprulning, hvor summeringen bevidst bruger `na.rm = FALSE`),
+  udgik før tavst af grafen. Nu vises en advarsel ved diagrammet ("N
+  perioder udgår af beregningen…"), og scan-oversigten tæller, hvor mange
+  diagrammer der er ramt — også dem uden signal, som ellers aldrig ville
+  blive åbnet.
 * **Mål-fanen viser nu diagrammets målgruppe.** Ny readOnly-kolonne
   "Målgruppe" i mål-grid'et (mellem Type og Retning), så to mål på samme
   indikator/enhed med forskellige målgrupper kan skelnes. "Nyt mål"-modalens
