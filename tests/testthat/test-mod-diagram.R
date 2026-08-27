@@ -645,3 +645,19 @@ test_that("diagram_excel_data: manglende aggreger_egne_og_boern-kolonne → FALS
   g <- diagram_excel_data(d)
   expect_identical(g[["Egne+børn"]], c(FALSE, FALSE))
 })
+
+test_that("Periode-valg omfatter dag og kvartal — også før nogen række bruger dem", {
+  db <- fake_diagram_db()   # diagram_periode_choices() = c("måned", "uge")
+  testServer(mod_diagram_server, args = list(id = "diagram", db = db), {
+    # Grid'ets Periode-dropdown-source
+    w <- jsonlite::fromJSON(output$tbl, simplifyVector = FALSE)
+    cols <- w$x$columns
+    titles <- vapply(cols, function(c) c$title, "")
+    per_src <- cols[[which(titles == "Periode")]]$source
+    ids <- vapply(per_src, function(s) s$id, "")
+    expect_true(all(c("dag", "uge", "maaned", "kvartal", "aar") %in% ids))
+    expect_true("måned" %in% ids)   # legacy-værdi i brug bevares
+    # Modal-formularens select bygges af samme opts$periode
+    expect_true(all(c("dag", "kvartal") %in% opts$periode))
+  })
+})

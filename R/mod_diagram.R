@@ -292,7 +292,10 @@ mod_diagram_server <- function(id, db) {
   moduleServer(id, function(input, output, session) {
     admin <- reactiveVal(db$list_diagrams_admin())
     opts <- db$diagram_form_options()
-    opts$periode <- db$diagram_periode_choices()
+    # Kanonisk ordforråd + værdier i brug: DISTINCT-udtrækket alene kunne
+    # aldrig tilbyde en NY periode (fx "dag"/"kvartal" før første række har
+    # den) — se periode_choices/PERIODE_AGGREGERING_CHOICES.
+    opts$periode <- periode_choices(db$diagram_periode_choices())
     status_msg <- reactiveVal("")
     warn_msg <- reactiveVal("")
     grid_sel <- reactiveVal(NULL) # pk (chr) for senest valgte række

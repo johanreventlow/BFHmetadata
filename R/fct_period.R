@@ -16,6 +16,26 @@
 #' aggregate_to_period() i stedet for stiltiende at blive til "day" — en
 #' tastefejl i Access må ikke give uaggregerede signaler uden fejlmelding.
 #' @noRd
+# Kanonisk periode-ordforråd (dansk, som gemt i tblDiagrammer.periode_-
+# aggregering). Rækkefølge = varighed. Både period_to_en (her) og BFHddl's
+# pipeline-switch forstår alle fem — "dag" er no-op-aggregering (kildens
+# granularitet), "kvartal"/"aar" bucketer via aggregate_to_period.
+# Bruges som valgliste på Diagram-siden: et DISTINCT-udtræk af værdier I
+# BRUG kan aldrig tilbyde en NY værdi (hønen-og-ægget) — se
+# periode_choices().
+PERIODE_AGGREGERING_CHOICES <- c("dag", "uge", "maaned", "kvartal", "aar")
+
+#' Valgliste til periode_aggregering: kanonisk ordforråd + evt. ukendte
+#' værdier fra DB (legacy/stavevarianter som "måned" skal stadig kunne ses
+#' og genvælges — de må aldrig forsvinde tavst fra dropdown'en).
+#' @param db_values distinkte værdier i brug (db$diagram_periode_choices())
+#' @noRd
+periode_choices <- function(db_values = character(0)) {
+  v <- as.character(db_values)
+  v <- v[!is.na(v) & nzchar(v)]
+  c(PERIODE_AGGREGERING_CHOICES, sort(setdiff(v, PERIODE_AGGREGERING_CHOICES)))
+}
+
 period_to_en <- function(x) {
   if (is.null(x) || length(x) == 0L) return("day")
   x <- x[[1]]

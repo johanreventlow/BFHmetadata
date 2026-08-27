@@ -211,3 +211,19 @@ test_that("df uden aggregering-kolonne passerer uændret", {
   expect_null(filter_medians_by_period(NULL, "uge"))
   expect_equal(nrow(filter_medians_by_period(m[0, ], "uge")), 0)
 })
+
+test_that("periode_choices: kanonisk ordforråd + ukendte DB-værdier bagest", {
+  # Uden DB-værdier: hele det kanoniske ordforråd i varigheds-orden
+  expect_identical(periode_choices(),
+                   c("dag", "uge", "maaned", "kvartal", "aar"))
+  # Værdier i brug der allerede er kanoniske dubleres ikke
+  expect_identical(periode_choices(c("maaned", "uge")),
+                   c("dag", "uge", "maaned", "kvartal", "aar"))
+  # Legacy/stavevarianter (fx "måned") bevares — bagest, så de stadig kan
+  # ses og genvælges
+  expect_identical(periode_choices(c("måned", "uge")),
+                   c("dag", "uge", "maaned", "kvartal", "aar", "måned"))
+  # NA/tomme droppes
+  expect_identical(periode_choices(c(NA, "", "uge")),
+                   c("dag", "uge", "maaned", "kvartal", "aar"))
+})

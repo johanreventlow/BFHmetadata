@@ -29,6 +29,14 @@
   grænse), så ingen knæk falder ud ved opgraderingen.
 
 ## Nye features
+* **Diagram-sidens Periode-valg tilbyder nu hele ordforrådet: dag, uge,
+  maaned, kvartal og aar.** Valglisten var et DISTINCT-udtræk af værdier i
+  brug og kunne derfor aldrig tilbyde en NY periode (hønen-og-ægget — "dag"
+  og "kvartal" fandtes ikke, før en række allerede brugte dem). Nu er listen
+  det kanoniske ordforråd plus evt. legacy-værdier fra databasen (bagest,
+  så de stadig kan ses og genvælges). Både signal-gennemgangens beregning
+  (`period_to_en`) og BFHddl's pipeline forstår alle fem værdier i
+  forvejen — ingen ændring nødvendig i BFHddl.
 * **Signal-gennemgang viser indikatorens hierarki-kontekst.** Under
   navigations-overskriften ("3/12 — Indikator · Enhed") står nu en dæmpet
   linje med "Datasæt: …" og — når indikatoren hører til en — "Samling: …"
