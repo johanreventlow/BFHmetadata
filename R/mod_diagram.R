@@ -271,7 +271,10 @@ mod_diagram_ui <- function(id) {
     div(class = "d-flex justify-content-end gap-2 mb-2",
       actionButton(ns("new_diagram"), "Nyt diagram", class = "btn-success"),
       actionButton(ns("delete_row"), "Slet valgte r\u00E6kke",
-                   class = "btn-outline-danger")),
+                   class = "btn-outline-danger"),
+      actionButton(ns("select_all_visible"), "V\u00E6lg alle viste",
+                   class = "btn-outline-secondary"),
+      uiOutput(ns("bulk_edit_btn"), inline = TRUE)),
     bslib::layout_columns(
       col_widths = c(2, 2, 3, 3, 2),
       uiOutput(ns("filter_datapakke_ui")),
@@ -298,7 +301,14 @@ mod_diagram_server <- function(id, db) {
     opts$periode <- periode_choices(db$diagram_periode_choices())
     status_msg <- reactiveVal("")
     warn_msg <- reactiveVal("")
-    grid_sel <- reactiveVal(NULL) # pk (chr) for senest valgte række
+    grid_sel <- reactiveVal(character(0)) # pk-vektor (chr) for den valgte range
+
+    # Selektionen begrænset til rækker der faktisk er i den VISTE (filtrerede)
+    # tabel lige nu — et filterskift efterlader ikke en optælling der peger på
+    # skjulte rækker.
+    grid_sel_visible <- reactive({
+      intersect(grid_sel(), as.character(filtered()$diagram_id))
+    })
     grid_refresh <- reactiveVal(0) # bump → snap-back efter afvist inline-edit
     # Ekko-værn: excelR re-sender data+selektion efter hvert re-render — en
     # identisk diff lige efter et reload er grid'ets ekko, ikke brugeren.
@@ -426,8 +436,9 @@ mod_diagram_server <- function(id, db) {
     observeEvent(input$tbl, {
       p <- input$tbl
       if (isTRUE(p$forSelectedVals)) {
-        # pk fra payloadens fullData — robust under klient-side sortering
-        grid_sel(excel_selected_pk(p))
+        # pk'er fra payloadens fullData — robust under klient-side sortering.
+        # Dækker range-selektion (borderTop..borderBottom), ikke kun ét klik.
+        grid_sel(excel_selected_pks(p) %||% character(0))
       }
       # Diff også på selektions-payloads: markør-flytningen efter en
       # celle-commit overskriver change-eventet i Shinys input-batch
@@ -508,7 +519,7 @@ mod_diagram_server <- function(id, db) {
     observeEvent(input$delete_row, {
       sel <- grid_sel()
       d <- filtered()
-      j <- if (is.null(sel)) NA_integer_ else match(sel, as.character(d$diagram_id))
+      j <- if (length(sel) == 0) NA_integer_ else match(sel[1], as.character(d$diagram_id))
       if (is.na(j)) {
         status_msg("V\u00E6lg en r\u00E6kke f\u00F8rst")
         return()
@@ -524,9 +535,26 @@ mod_diagram_server <- function(id, db) {
       safe_operation("diagram-slet", {
         db$delete_diagram(rid)
         status_msg(paste("Slettet diagram", rid))
-        grid_sel(NULL) # rækken findes ikke længere — ryd stale selektion
+        grid_sel(character(0)) # rækken findes ikke længere — ryd stale selektion
         reload()
       }, fallback = status_msg("Fejl ved sletning (se log)"))
+    })
+
+    observeEvent(input$select_all_visible, {
+      grid_sel(as.character(filtered()$diagram_id))
+    })
+
+    # "Redigér valgte (N)" — knap-tekst reflekterer selektionen reaktivt, men
+    # selve bulk-flowet leveres først i en senere leverance (batch-kontrakt +
+    # audit i DB-laget) — knappen er derfor disabled her.
+    output$bulk_edit_btn <- renderUI({
+      ns <- session$ns
+      n <- length(grid_sel_visible())
+      actionButton(ns("bulk_edit"),
+        sprintf("Redig\u00E9r valgte (%d)", n),
+        class = "btn-outline-secondary", disabled = "disabled",
+        title = "Kommer i en senere leverance"
+      )
     })
 
     # "Nyt diagram"-modal: oprettelse kræver mange felter på én gang —

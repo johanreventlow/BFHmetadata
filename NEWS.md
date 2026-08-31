@@ -29,6 +29,13 @@
   grænse), så ingen knæk falder ud ved opgraderingen.
 
 ## Nye features
+* **Grid'ene understøtter nu range-selektion af flere rækker** (klik +
+  shift-klik / træk) i både indikator- og diagramtabellen, samt en knap
+  "Vælg alle viste" der markerer alle rækker i det aktuelt filtrerede
+  resultat. Forarbejde til bulk-redigering
+  (`docs/plans/2026-08-30-bulk-redigering-design.md`) — en ny knap
+  "Redigér valgte (N)" viser selektionens størrelse, men er endnu disabled;
+  selve batch-skrivningen leveres i en senere leverance.
 * **Diagram-sidens Periode-valg tilbyder nu hele ordforrådet: dag, uge,
   maaned, kvartal og aar.** Valglisten var et DISTINCT-udtræk af værdier i
   brug og kunne derfor aldrig tilbyde en NY periode (hønen-og-ægget — "dag"

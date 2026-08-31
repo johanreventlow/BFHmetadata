@@ -217,6 +217,41 @@ test_that("tom-tilstand vises når filtre ikke matcher nogen rækker, og Ryd fil
   )
 }
 
+# Range-selektion (klik + shift-klik / træk): borderTop..borderBottom er
+# begge inklusive og kan spænde over flere rækker.
+.tbl_select_range <- function(top, bottom, pks) {
+  list(
+    forSelectedVals = TRUE,
+    selectedDataBoundary = list(
+      borderTop = top, borderBottom = bottom,
+      borderLeft = 0, borderRight = 0
+    ),
+    fullData = list(data = lapply(pks, function(p) list(p)))
+  )
+}
+
+# 3-rækkers db til multi-selektion-tests
+.fake_db_3rows <- function() {
+  db <- fake_db()
+  db$list_indikatorer <- function() {
+    data.frame(
+      id = c(1L, 2L, 3L), indikator_navn = c("A", "B", "C"),
+      indikator_navn_teknisk = c("a", "b", "c"),
+      aktiv_indikator = c(TRUE, TRUE, TRUE),
+      nøgleindikator = c(FALSE, FALSE, FALSE),
+      nulfyld_tomme_perioder = c(FALSE, FALSE, FALSE),
+      indikator_hierarki = c(1L, 1L, 1L), kontaktperson = c(1L, 1L, 1L),
+      datakilde = c(1L, 1L, 1L),
+      mål = NA_character_, ønsket_tendens = NA_character_,
+      direkte_link = NA_character_,
+      label_datapakke = "Pakke A", label_datasaet = "Datasæt A",
+      label_indikator_hierarki = "Inf.hyg", output_enhed = "pct",
+      stringsAsFactors = FALSE
+    )
+  }
+  db
+}
+
 # excelR onChange-payload: bygget fra den ægte grid-data-helper med én
 # celle overskrevet (value = NULL → tømt celle)
 .ind_grid_edit <- function(d, id, column, value) {
@@ -232,6 +267,33 @@ test_that("tom-tilstand vises når filtre ikke matcher nogen rækker, og Ryd fil
     forSelectedVals = FALSE
   )
 }
+
+test_that("range-selektion sætter tbl_sel til flere pk'er (i grid-orden)", {
+  testServer(mod_indikator_crud_server, args = list(db = .fake_db_3rows()), {
+    session$setInputs(tbl = .tbl_select_range(0, 1, pks = c("1", "2", "3")))
+    expect_identical(tbl_sel(), c("1", "2"))
+  })
+})
+
+test_that("'Vælg alle viste' sætter selektionen til alle rækker i den viste (filtrerede) tabel", {
+  testServer(mod_indikator_crud_server, args = list(db = .fake_db_3rows()), {
+    session$setInputs(select_all_visible = 1)
+    expect_setequal(tbl_sel(), c("1", "2", "3"))
+
+    # Filterskift indsnævrer hvad "Vælg alle viste" rammer
+    session$setInputs(filter_datapakke = "Pakke B", select_all_visible = 2)
+    expect_identical(tbl_sel(), character(0)) # ingen rækker matcher filteret
+  })
+})
+
+test_that("'Redigér valgte (N)'-knappen reflekterer selektionen og er disabled i denne leverance", {
+  testServer(mod_indikator_crud_server, args = list(db = .fake_db_3rows()), {
+    expect_match(output$bulk_edit_btn$html, "Redigér valgte \\(0\\)")
+    session$setInputs(tbl = .tbl_select_range(0, 1, pks = c("1", "2", "3")))
+    expect_match(output$bulk_edit_btn$html, "Redigér valgte \\(2\\)")
+    expect_match(output$bulk_edit_btn$html, "disabled")
+  })
+})
 
 test_that("inline-tømt Navn afvises uden update (obligatorisk)", {
   db <- fake_db()

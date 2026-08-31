@@ -273,28 +273,57 @@ excel_event_df <- function(p) {
   }
 }
 
-#' pk-værdien for den valgte række i et excelR onSelection-payload.
+#' pk-værdierne for de valgte rækker (range-selektion) i et excelR
+#' onSelection-payload.
 #'
 #' Læses fra payloadens fullData — grid'ets AKTUELLE rækkefølge — og IKKE
 #' fra række-positionen alene: med kolonne-sortering slået til er den
 #' visuelle rækkefølge klient-styret, og et positions-opslag i serverens
 #' df ville ramme en anden række. Forudsætter at pk er FØRSTE kolonne i
 #' grid-data (konvention i alle vores grids; skjult via type "hidden" —
-#' skjulte kolonner er stadig med i payload-data).
-#' @return pk som character, eller NULL (ingen/ugyldig selektion)
+#' skjulte kolonner er stadig med i payload-data). Dækker jexcel's
+#' range-selektion (klik + shift-klik / træk): borderTop..borderBottom,
+#' begge inklusive. Ved et enkelt-klik er borderBottom == borderTop (eller
+#' fraværende i ældre payload-former, hvor borderTop alene bruges).
+#' @return character-vektor af pk'er i range-rækkefølge, eller NULL
+#'   (ingen/ugyldig selektion)
 #' @noRd
-excel_selected_pk <- function(p) {
+excel_selected_pks <- function(p) {
   top <- p$selectedDataBoundary$borderTop
+  bottom <- p$selectedDataBoundary$borderBottom %||% top
   rows <- p$fullData$data
   if (is.null(top) || is.null(rows)) {
     return(NULL)
   }
-  i <- suppressWarnings(as.integer(top)) + 1L
-  if (is.na(i) || i < 1 || i > length(rows)) {
+  i0 <- suppressWarnings(as.integer(top))
+  i1 <- suppressWarnings(as.integer(bottom))
+  if (is.na(i0) || is.na(i1)) {
     return(NULL)
   }
-  v <- rows[[i]][[1]]
-  if (is.null(v) || length(v) == 0 || is.na(v)) NULL else as.character(v)
+  if (i1 < i0) {
+    tmp <- i0
+    i0 <- i1
+    i1 <- tmp
+  }
+  i0 <- i0 + 1L
+  i1 <- i1 + 1L
+  if (i0 < 1 || i1 > length(rows)) {
+    return(NULL)
+  }
+  vals <- vapply(rows[i0:i1], function(r) {
+    v <- r[[1]]
+    if (is.null(v) || length(v) == 0 || is.na(v)) NA_character_ else as.character(v)
+  }, character(1))
+  vals <- vals[!is.na(vals)]
+  if (length(vals) == 0) NULL else vals
+}
+
+#' pk-værdien for den (først) valgte række i et excelR onSelection-payload.
+#' Enkelt-værdi-bekvemmelighed oven på excel_selected_pks — se dens docs.
+#' @return pk som character, eller NULL (ingen/ugyldig selektion)
+#' @noRd
+excel_selected_pk <- function(p) {
+  excel_selected_pks(p)[1]
 }
 
 #' Ændrede celler mellem gammel df (typet) og ny character-df fra payload.

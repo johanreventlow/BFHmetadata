@@ -81,7 +81,11 @@ mod_indikator_crud_ui <- function(id) {
       ),
       actionButton(ns("soft_delete"), "Deaktiv\u00E9r valgte",
         class = "btn-warning"
-      )
+      ),
+      actionButton(ns("select_all_visible"), "V\u00E6lg alle viste",
+        class = "btn-outline-secondary"
+      ),
+      uiOutput(ns("bulk_edit_btn"), inline = TRUE)
     ),
     bslib::layout_columns(
       col_widths = c(4, 4, 4),
@@ -684,7 +688,14 @@ mod_indikator_crud_server <- function(id, db) {
       d
     })
     tbl_refresh <- reactiveVal(0) # bump → snap-back efter fejlet gem
-    tbl_sel <- reactiveVal(NULL) # pk (chr) for senest valgte række
+    tbl_sel <- reactiveVal(character(0)) # pk-vektor (chr) for den valgte range
+
+    # Selektionen begrænset til rækker der faktisk er i den VISTE (filtrerede)
+    # tabel lige nu — et filterskift efterlader ikke en optælling der peger på
+    # skjulte rækker.
+    tbl_sel_visible <- reactive({
+      intersect(tbl_sel(), as.character(tbl_rows()[["id"]]))
+    })
 
     # Viser en forklarende tom-tilstand i stedet for et tomt grid, når
     # filtrene ikke matcher noget — ellers det redigerbare excelR-grid.
@@ -764,11 +775,28 @@ mod_indikator_crud_server <- function(id, db) {
     selected_id <- reactive({
       sel <- tbl_sel()
       d <- tbl_rows()
-      j <- if (is.null(sel)) NA_integer_ else match(sel, as.character(d[["id"]]))
+      j <- if (length(sel) == 0) NA_integer_ else match(sel[1], as.character(d[["id"]]))
       if (is.na(j)) {
         return(NULL)
       } # pk væk fra den viste tabel → intet valg
       d[["id"]][j]
+    })
+
+    observeEvent(input$select_all_visible, {
+      tbl_sel(as.character(tbl_rows()[["id"]]))
+    })
+
+    # "Redigér valgte (N)" — knap-tekst reflekterer selektionen reaktivt, men
+    # selve bulk-flowet leveres først i en senere leverance (batch-kontrakt +
+    # audit i DB-laget) — knappen er derfor disabled her.
+    output$bulk_edit_btn <- renderUI({
+      ns <- session$ns
+      n <- length(tbl_sel_visible())
+      actionButton(ns("bulk_edit"),
+        sprintf("Redigér valgte (%d)", n),
+        class = "btn-outline-secondary", disabled = "disabled",
+        title = "Kommer i en senere leverance"
+      )
     })
 
     # Bekr\u00E6ftelse f\u00F8r deaktivering \u2014 skriver intet selv. Selve skrivningen
@@ -822,9 +850,10 @@ mod_indikator_crud_server <- function(id, db) {
     observeEvent(input$tbl, {
       p <- input$tbl
       if (isTRUE(p$forSelectedVals)) {
-        # pk læses fra payloadens fullData (grid'ets aktuelle — evt.
-        # klient-sorterede — rækkefølge), aldrig fra positionen alene
-        tbl_sel(excel_selected_pk(p))
+        # pk'er læses fra payloadens fullData (grid'ets aktuelle — evt.
+        # klient-sorterede — rækkefølge), aldrig fra positionen alene.
+        # Dækker range-selektion (borderTop..borderBottom), ikke kun ét klik.
+        tbl_sel(excel_selected_pks(p) %||% character(0))
       }
       d <- tbl_rows()
       changes <- excel_diff_cells(
@@ -881,7 +910,7 @@ mod_indikator_crud_server <- function(id, db) {
     # eksponér til test
     list(
       rows = rows, status_msg = status_msg, editing_id = editing_id,
-      return_ind = return_ind
+      return_ind = return_ind, tbl_sel = tbl_sel
     )
   })
 }
