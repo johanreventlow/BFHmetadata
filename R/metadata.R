@@ -266,3 +266,122 @@ HIERARCHY_TABLES <- list(
                  name_col = "indikator_niveau_navn",
                  label_expr = '"indikator_niveau_navn"'))
 )
+
+# --- Bulk-redigering: serverside-allowlist (Leverance 2 af ------------------
+# docs/plans/2026-08-30-bulk-redigering-design.md) ---------------------------
+# Kun felter herfra kan rammes af bulk_update() — browserens felt-valg slås
+# op her FØR nogen DB-forbindelse åbnes (krav 5, hardening-designet:
+# browser-events må ikke direkte afgøre SQL-kolonner). "kind" genbruger de
+# samme kategorier som INDIKATOR_FIELDS/mod_indikator_crud's
+# .IND_FK_FIELDS/.IND_BOOL_FIELDS: bool | fk | choice | text.
+# indikator_navn og navn_teknisk er UDELADT med vilje (parquet-nøgle,
+# readonly; et fælles navn på N rækker giver ingen mening).
+BULK_INDIKATOR_FIELDS <- list(
+  list(col = "aktiv_indikator",          kind = "bool"),
+  list(col = "nøgleindikator",           kind = "bool"),
+  list(col = "nulfyld_tomme_perioder",   kind = "bool"),
+  list(col = "tillad_auto_opdatering",   kind = "bool"),
+  list(col = "indikator_hierarki",       kind = "fk"),
+  list(col = "kontaktperson",            kind = "fk"),
+  list(col = "datakilde",                kind = "fk"),
+  list(col = "output_enhed",   kind = "choice", choices = OUTPUT_ENHED_CHOICES),
+  list(col = "ønsket_tendens",           kind = "text"),
+  list(col = "mål",                      kind = "text")
+)
+
+# indikator og organisatorisk_navn_teknisk er UDELADT med vilje: at flytte N
+# diagrammer til samme indikator/enhed kolliderer med duplikat-guarden og er
+# sjældent intentionen (jf. design-dokumentet).
+BULK_DIAGRAM_FIELDS <- list(
+  list(col = "diagram_aktivt",           kind = "bool"),
+  list(col = "direktionens_tavle",       kind = "bool"),
+  list(col = "indgaar_i_aggregering",    kind = "bool"),
+  list(col = "aggreger_egne_og_boern",   kind = "bool"),
+  list(col = "periode_aggregering",      kind = "text"),
+  list(col = "maalgruppe",               kind = "fk"),
+  list(col = "diagram_type",             kind = "fk")
+)
+
+# tabel_key → {table, pk, fields}. Fælles indgang for bulk_update/bulk_undo
+# (R/fct_db.R) og SQL-byggerne (R/fct_sql.R) — kun disse to (tabel,kolonne)-
+# par kan nogensinde nå en bulk-SQL-streng.
+BULK_TABLES <- list(
+  indikator = list(table = "tblIndikatorer", pk = "id", fields = BULK_INDIKATOR_FIELDS),
+  diagram   = list(table = "tblDiagrammer",  pk = "id", fields = BULK_DIAGRAM_FIELDS)
+)
+
+#' Slå (tabel_key, felt) op i bulk-allowlisten. NULL hvis ukendt tabel eller
+#' feltet ikke er tilladt i bulk-redigering for den tabel. `tables` kan
+#' overrides i integrationstests, der peger på en engangstabel i stedet for
+#' den rigtige BULK_TABLES (Leverance 3's audit-migration findes endnu ikke).
+#' @noRd
+bulk_field_config <- function(tabel_key, felt, tables = BULK_TABLES) {
+  tbl <- tables[[tabel_key]]
+  if (is.null(tbl)) return(NULL)
+  Find(function(f) identical(f$col, felt), tbl$fields)
+}
+
+#' Konvertér en rå værdi til feltets deklarerede R-type (fld = element fra
+#' en BULK_*_FIELDS-liste, dvs. har $kind og evt. $choices).
+#' allow_blank = FALSE (default, bruges til MÅLVÆRDIEN i en batch): bool og
+#' fk har intet tomt valg — matcher grid'ets checkbokse/dropdowns, som aldrig
+#' tilbyder "ryd feltet". allow_blank = TRUE (bruges til FØRVÆRDIER, som
+#' beskriver eksisterende data og godt kan være NULL uanset kind) tillader
+#' blank for alle kinds.
+#' Fejler (stop()) ved ugyldig værdi FØR nogen transaktion åbnes.
+#' @noRd
+bulk_coerce_value <- function(fld, raw, allow_blank = FALSE) {
+  kind <- fld$kind
+  is_blank <- length(raw) == 0L || (length(raw) == 1L && is.na(raw))
+  if (is_blank) {
+    if (allow_blank) {
+      return(switch(kind, bool = NA, fk = NA_integer_, NA_character_))
+    }
+    if (identical(kind, "text")) return(NA_character_)
+    stop("Vælg en værdi — feltet kan ikke sættes tomt", call. = FALSE)
+  }
+  switch(kind,
+    bool = {
+      v <- if (is.logical(raw)) raw[1] else identical(as.character(raw)[1], "TRUE")
+      if (is.na(v)) stop("Ugyldig bool-værdi", call. = FALSE)
+      isTRUE(v)
+    },
+    fk = {
+      iv <- suppressWarnings(as.integer(raw[1]))
+      if (is.na(iv)) stop("Vælg en værdi fra listen", call. = FALSE)
+      iv
+    },
+    choice = {
+      chr <- as.character(raw)[1]
+      if (!chr %in% fld$choices) {
+        stop(sprintf("'%s' er ikke en gyldig værdi", chr), call. = FALSE)
+      }
+      chr
+    },
+    text = as.character(raw)[1],
+    stop(sprintf("Ukendt felt-kind: '%s'", kind), call. = FALSE)
+  )
+}
+
+#' Kanonisk text-repræsentation til audit.tbl_batch_raekke (rundtursstabil
+#' sammen med kind, se bulk_untext_value()). NA gemmes som SQL NULL.
+#' @noRd
+bulk_value_to_text <- function(kind, value) {
+  if (length(value) == 0L || is.na(value)) return(NA_character_)
+  if (identical(kind, "bool")) return(if (isTRUE(value)) "TRUE" else "FALSE")
+  as.character(value)
+}
+
+#' Omvendt af bulk_value_to_text() — re-typer en audit-tekstværdi til
+#' feltets R-type ved fortryd. NA (SQL NULL) → NA i feltets type.
+#' @noRd
+bulk_untext_value <- function(kind, text) {
+  if (length(text) == 0L || is.na(text)) {
+    return(switch(kind, bool = NA, fk = NA_integer_, NA_character_))
+  }
+  switch(kind,
+    bool = identical(text, "TRUE"),
+    fk = as.integer(text),
+    text
+  )
+}

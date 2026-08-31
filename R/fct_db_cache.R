@@ -53,6 +53,9 @@ cached_accessor <- function(fn, store = new_cache_store(), name = NULL) {
   "create_diagram", "update_diagram", "delete_diagram",
   "add_median_break", "delete_median_break",
   "add_row", "update_cell", "delete_row",
+  # Bulk-redigering (Leverance 2): rammer tblIndikatorer/tblDiagrammer
+  # ligesom de enkeltvise skrivninger ovenfor.
+  "bulk_update", "bulk_undo",
   # Hierarki (make_hierarchy_db): org-struktur-ændringer skal straks slå
   # igennem i cachede org-læsninger (org_enhed_variants, diagram-indeks)
   "create_node", "update_node", "delete_node"

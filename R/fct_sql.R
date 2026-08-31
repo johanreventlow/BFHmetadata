@@ -552,3 +552,81 @@ build_hierarchy_child_count_sql <- function(cfg) {
     cfg$table, cfg$parent_col
   )
 }
+
+# --- Bulk-redigering: batch-kontrakt (Leverance 2 af -------------------------
+# docs/plans/2026-08-30-bulk-redigering-design.md) ---------------------------
+# Tabel-/kolonnenavne kommer KUN fra BULK_TABLES/bulk_field_config
+# (metadata.R) — aldrig fra browser-payloads — double-quotes som de øvrige
+# byggere. audit-tabellernes navne (batch_tbl/row_tbl) sendes ind som
+# parametre frem for at være hardkodet: Leverance 3's migration findes endnu
+# ikke, så integrationstests i Leverance 2 peger på engangstabeller efter
+# dev/bulk_probe.R-mønstret.
+
+#' Lås målrækker i STABIL id-rækkefølge (ORDER BY pk) — forebygger deadlock
+#' mellem to samtidige batches der rammer overlappende id-sæt i modsat
+#' rækkefølge. Henter både pk og feltet selv (til førværdi-sammenligning
+#' inden write). $1 = array-literal (pg_int_array) — én parameter uanset
+#' antal id'er.
+#' @noRd
+build_bulk_lock_sql <- function(table, pk, col) {
+  sprintf(
+    'SELECT "%s", "%s" FROM "%s" WHERE "%s" = ANY($1::int[]) ORDER BY "%s" FOR UPDATE',
+    pk, col, table, pk, pk
+  )
+}
+
+#' Sæt ét felt på alle rækker i id-sættet i ÉN UPDATE. $1 = ny værdi,
+#' $2 = array-literal af id'er.
+#' @noRd
+build_bulk_update_sql <- function(table, pk, col) {
+  sprintf('UPDATE "%s" SET "%s" = $1 WHERE "%s" = ANY($2::int[])', table, col, pk)
+}
+
+#' Audit-batch-header. batch_id genereres server-side med gen_random_uuid()
+#' (indbygget i Postgres ≥ 13 — ingen pgcrypto-extension nødvendig) og
+#' returneres, så R-siden aldrig selv skal generere/validere et UUID.
+#' $1 = tabel, $2 = felt.
+#' @noRd
+build_audit_batch_insert_sql <- function(batch_tbl) {
+  sprintf(
+    'INSERT INTO %s ("batch_id", "tabel", "felt") VALUES (gen_random_uuid(), $1, $2) RETURNING "batch_id"',
+    batch_tbl
+  )
+}
+
+#' N audit-rækker i ÉT statement — samme batch_id ($1) genbruges for alle.
+#' Pr. række: row_id, vaerdi_foer, vaerdi_efter (begge text, se
+#' bulk_value_to_text() i metadata.R).
+#' @noRd
+build_audit_row_insert_sql <- function(n, row_tbl) {
+  vals <- vapply(seq_len(n), function(i) {
+    base <- 2L + 3L * (i - 1L)
+    sprintf("($1, $%d, $%d, $%d)", base, base + 1L, base + 2L)
+  }, "")
+  sprintf(
+    'INSERT INTO %s ("batch_id", "row_id", "vaerdi_foer", "vaerdi_efter") VALUES %s',
+    row_tbl, paste(vals, collapse = ", ")
+  )
+}
+
+#' Batchens header (tabel/felt/fortrudt_ts) — indgang til fortryd-flowet.
+#' @noRd
+build_audit_batch_select_sql <- function(batch_tbl) {
+  sprintf('SELECT "tabel", "felt", "fortrudt_ts" FROM %s WHERE "batch_id" = $1', batch_tbl)
+}
+
+#' Batchens rækker (row_id + før/efter-text), ordnet på row_id — samme
+#' stabile rækkefølge som selve batch-låsningen brugte.
+#' @noRd
+build_audit_rows_select_sql <- function(row_tbl) {
+  sprintf(
+    'SELECT "row_id", "vaerdi_foer", "vaerdi_efter" FROM %s WHERE "batch_id" = $1 ORDER BY "row_id"',
+    row_tbl
+  )
+}
+
+#' Stempl batchen som fortrudt.
+#' @noRd
+build_audit_mark_undone_sql <- function(batch_tbl) {
+  sprintf('UPDATE %s SET "fortrudt_ts" = now() WHERE "batch_id" = $1', batch_tbl)
+}
