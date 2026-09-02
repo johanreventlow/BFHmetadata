@@ -249,6 +249,18 @@
   tvungen fejl midt i en batch med bevis for fuld rollback.
 
 ## Bug fixes
+* **Siden kunne ikke scrolles efter at en indikator var redigeret i modalen.**
+  Bootstrap låser sidescroll ved at sætte `overflow: hidden` på `<body>`, når
+  en modal åbnes, og ruller først låsen tilbage, når modalens lukke-event
+  fyrer. Shiny's `showModal()` erstatter en allerede åben modal ved at
+  overskrive modal-wrapperens HTML — den gamle modals lukke-event fyrer derfor
+  aldrig, og låsen blev stående. Appen erstatter modaler med vilje flere
+  steder (bekræftelse af ændret indikator-id, diagram-swap i modalen, fortryd
+  der genopbygger formularen), så låsen kunne overleve alle modaler og
+  efterlade en side uden scroll — og en usynlig backdrop hen over den. En
+  vagt (`bfh-modal-scroll-guard.js`) rydder nu body-tilstanden, når sidste
+  modal er lukket; den rører intet, så længe en modal stadig er synlig, så
+  swap- og fortryd-flowene er uændrede.
 * Inline-redigeringer i grid'ene (Indikatorer, Indikator-hierarki,
   Organisation, opslagstabeller, Diagrammer) gik tabt, medmindre man
   bagefter klikkede i en checkbox: excelR sender celle-ændringer og
