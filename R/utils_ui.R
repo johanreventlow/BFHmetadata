@@ -28,15 +28,21 @@ har_aktive_filtre <- function(datapakke, datasaet, status) {
 #' observer bundet til confirm_id. confirm_id skal være namespaced
 #' (session$ns("...")), så knappen rammer det rigtige modul-input.
 #' warning = valgfri konsekvens-tekst, vist i en gul advarselsboks når angivet.
+#' cancel_id = valgfrit (namespaced) input-id til Annullér. Default (NULL) er
+#' en modalButton der bare lukker; angiv et id når kalderen skal gøre noget
+#' aktivt ved fortrydelse — fx genåbne en formular-modal som dialogen
+#' erstattede, så brugerens uafsendte indtastninger ikke går tabt.
 #' @noRd
 build_confirm_modal <- function(title, body, confirm_id, confirm_label,
-                                confirm_class = "btn-danger", warning = NULL) {
+                                confirm_class = "btn-danger", warning = NULL,
+                                cancel_id = NULL) {
   modalDialog(
     title = title,
     body,
     if (!is.null(warning) && nzchar(warning))
       div(class = "alert alert-warning", warning),
     footer = tagList(
-      modalButton("Annullér"),
+      if (is.null(cancel_id)) modalButton("Annullér")
+      else actionButton(cancel_id, "Annullér"),
       actionButton(confirm_id, confirm_label, class = confirm_class)))
 }

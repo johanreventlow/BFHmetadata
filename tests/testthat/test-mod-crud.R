@@ -217,6 +217,41 @@ test_that("tom-tilstand vises når filtre ikke matcher nogen rækker, og Ryd fil
   )
 }
 
+# Range-selektion (klik + shift-klik / træk): borderTop..borderBottom er
+# begge inklusive og kan spænde over flere rækker.
+.tbl_select_range <- function(top, bottom, pks) {
+  list(
+    forSelectedVals = TRUE,
+    selectedDataBoundary = list(
+      borderTop = top, borderBottom = bottom,
+      borderLeft = 0, borderRight = 0
+    ),
+    fullData = list(data = lapply(pks, function(p) list(p)))
+  )
+}
+
+# 3-rækkers db til multi-selektion-tests
+.fake_db_3rows <- function() {
+  db <- fake_db()
+  db$list_indikatorer <- function() {
+    data.frame(
+      id = c(1L, 2L, 3L), indikator_navn = c("A", "B", "C"),
+      indikator_navn_teknisk = c("a", "b", "c"),
+      aktiv_indikator = c(TRUE, TRUE, TRUE),
+      nøgleindikator = c(FALSE, FALSE, FALSE),
+      nulfyld_tomme_perioder = c(FALSE, FALSE, FALSE),
+      indikator_hierarki = c(1L, 1L, 1L), kontaktperson = c(1L, 1L, 1L),
+      datakilde = c(1L, 1L, 1L),
+      mål = NA_character_, ønsket_tendens = NA_character_,
+      direkte_link = NA_character_,
+      label_datapakke = "Pakke A", label_datasaet = "Datasæt A",
+      label_indikator_hierarki = "Inf.hyg", output_enhed = "pct",
+      stringsAsFactors = FALSE
+    )
+  }
+  db
+}
+
 # excelR onChange-payload: bygget fra den ægte grid-data-helper med én
 # celle overskrevet (value = NULL → tømt celle)
 .ind_grid_edit <- function(d, id, column, value) {
@@ -232,6 +267,33 @@ test_that("tom-tilstand vises når filtre ikke matcher nogen rækker, og Ryd fil
     forSelectedVals = FALSE
   )
 }
+
+test_that("range-selektion sætter tbl_sel til flere pk'er (i grid-orden)", {
+  testServer(mod_indikator_crud_server, args = list(db = .fake_db_3rows()), {
+    session$setInputs(tbl = .tbl_select_range(0, 1, pks = c("1", "2", "3")))
+    expect_identical(tbl_sel(), c("1", "2"))
+  })
+})
+
+test_that("'Vælg alle viste' sætter selektionen til alle rækker i den viste (filtrerede) tabel", {
+  testServer(mod_indikator_crud_server, args = list(db = .fake_db_3rows()), {
+    session$setInputs(select_all_visible = 1)
+    expect_setequal(tbl_sel(), c("1", "2", "3"))
+
+    # Filterskift indsnævrer hvad "Vælg alle viste" rammer
+    session$setInputs(filter_datapakke = "Pakke B", select_all_visible = 2)
+    expect_identical(tbl_sel(), character(0)) # ingen rækker matcher filteret
+  })
+})
+
+test_that("'Redigér valgte (N)'-knappen reflekterer selektionen og er disabled i denne leverance", {
+  testServer(mod_indikator_crud_server, args = list(db = .fake_db_3rows()), {
+    expect_match(output$bulk_edit_btn$html, "Redigér valgte \\(0\\)")
+    session$setInputs(tbl = .tbl_select_range(0, 1, pks = c("1", "2", "3")))
+    expect_match(output$bulk_edit_btn$html, "Redigér valgte \\(2\\)")
+    expect_match(output$bulk_edit_btn$html, "disabled")
+  })
+})
 
 test_that("inline-tømt Navn afvises uden update (obligatorisk)", {
   db <- fake_db()
@@ -652,4 +714,157 @@ test_that("Hierarki-placering-dropdown viser trae (depth-first + indrykning)", {
     expect_identical(vapply(src, function(s) s$name, ""),
                      c("Datasaet X", paste0(strrep(" ", 2), "Inf.hyg")))
   })
+})
+
+# --- Indikator-id (indikator_navn_teknisk): redigerbart bag bekraeftelse -----
+# Feltet er parquet-noeglen — appen slaar datafilerne op paa praecis denne
+# streng. Det maa kunne rettes (id'er kan vaere forkerte fra start), men
+# aldrig ved et uheld: modalen er eneste indgang, og en aendring paa en
+# eksisterende indikator skal bekraeftes foer den skrives.
+
+test_that(".teknisk_uaendret: kun en reel omdoebning taeller som aendring", {
+  # tomme repraesentationer er samme vaerdi
+  expect_true(.teknisk_uaendret(NULL, NA))
+  expect_true(.teknisk_uaendret(NA_character_, ""))
+  expect_true(.teknisk_uaendret(character(0), NULL))
+  # whitespace i kanten er ikke en aendring (browseren kan tilfoeje den)
+  expect_true(.teknisk_uaendret("a", " a "))
+  expect_true(.teknisk_uaendret("a", "a"))
+  # reelle aendringer — inkl. case, da parquet-opslaget er case-sensitivt
+  expect_false(.teknisk_uaendret("a", "b"))
+  expect_false(.teknisk_uaendret("a", "A"))
+  expect_false(.teknisk_uaendret("a", NA)) # toemning bryder ogsaa koblingen
+  expect_false(.teknisk_uaendret(NA, "a")) # foerste udfyldning
+})
+
+test_that("indikator-id er med i modalens felter, men ikke i grid/bulk", {
+  expect_true("indikator_navn_teknisk" %in% INDIKATOR_MODAL_COLS)
+  # grid'et redigerer kun felter herfra — id'et maa ikke kunne rammes der
+  expect_false("indikator_navn_teknisk" %in% .INDIKATOR_GRID_FIELDS)
+  bulk <- vapply(BULK_INDIKATOR_FIELDS, function(f) f$col, "")
+  expect_false("indikator_navn_teknisk" %in% bulk)
+})
+
+test_that("gem uden aendret indikator-id skriver direkte (ingen dialog)", {
+  db <- fake_db()
+  testServer(mod_indikator_crud_server, args = list(db = db), {
+    session$setInputs(tbl = .tbl_select(0))
+    session$setInputs(open_selected = 1)
+    session$setInputs(
+      m_indikator_navn = "Nyt",
+      m_indikator_navn_teknisk = "a", # uaendret ift. fake_db's store
+      m_j_faggrupper = character(0),
+      m_j_dataprodukter = character(0),
+      m_j_organisation = character(0),
+      modal_save = 1
+    )
+    expect_null(pending_save()) # intet i vente → ingen bekraeftelse kraevet
+    u <- db$.calls()$updated
+    expect_false(is.null(u))
+    expect_identical(u[[2]]$indikator_navn_teknisk, "a")
+  })
+})
+
+test_that("aendret indikator-id skriver IKKE foer bekraeftelse", {
+  db <- fake_db()
+  testServer(mod_indikator_crud_server, args = list(db = db), {
+    session$setInputs(tbl = .tbl_select(0))
+    session$setInputs(open_selected = 1)
+    session$setInputs(
+      m_indikator_navn = "Nyt",
+      m_indikator_navn_teknisk = "a_rettet",
+      m_j_faggrupper = c("1", "2"),
+      m_j_dataprodukter = character(0),
+      m_j_organisation = character(0),
+      modal_save = 1
+    )
+    expect_null(db$.calls()$updated) # intet skrevet endnu
+    p <- pending_save()
+    expect_false(is.null(p))
+    expect_identical(p$vals$indikator_navn_teknisk, "a_rettet")
+    expect_equal(p$picks$faggrupper, c(1L, 2L)) # m2m-valg holdes i vente
+  })
+})
+
+test_that("bekraeftelse skriver det nye indikator-id og rydder ventende gem", {
+  db <- fake_db()
+  testServer(mod_indikator_crud_server, args = list(db = db), {
+    session$setInputs(tbl = .tbl_select(0))
+    session$setInputs(open_selected = 1)
+    session$setInputs(
+      m_indikator_navn = "Nyt",
+      m_indikator_navn_teknisk = "a_rettet",
+      m_j_faggrupper = character(0),
+      m_j_dataprodukter = character(0),
+      m_j_organisation = character(0),
+      modal_save = 1
+    )
+    session$setInputs(teknisk_confirm = 1)
+    u <- db$.calls()$updated
+    expect_false(is.null(u))
+    expect_equal(u[[1]], 1L)
+    expect_identical(u[[2]]$indikator_navn_teknisk, "a_rettet")
+    expect_null(pending_save()) # ryddet efter vellykket gem
+  })
+})
+
+test_that("fortryd skriver intet og rydder ventende gem", {
+  db <- fake_db()
+  testServer(mod_indikator_crud_server, args = list(db = db), {
+    session$setInputs(tbl = .tbl_select(0))
+    session$setInputs(open_selected = 1)
+    session$setInputs(
+      m_indikator_navn = "Nyt",
+      m_indikator_navn_teknisk = "a_rettet",
+      m_j_faggrupper = character(0),
+      m_j_dataprodukter = character(0),
+      m_j_organisation = character(0),
+      modal_save = 1
+    )
+    session$setInputs(teknisk_cancel = 1)
+    expect_null(db$.calls()$updated)
+    expect_null(pending_save())
+  })
+})
+
+test_that("ny indikator faar sit indikator-id uden bekraeftelse", {
+  db <- fake_db()
+  testServer(mod_indikator_crud_server, args = list(db = db), {
+    session$setInputs(new_modal = 1)
+    session$setInputs(
+      m_indikator_navn = "Ny",
+      m_indikator_navn_teknisk = "ny_indikator",
+      m_j_faggrupper = character(0),
+      m_j_dataprodukter = character(0),
+      m_j_organisation = character(0),
+      modal_save = 1
+    )
+    # Ingen data peger paa indikatoren endnu → intet at bryde, ingen dialog
+    expect_null(pending_save())
+    cr <- db$.calls()$created
+    expect_false(is.null(cr))
+    expect_identical(cr[[1]]$indikator_navn_teknisk, "ny_indikator")
+  })
+})
+
+test_that("bekraeftelsesdialogen viser fra/til og advarer om datakoblingen", {
+  html <- as.character(htmltools::renderTags(
+    .byg_teknisk_confirm("gammelt_id", "nyt_id", NS("x"))
+  )$html)
+  expect_match(html, "gammelt_id", fixed = TRUE)
+  expect_match(html, "nyt_id", fixed = TRUE)
+  expect_match(html, "alert-warning", fixed = TRUE)
+  expect_match(html, "parquet", fixed = TRUE)
+  # baade bekraeft og fortryd skal vaere rigtige inputs (fortryd genaabner
+  # formularen — en ren modalButton ville tabe brugerens indtastninger)
+  expect_match(html, 'id="x-teknisk_confirm"', fixed = TRUE)
+  expect_match(html, 'id="x-teknisk_cancel"', fixed = TRUE)
+})
+
+test_that("bekraeftelsesdialogen viser tom vaerdi som (tomt), ikke NA", {
+  html <- as.character(htmltools::renderTags(
+    .byg_teknisk_confirm(NA_character_, "", NS("x"))
+  )$html)
+  expect_match(html, "(tomt)", fixed = TRUE)
+  expect_false(grepl(">NA<", html, fixed = TRUE))
 })

@@ -38,12 +38,16 @@
   )
 }
 
-# Felter modalen viser (design-retning C). indikator_navn_teknisk udelades
-# bevidst fra GEM (parquet-mappings-nøgle — omdøbning bryder datakoblingen);
-# den VISES readonly i .build_modal. Danske labels + required/rosa-markering
-# styres i .build_modal.
+# Felter modalen viser (design-retning C). indikator_navn_teknisk ER med:
+# feltet er parquet-mappings-nøglen, så omdøbning bryder datakoblingen indtil
+# mappen på disken omdøbes tilsvarende — men et forkert id skal kunne rettes.
+# Modalen er derfor det ENESTE sted feltet kan ændres, og en ændring på en
+# eksisterende indikator kræver bekræftelse (se .teknisk_uaendret + pending_save).
+# Grid'et og bulk-redigering holder det fortsat readOnly.
+# Danske labels + required/rosa-markering styres i .build_modal.
 INDIKATOR_MODAL_COLS <- c(
-  "indikator_navn", "indikator_hierarki", "datakilde", "kontaktperson",
+  "indikator_navn", "indikator_navn_teknisk",
+  "indikator_hierarki", "datakilde", "kontaktperson",
   "\u00F8nsket_tendens", "m\u00E5l", "output_enhed", "sp_rapport_id", "direkte_link",
   "definition_kort", "definition_dataportal", "t\u00E6ller_beskrivelse",
   "n\u00E6vner_beskrivelse", "indikator_ukompatibel_med", "antal_observationer",
@@ -54,6 +58,7 @@ INDIKATOR_MODAL_COLS <- c(
 # Danske felt-labels i modalen (col → vist tekst)
 INDIKATOR_MODAL_LABELS <- c(
   indikator_navn = "Navn p\u00E5 indikator",
+  indikator_navn_teknisk = "Indikator-id (teknisk navn)",
   indikator_hierarki = "Hierarki-placering",
   datakilde = "Datakilde", kontaktperson = "Kontaktperson",
   "\u00f8nsket_tendens" = "\u00D8nsket retning", "m\u00e5l" = "Generelt indikatorm\u00E5l",
@@ -81,7 +86,11 @@ mod_indikator_crud_ui <- function(id) {
       ),
       actionButton(ns("soft_delete"), "Deaktiv\u00E9r valgte",
         class = "btn-warning"
-      )
+      ),
+      actionButton(ns("select_all_visible"), "V\u00E6lg alle viste",
+        class = "btn-outline-secondary"
+      ),
+      uiOutput(ns("bulk_edit_btn"), inline = TRUE)
     ),
     bslib::layout_columns(
       col_widths = c(4, 4, 4),
@@ -123,6 +132,61 @@ mod_indikator_crud_ui <- function(id) {
     vals[[f$col]] <- v
   }
   vals
+}
+
+#' Er to indikator-id'er (indikator_navn_teknisk) reelt den samme vaerdi?
+#' Bruges til at afgoere om modal-gem skal kraeve bekraeftelse: kun en FAKTISK
+#' omdoebning maa udloese dialogen — at aabne og gemme uden at roere feltet maa
+#' ikke. NULL/NA/length-0/blanke kanter normaliseres til samme tomme vaerdi, saa
+#' "a" vs " a " ikke taelles som en aendring (browseren kan tilfoeje whitespace),
+#' mens forskel paa store/smaa bogstaver TAELLER — parquet-opslaget slaar op i
+#' filsystemet, og det er case-sensitivt paa Linux.
+#' @noRd
+.teknisk_uaendret <- function(a, b) {
+  norm <- function(x) {
+    if (is.null(x) || length(x) == 0) return("")
+    x <- as.character(x)[1]
+    if (is.na(x)) "" else trimws(x)
+  }
+  identical(norm(a), norm(b))
+}
+
+#' Bekraeftelsesdialog foer en omdoebning af indikator-id.
+#' Ren byggefunktion (ingen DB/skrivning) — selve gemmet ligger i observeren
+#' bundet til teknisk_confirm. Viser fra/til eksplicit, saa brugeren kan se
+#' praecis hvilken streng parquet-opslaget skifter til; tom vaerdi vises som
+#' "(tomt)" fremfor NA, da et tomt id betyder ingen datakobling overhovedet.
+#' @param ns modulets session$ns
+#' @noRd
+.byg_teknisk_confirm <- function(gammelt, nyt, ns) {
+  vis <- function(x) {
+    if (is.null(x) || length(x) == 0) return("(tomt)")
+    x <- as.character(x)[1]
+    if (is.na(x) || !nzchar(trimws(x))) "(tomt)" else x
+  }
+  build_confirm_modal(
+    title = "\u00C6ndr indikator-id?",
+    body = tagList(
+      p(paste(
+        "Indikator-id er n\u00F8glen til datafilerne: appen finder indikatorens",
+        "parquet-data ved at sl\u00E5 id'et op som mappe- og filnavn i",
+        "parquet-lageret."
+      )),
+      tags$ul(
+        tags$li(tags$b("Fra: "), tags$code(vis(gammelt))),
+        tags$li(tags$b("Til: "), tags$code(vis(nyt)))
+      )
+    ),
+    warning = paste(
+      "Indtil mappen/filen i parquet-lageret omd\u00F8bes tilsvarende, kan appen",
+      "ikke finde data for indikatoren \u2014 signal-gennemgang og diagrammer",
+      "vil fejle for den."
+    ),
+    confirm_id = ns("teknisk_confirm"),
+    confirm_label = "\u00C6ndr indikator-id",
+    confirm_class = "btn-warning",
+    cancel_id = ns("teknisk_cancel")
+  )
 }
 
 #' Dropdown-choices for indikator-hierarki: aktive noder + evt. nuvaerende
@@ -325,7 +389,11 @@ mod_indikator_crud_server <- function(id, db) {
 
     # Bygger modal-indhold (design-retning C: to kolonner 5/7, sektioner, rosa).
     # row = NULL → blank "Ny indikator"-tilstand med fornuftige defaults.
-    .build_modal <- function(row = NULL) {
+    # overrides/junctions: pre-udfyld med brugerens UAFSENDTE indtastninger i
+    # stedet for DB-tilstanden. Bruges naar bekraeftelsesdialogen for et aendret
+    # indikator-id fortrydes — dialogen erstattede modalen, saa formularen skal
+    # genopbygges som brugeren forlod den (ellers tabes alt andet arbejde i den).
+    .build_modal <- function(row = NULL, overrides = NULL, junctions = NULL) {
       ns <- session$ns
       is_new <- is.null(row)
       # Defaults for ny indikator (design: aktiv + auto-opdatering tændt)
@@ -334,6 +402,7 @@ mod_indikator_crud_server <- function(id, db) {
       } else {
         as.list(row)
       }
+      if (length(overrides) > 0) vals[names(overrides)] <- overrides
       req_cols <- c("indikator_navn", "indikator_hierarki", "definition_kort")
       rosa_cols <- c("definition_dataportal", "t\u00E6ller_beskrivelse", "n\u00E6vner_beskrivelse")
       # Skalar/FK-felt med dansk label + evt. required-* + rosa-wrap
@@ -366,7 +435,13 @@ mod_indikator_crud_server <- function(id, db) {
       # m2m-multiselect med dansk label
       mfin <- function(key, lab) {
         opts <- db$junction_options(key)
-        sel <- if (is_new) integer(0) else db$get_junction(vals$id, key)
+        sel <- if (!is.null(junctions)) {
+          junctions[[key]] %||% integer(0)
+        } else if (is_new) {
+          integer(0)
+        } else {
+          db$get_junction(vals$id, key)
+        }
         selectInput(ns(paste0("m_j_", key)), lab,
           choices = stats::setNames(opts$id, opts$label),
           selected = sel, multiple = TRUE
@@ -381,15 +456,23 @@ mod_indikator_crud_server <- function(id, db) {
         )
       }
 
-      # Teknisk navn: VISES men kan ikke redigeres (parquet-mappings-nøgle —
-      # omdøbning ville bryde koblingen til datafilerne). Disabled input
-      # sender ingen værdi, og kolonnen er ikke i INDIKATOR_MODAL_COLS.
-      teknisk_vis <- if (!is_new) {
-        w <- textInput(ns("m_vis_teknisk"), "Indikator-id (teknisk navn \u2014 l\u00E5st)",
-          value = vals$indikator_navn_teknisk %||% ""
+      # Indikator-id (teknisk navn): appen slår datafilerne op på PRÆCIS denne
+      # streng (parquet_indicator_path / parquet_compact_file), så en omdøbning
+      # her kræver at mappen på disken omdøbes tilsvarende. Feltet ER
+      # redigerbart — nogle id'er er forkerte fra start — men gem på en
+      # EKSISTERENDE indikator går via bekræftelsesdialogen i input$modal_save.
+      # Ved oprettelse bekræftes ikke: ingen data peger på indikatoren endnu,
+      # så der er intet at bryde.
+      teknisk_vis <- tagList(
+        fin("indikator_navn_teknisk"),
+        div(
+          class = "form-text text-muted small",
+          paste0(
+            "Kobler indikatoren til parquet-lageret \u2014 skal matche ",
+            "mappe-/filnavnet p\u00E5 disken."
+          )
         )
-        htmltools::tagQuery(w)$find("input")$addAttrs(disabled = NA)$allTags()
-      }
+      )
 
       left <- tagList(
         sect("Stamdata"),
@@ -496,10 +579,48 @@ mod_indikator_crud_server <- function(id, db) {
       showModal(.build_modal(NULL))
     })
 
+    # Selve skrivningen fra modalen — delt af det direkte gem og af gem efter
+    # bekræftet omdøbning af indikator-id, så begge veje er én transaktion.
+    .gem_modal <- function(rid, vals, picks) {
+      safe_operation("modal-gem",
+        med_ventevisning("Gemmer…", {
+          if (is.null(rid)) {
+            newid <- db$create_indikator_full(vals, picks)
+            status_msg(paste("Oprettet indikator", newid))
+          } else {
+            db$save_indikator(rid, vals, picks)
+            status_msg(paste("Gemt indikator", rid))
+          }
+          removeModal()
+          reload()
+          TRUE
+        }),
+        fallback = {
+          status_msg("Fejl ved modal-gem (se log)")
+          FALSE
+        }
+      )
+    }
+
+    # Nuværende indikator-id fra den senest hentede DB-runde (ikke fra
+    # formularen), så sammenligningen sker mod det der faktisk står i basen.
+    .teknisk_i_db <- function(rid) {
+      d <- rows()
+      if (is.null(rid) || !("indikator_navn_teknisk" %in% names(d))) {
+        return(NA_character_)
+      }
+      j <- match(as.character(rid), as.character(d[["id"]]))
+      if (is.na(j)) NA_character_ else as.character(d[["indikator_navn_teknisk"]][j])
+    }
+
+    # Gem-payload der venter på bekræftelse af en omdøbning. Holder OGSÅ picks,
+    # så en fortrydelse kan genopbygge modalen som brugeren forlod den.
+    pending_save <- reactiveVal(NULL)
+
     observeEvent(input$modal_save, {
       rid <- editing_id() # NULL → opret ny
-      # Saml KUN de felter modalen viser → udeladte kolonner (teknisk navn,
-      # output_enhed) røres ej i UPDATE og bevarer deres værdi.
+      # Saml KUN de felter modalen viser → udeladte kolonner røres ej i UPDATE
+      # og bevarer deres værdi.
       modal_fields <- Filter(
         function(f) f$col %in% INDIKATOR_MODAL_COLS,
         INDIKATOR_FIELDS
@@ -516,20 +637,55 @@ mod_indikator_crud_server <- function(id, db) {
         function(key) as.integer(input[[paste0("m_j_", key)]])
       )
       names(picks) <- names(INDIKATOR_JUNCTIONS)
-      safe_operation("modal-gem",
-        med_ventevisning("Gemmer…", {
-          if (is.null(rid)) {
-            newid <- db$create_indikator_full(vals, picks)
-            status_msg(paste("Oprettet indikator", newid))
-          } else {
-            db$save_indikator(rid, vals, picks)
-            status_msg(paste("Gemt indikator", rid))
-          }
-          removeModal()
-          reload()
-        }),
-        fallback = status_msg("Fejl ved modal-gem (se log)")
-      )
+
+      # Omdøbt indikator-id på en EKSISTERENDE indikator → bekræft først. Kun
+      # når feltet rent faktisk blev sendt med (.collect_form udelader kolonnen
+      # når inputtet ikke findes) OG værdien er en anden end databasens.
+      gammelt <- .teknisk_i_db(rid)
+      har_felt <- "indikator_navn_teknisk" %in% names(vals)
+      if (!is.null(rid) && har_felt &&
+        !.teknisk_uaendret(gammelt, vals$indikator_navn_teknisk)) {
+        pending_save(list(rid = rid, vals = vals, picks = picks))
+        showModal(.byg_teknisk_confirm(
+          gammelt, vals$indikator_navn_teknisk, session$ns
+        ))
+        return()
+      }
+
+      .gem_modal(rid, vals, picks)
+    })
+
+    observeEvent(input$teknisk_confirm, {
+      p <- pending_save()
+      if (is.null(p)) {
+        removeModal()
+        return()
+      }
+      # .gem_modal lukker selv modalen ved succes. Ved fejl bliver dialogen
+      # stående OG payloaden bevares, så et nyt klik prøver igen med de samme
+      # værdier i stedet for at tabe brugerens indtastninger.
+      if (isTRUE(.gem_modal(p$rid, p$vals, p$picks))) pending_save(NULL)
+    })
+
+    # Fortryd: dialogen ERSTATTEDE indikator-modalen, så den skal bygges op
+    # igen — med brugerens uafsendte værdier (inkl. det ændrede id, som de selv
+    # kan rette tilbage), ikke med DB-tilstanden.
+    observeEvent(input$teknisk_cancel, {
+      p <- pending_save()
+      pending_save(NULL)
+      removeModal()
+      if (is.null(p)) {
+        return()
+      }
+      d <- rows()
+      row <- d[as.character(d[["id"]]) == as.character(p$rid), , drop = FALSE]
+      if (nrow(row) == 0) {
+        status_msg("Indikator ikke fundet")
+        return()
+      }
+      showModal(.build_modal(row[1, , drop = FALSE],
+        overrides = p$vals, junctions = p$picks
+      ))
     })
 
     # --- Diagram-sektion i modal (swap-retur til/fra diagram-formular) -------
@@ -684,7 +840,14 @@ mod_indikator_crud_server <- function(id, db) {
       d
     })
     tbl_refresh <- reactiveVal(0) # bump → snap-back efter fejlet gem
-    tbl_sel <- reactiveVal(NULL) # pk (chr) for senest valgte række
+    tbl_sel <- reactiveVal(character(0)) # pk-vektor (chr) for den valgte range
+
+    # Selektionen begrænset til rækker der faktisk er i den VISTE (filtrerede)
+    # tabel lige nu — et filterskift efterlader ikke en optælling der peger på
+    # skjulte rækker.
+    tbl_sel_visible <- reactive({
+      intersect(tbl_sel(), as.character(tbl_rows()[["id"]]))
+    })
 
     # Viser en forklarende tom-tilstand i stedet for et tomt grid, når
     # filtrene ikke matcher noget — ellers det redigerbare excelR-grid.
@@ -764,11 +927,28 @@ mod_indikator_crud_server <- function(id, db) {
     selected_id <- reactive({
       sel <- tbl_sel()
       d <- tbl_rows()
-      j <- if (is.null(sel)) NA_integer_ else match(sel, as.character(d[["id"]]))
+      j <- if (length(sel) == 0) NA_integer_ else match(sel[1], as.character(d[["id"]]))
       if (is.na(j)) {
         return(NULL)
       } # pk væk fra den viste tabel → intet valg
       d[["id"]][j]
+    })
+
+    observeEvent(input$select_all_visible, {
+      tbl_sel(as.character(tbl_rows()[["id"]]))
+    })
+
+    # "Redigér valgte (N)" — knap-tekst reflekterer selektionen reaktivt, men
+    # selve bulk-flowet leveres først i en senere leverance (batch-kontrakt +
+    # audit i DB-laget) — knappen er derfor disabled her.
+    output$bulk_edit_btn <- renderUI({
+      ns <- session$ns
+      n <- length(tbl_sel_visible())
+      actionButton(ns("bulk_edit"),
+        sprintf("Redigér valgte (%d)", n),
+        class = "btn-outline-secondary", disabled = "disabled",
+        title = "Kommer i en senere leverance"
+      )
     })
 
     # Bekr\u00E6ftelse f\u00F8r deaktivering \u2014 skriver intet selv. Selve skrivningen
@@ -822,9 +1002,10 @@ mod_indikator_crud_server <- function(id, db) {
     observeEvent(input$tbl, {
       p <- input$tbl
       if (isTRUE(p$forSelectedVals)) {
-        # pk læses fra payloadens fullData (grid'ets aktuelle — evt.
-        # klient-sorterede — rækkefølge), aldrig fra positionen alene
-        tbl_sel(excel_selected_pk(p))
+        # pk'er læses fra payloadens fullData (grid'ets aktuelle — evt.
+        # klient-sorterede — rækkefølge), aldrig fra positionen alene.
+        # Dækker range-selektion (borderTop..borderBottom), ikke kun ét klik.
+        tbl_sel(excel_selected_pks(p) %||% character(0))
       }
       d <- tbl_rows()
       changes <- excel_diff_cells(
@@ -881,7 +1062,7 @@ mod_indikator_crud_server <- function(id, db) {
     # eksponér til test
     list(
       rows = rows, status_msg = status_msg, editing_id = editing_id,
-      return_ind = return_ind
+      return_ind = return_ind, tbl_sel = tbl_sel
     )
   })
 }

@@ -129,6 +129,49 @@ test_that("excel_selected_pk: ude-af-range/manglende data → NULL", {
   expect_null(excel_selected_pk(list(fullData = list(data = list(list(1))))))
 })
 
+test_that("excel_selected_pks: range-selektion (borderTop..borderBottom) i grid'ets AKTUELLE orden", {
+  p <- list(forSelectedVals = TRUE,
+    selectedDataBoundary = list(borderTop = 0, borderBottom = 1),
+    fullData = list(data = list(list(7, "x"), list(3, "y"), list(9, "z"))))
+  expect_identical(excel_selected_pks(p), c("7", "3"))
+  # Klient-sorteret orden: pk følger positionen i fullData, ikke server-df'en
+  p$fullData$data <- rev(p$fullData$data)
+  expect_identical(excel_selected_pks(p), c("9", "3"))
+})
+
+test_that("excel_selected_pks: enkelt-klik (borderBottom fraværende/lig borderTop) → én pk", {
+  p <- list(selectedDataBoundary = list(borderTop = 1),
+    fullData = list(data = list(list(7), list(3), list(9))))
+  expect_identical(excel_selected_pks(p), "3")
+  p$selectedDataBoundary$borderBottom <- 1
+  expect_identical(excel_selected_pks(p), "3")
+})
+
+test_that("excel_selected_pks: borderBottom < borderTop (omvendt træk) normaliseres", {
+  p <- list(selectedDataBoundary = list(borderTop = 2, borderBottom = 0),
+    fullData = list(data = list(list(7), list(3), list(9))))
+  expect_identical(excel_selected_pks(p), c("7", "3", "9"))
+})
+
+test_that("excel_selected_pks: ude-af-range/manglende data → NULL", {
+  expect_null(excel_selected_pks(list(
+    selectedDataBoundary = list(borderTop = 0, borderBottom = 5),
+    fullData = list(data = list(list(1))))))
+  expect_null(excel_selected_pks(list(
+    selectedDataBoundary = list(borderTop = 0))))
+  expect_null(excel_selected_pks(list(fullData = list(data = list(list(1))))))
+})
+
+test_that("excel_selected_pks: tomme/NA pk'er i range springes over", {
+  p <- list(selectedDataBoundary = list(borderTop = 0, borderBottom = 2),
+    fullData = list(data = list(list(7), list(NA), list(9))))
+  expect_identical(excel_selected_pks(p), c("7", "9"))
+  # alle tomme → NULL, ikke en tom vektor
+  p2 <- list(selectedDataBoundary = list(borderTop = 0, borderBottom = 0),
+    fullData = list(data = list(list(NA))))
+  expect_null(excel_selected_pks(p2))
+})
+
 test_that("excel_diff_cells: finder ændrede celler via pk-match, ignorerer pk-kolonnen", {
   old <- data.frame(Id = 1:2, navn = c("A", "B"), niveau = c(1L, 2L),
                     stringsAsFactors = FALSE)

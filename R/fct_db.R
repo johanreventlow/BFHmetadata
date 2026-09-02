@@ -59,6 +59,180 @@ db_connect <- function() {
   )
 }
 
+# --- Bulk-redigering: batch-kontrakt (Leverance 2 af -------------------------
+# docs/plans/2026-08-30-bulk-redigering-design.md) ---------------------------
+# Standard-navne på audit-schemaets tabeller (Leverance 3-migrationen, samme
+# dok §4). make_db() bruger disse defaults; integrationstests kan overrides
+# til engangstabeller efter dev/bulk_probe.R-mønstret, indtil migrationen er
+# kørt (se tests/testthat/test-db-bulk.R).
+.AUDIT_BATCH_TABLE <- '"audit"."tbl_batch"'
+.AUDIT_ROW_TABLE   <- '"audit"."tbl_batch_raekke"'
+
+#' Struktureret konflikt-condition til bulk-flowet. type: "duplicate" |
+#' "missing" | "stale" | "undo_conflict". ids: de berørte id'er (character).
+#' Fanges med tryCatch(..., bulk_conflict = function(e) ...) — e$type/e$ids
+#' giver kalderen data til en konfliktrapport uden at parse fejlbeskeden.
+#' @noRd
+bulk_conflict <- function(type, ids, message = NULL) {
+  msg <- message %||% switch(type,
+    duplicate = sprintf("Id'et/id'erne er angivet flere gange: %s",
+                        paste(ids, collapse = ", ")),
+    missing = sprintf("Følgende rækker findes ikke længere: %s",
+                      paste(ids, collapse = ", ")),
+    stale = sprintf(paste("Følgende rækker er ændret af en anden",
+                          "bruger siden forhåndsvisningen: %s"),
+                    paste(ids, collapse = ", ")),
+    undo_conflict = sprintf(paste("Følgende rækker er ændret siden",
+                                  "batchen og kan ikke fortrydes: %s"),
+                            paste(ids, collapse = ", ")),
+    sprintf("Konflikt: %s", paste(ids, collapse = ", "))
+  )
+  structure(
+    class = c("bulk_conflict", "error", "condition"),
+    list(message = msg, call = NULL, type = type, ids = ids)
+  )
+}
+
+#' Sæt ÉT allowlistet felt på et eksplicit id-sæt, atomisk, med audit +
+#' konfliktkontrol (design-dok §5). expected_before: named liste/vektor,
+#' navne = as.character(ids), værdier = de førværdier UI'et sidst viste
+#' (forhåndsvisningen) — bruges til at opdage at grid'et er blevet stale
+#' siden (krav 7). Skal indeholde præcis ét element pr. id.
+#' Returnerer list(batch_id, n, skipped) ved succes (rækker hvor værdien
+#' allerede var målværdien er "skipped", ikke skrevet/auditeret). Kaster en
+#' "bulk_conflict"-condition ved dubleret/manglende/stale id — HELE batchen
+#' rulles tilbage (poolWithTransaction ruller tilbage på enhver fejl).
+#' @noRd
+.bulk_update_impl <- function(pool, tabel_key, ids, felt, vaerdi, expected_before,
+                              audit_batch_tbl = .AUDIT_BATCH_TABLE,
+                              audit_row_tbl = .AUDIT_ROW_TABLE,
+                              tables_cfg = BULK_TABLES) {
+  assert_write_enabled()
+
+  tbl <- tables_cfg[[tabel_key]]
+  if (is.null(tbl)) stop(sprintf("Ukendt bulk-tabel: '%s'", tabel_key), call. = FALSE)
+  fld <- bulk_field_config(tabel_key, felt, tables = tables_cfg)
+  if (is.null(fld)) {
+    stop(sprintf("Feltet '%s' er ikke tilladt i bulk-redigering for '%s'",
+                 felt, tabel_key), call. = FALSE)
+  }
+
+  if (length(ids) == 0L || anyNA(ids)) {
+    stop("Bulk kræver mindst ét gyldigt id", call. = FALSE)
+  }
+  ids_chr <- as.character(ids)
+  dup <- unique(ids_chr[duplicated(ids_chr)])
+  if (length(dup) > 0L) stop(bulk_conflict("duplicate", dup))
+  if (!setequal(names(expected_before), ids_chr)) {
+    stop("expected_before skal indeholde præcis én førværdi pr. id",
+         call. = FALSE)
+  }
+
+  # Konvertér ALT (målværdi + forventede førværdier) FØR nogen forbindelse
+  # åbnes — en typefejl skal aldrig kunne åbne en transaktion.
+  target <- bulk_coerce_value(fld, vaerdi)
+  expected_typed <- stats::setNames(
+    lapply(ids_chr, function(k) bulk_coerce_value(fld, expected_before[[k]], allow_blank = TRUE)),
+    ids_chr
+  )
+  ids_int <- as.integer(ids)
+
+  pool::poolWithTransaction(pool, function(conn) {
+    locked <- DBI::dbGetQuery(conn, build_bulk_lock_sql(tbl$table, tbl$pk, felt),
+                              params = list(pg_int_array(ids_int)))
+    locked_ids <- as.character(locked[[tbl$pk]])
+    missing <- setdiff(ids_chr, locked_ids)
+    if (length(missing) > 0L) stop(bulk_conflict("missing", missing))
+
+    current <- stats::setNames(locked[[felt]], locked_ids)
+    stale <- ids_chr[!vapply(ids_chr, function(k) {
+      identical(current[[k]], expected_typed[[k]])
+    }, logical(1))]
+    if (length(stale) > 0L) stop(bulk_conflict("stale", stale))
+
+    unchanged <- ids_chr[vapply(ids_chr, function(k) identical(current[[k]], target), logical(1))]
+    write_ids <- setdiff(ids_chr, unchanged)
+    if (length(write_ids) == 0L) {
+      return(list(batch_id = NA_character_, n = 0L, skipped = as.integer(unchanged)))
+    }
+    write_ids_int <- as.integer(write_ids)
+
+    DBI::dbExecute(conn, build_bulk_update_sql(tbl$table, tbl$pk, felt),
+                   params = list(target, pg_int_array(write_ids_int)))
+
+    batch_id <- DBI::dbGetQuery(conn, build_audit_batch_insert_sql(audit_batch_tbl),
+                                params = list(tbl$table, felt))$batch_id[1]
+    row_params <- c(list(batch_id), unlist(lapply(write_ids_int, function(id) {
+      list(id, bulk_value_to_text(fld$kind, current[[as.character(id)]]),
+           bulk_value_to_text(fld$kind, target))
+    }), recursive = FALSE))
+    DBI::dbExecute(conn, build_audit_row_insert_sql(length(write_ids_int), audit_row_tbl),
+                   params = row_params)
+
+    list(batch_id = batch_id, n = length(write_ids_int), skipped = as.integer(unchanged))
+  })
+}
+
+#' Fortryd én batch: ny transaktion, samme id-låserækkefølge, tjekker at
+#' NUVÆRENDE værdi stadig er vaerdi_efter for HVER ramt række — én afvigelse
+#' afviser fortrydelsen af HELE batchen (ingen delvis fortryd, krav 7).
+#' Returnerer list(batch_id, n) ved succes. Kaster almindelig error ved
+#' ukendt/allerede-fortrudt batch_id, "bulk_conflict" (type="undo_conflict")
+#' ved værdikonflikt.
+#' @noRd
+.bulk_undo_impl <- function(pool, batch_id, audit_batch_tbl = .AUDIT_BATCH_TABLE,
+                            audit_row_tbl = .AUDIT_ROW_TABLE,
+                            tables_cfg = BULK_TABLES) {
+  assert_write_enabled()
+
+  pool::poolWithTransaction(pool, function(conn) {
+    header <- DBI::dbGetQuery(conn, build_audit_batch_select_sql(audit_batch_tbl),
+                              params = list(batch_id))
+    if (nrow(header) == 0L) stop(sprintf("Ukendt batch: %s", batch_id), call. = FALSE)
+    if (!is.na(header$fortrudt_ts[1])) {
+      stop(sprintf("Batch %s er allerede fortrudt", batch_id), call. = FALSE)
+    }
+
+    tabel_key <- Find(function(k) identical(tables_cfg[[k]]$table, header$tabel[1]),
+                      names(tables_cfg))
+    fld <- if (is.null(tabel_key)) NULL else bulk_field_config(tabel_key, header$felt[1], tables = tables_cfg)
+    if (is.null(fld)) {
+      stop(sprintf(paste("Batch %s peger på en tabel/felt der ikke",
+                         "længere er tilladt i bulk"), batch_id), call. = FALSE)
+    }
+    tbl <- tables_cfg[[tabel_key]]
+
+    rows <- DBI::dbGetQuery(conn, build_audit_rows_select_sql(audit_row_tbl),
+                            params = list(batch_id))
+    if (nrow(rows) == 0L) {
+      stop(sprintf("Batch %s har ingen rækker at fortryde", batch_id), call. = FALSE)
+    }
+    ids_int <- as.integer(rows$row_id)
+    ids_chr <- as.character(ids_int)
+
+    locked <- DBI::dbGetQuery(conn, build_bulk_lock_sql(tbl$table, tbl$pk, header$felt[1]),
+                              params = list(pg_int_array(ids_int)))
+    locked_ids <- as.character(locked[[tbl$pk]])
+    missing <- setdiff(ids_chr, locked_ids)
+    if (length(missing) > 0L) stop(bulk_conflict("undo_conflict", missing))
+
+    current <- stats::setNames(locked[[header$felt[1]]], locked_ids)
+    conflicted <- ids_chr[!vapply(seq_along(ids_chr), function(i) {
+      identical(current[[ids_chr[i]]], bulk_untext_value(fld$kind, rows$vaerdi_efter[i]))
+    }, logical(1))]
+    if (length(conflicted) > 0L) stop(bulk_conflict("undo_conflict", conflicted))
+
+    for (i in seq_len(nrow(rows))) {
+      restore <- bulk_untext_value(fld$kind, rows$vaerdi_foer[i])
+      DBI::dbExecute(conn, build_bulk_update_sql(tbl$table, tbl$pk, header$felt[1]),
+                     params = list(restore, pg_int_array(ids_int[i])))
+    }
+    DBI::dbExecute(conn, build_audit_mark_undone_sql(audit_batch_tbl), params = list(batch_id))
+
+    list(batch_id = batch_id, n = nrow(rows))
+  })
+}
+
 #' Byg db-accessor-liste bundet til pool (dependency injection til modul/test)
 #' @noRd
 make_db <- function(pool) {
@@ -292,6 +466,13 @@ make_db <- function(pool) {
     delete_maal = function(id) {
       assert_write_enabled()
       DBI::dbExecute(pool, build_maal_delete_sql(), params = list(id))
+    },
+    # --- Bulk-redigering (batch-kontrakt, Leverance 2) ---------------------
+    bulk_update = function(tabel_key, ids, felt, vaerdi, expected_before) {
+      .bulk_update_impl(pool, tabel_key, ids, felt, vaerdi, expected_before)
+    },
+    bulk_undo = function(batch_id) {
+      .bulk_undo_impl(pool, batch_id)
     }
   )
 }

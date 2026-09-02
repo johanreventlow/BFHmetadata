@@ -402,6 +402,40 @@ test_that("duplikat giver advarsel men gem gennemføres", {
   })
 })
 
+test_that("range-selektion sætter grid_sel til flere pk'er (i grid-orden)", {
+  db <- fake_diagram_db()
+  testServer(mod_diagram_server, args = list(db = db), {
+    session$setInputs(filter_status = "alle")
+    session$setInputs(tbl = list(
+      forSelectedVals = TRUE,
+      selectedDataBoundary = list(borderTop = 0, borderBottom = 1,
+                                   borderLeft = 0, borderRight = 0),
+      fullData = list(data = list(list("1"), list("2")))))
+    expect_identical(grid_sel(), c("1", "2"))
+  })
+})
+
+test_that("'Vælg alle viste' sætter selektionen til alle rækker i den viste (filtrerede) tabel", {
+  db <- fake_diagram_db()
+  testServer(mod_diagram_server, args = list(db = db), {
+    session$setInputs(select_all_visible = 1)
+    expect_identical(grid_sel(), "1") # kun diagram_aktivt=TRUE er vist (default-filter)
+
+    session$setInputs(filter_status = "alle", select_all_visible = 2)
+    expect_setequal(grid_sel(), c("1", "2"))
+  })
+})
+
+test_that("'Redigér valgte (N)'-knappen reflekterer selektionen og er disabled i denne leverance", {
+  db <- fake_diagram_db()
+  testServer(mod_diagram_server, args = list(db = db), {
+    expect_match(output$bulk_edit_btn$html, "Redigér valgte \\(0\\)")
+    session$setInputs(filter_status = "alle", select_all_visible = 1)
+    expect_match(output$bulk_edit_btn$html, "Redigér valgte \\(2\\)")
+    expect_match(output$bulk_edit_btn$html, "disabled")
+  })
+})
+
 test_that("slet med median-knæk blokeres (delete_diagram IKKE kaldt)", {
   db <- fake_diagram_db(median_count = 3L)
   testServer(mod_diagram_server, args = list(db = db), {
@@ -422,7 +456,7 @@ test_that("slet uden median-knæk sletter via række-selektion", {
     session$setInputs(delete_row = 1)
     expect_identical(db$.calls()$deleted, 1L)
     expect_match(status_msg(), "Slettet")
-    expect_null(grid_sel())                           # stale selektion ryddes
+    expect_identical(grid_sel(), character(0))         # stale selektion ryddes
   })
 })
 

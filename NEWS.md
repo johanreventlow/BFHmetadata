@@ -29,6 +29,13 @@
   grænse), så ingen knæk falder ud ved opgraderingen.
 
 ## Nye features
+* **Grid'ene understøtter nu range-selektion af flere rækker** (klik +
+  shift-klik / træk) i både indikator- og diagramtabellen, samt en knap
+  "Vælg alle viste" der markerer alle rækker i det aktuelt filtrerede
+  resultat. Forarbejde til bulk-redigering
+  (`docs/plans/2026-08-30-bulk-redigering-design.md`) — en ny knap
+  "Redigér valgte (N)" viser selektionens størrelse, men er endnu disabled;
+  selve batch-skrivningen leveres i en senere leverance.
 * **Diagram-sidens Periode-valg tilbyder nu hele ordforrådet: dag, uge,
   maaned, kvartal og aar.** Valglisten var et DISTINCT-udtræk af værdier i
   brug og kunne derfor aldrig tilbyde en NY periode (hønen-og-ægget — "dag"
@@ -228,6 +235,18 @@
   Supabases Data API). Se migration/06_preflight.sql og
   migration/07_migration.sql — kør ikke uden en verificeret backup
   (migration/backup.sh) og et grønt preflight-tjek først.
+* Batch-kontrakten i DB-laget til bulk-redigering (Leverance 2 af
+  `docs/plans/2026-08-30-bulk-redigering-design.md`, endnu ikke koblet til
+  UI): serverside-allowlists pr. tabel (`BULK_INDIKATOR_FIELDS`/
+  `BULK_DIAGRAM_FIELDS` i metadata.R — ukendt felt afvises uden DB-kald),
+  SQL-buildere til lås/skriv/audit (fct_sql.R), og
+  `bulk_update`/`bulk_undo` (fct_db.R): én transaktion pr. batch med
+  `SELECT … FOR UPDATE` i stabil id-rækkefølge, førværdi-sammenligning mod
+  det UI'et sidst viste (stale → hele batchen afvises), og fortryd der
+  afviser fuldt ved konflikt i stedet for delvis rollback. Peger på det
+  kommende `audit`-schema (Leverance 3); integrationstests kører indtil
+  videre mod engangstabeller efter `dev/bulk_probe.R`-mønstret, inkl.
+  tvungen fejl midt i en batch med bevis for fuld rollback.
 
 ## Bug fixes
 * Inline-redigeringer i grid'ene (Indikatorer, Indikator-hierarki,
