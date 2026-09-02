@@ -365,25 +365,37 @@ bulk_coerce_value <- function(fld, raw, allow_blank = FALSE) {
   )
 }
 
-#' Kanonisk text-repræsentation til audit.tbl_batch_raekke (rundtursstabil
-#' sammen med kind, se bulk_untext_value()). NA gemmes som SQL NULL.
+#' JSON-repræsentation til audit."tblAendringslog" (vaerdi_foer/vaerdi_efter er
+#' jsonb NOT NULL). En manglende værdi bliver til JSON-`null` — ikke SQL NULL,
+#' som kolonnen ville afvise. jsonlite står for escaping, så en tekstværdi med
+#' anførselstegn eller backslash ikke kan bryde JSON'en.
+#' Rundtursstabil sammen med feltets kind, se bulk_json_to_value().
 #' @noRd
-bulk_value_to_text <- function(kind, value) {
-  if (length(value) == 0L || is.na(value)) return(NA_character_)
-  if (identical(kind, "bool")) return(if (isTRUE(value)) "TRUE" else "FALSE")
-  as.character(value)
+bulk_value_to_json <- function(kind, value) {
+  if (length(value) == 0L || is.na(value)) return("null")
+  # Tving værdien på feltets egen type FØR serialisering: ellers kunne en bool
+  # der er nået hertil som tekst ende som JSON-strengen "TRUE" i stedet for
+  # true, og fortryd ville skrive noget andet tilbage end der stod.
+  v <- switch(kind,
+    bool = isTRUE(value),
+    fk = as.integer(value),
+    as.character(value)
+  )
+  # auto_unbox: skalarer skal være 42 / true / "abc", ikke [42] / [true].
+  as.character(jsonlite::toJSON(v, auto_unbox = TRUE, na = "null"))
 }
 
-#' Omvendt af bulk_value_to_text() — re-typer en audit-tekstværdi til
-#' feltets R-type ved fortryd. NA (SQL NULL) → NA i feltets type.
+#' Omvendt af bulk_value_to_json() — re-typer en gemt audit-værdi til feltets
+#' R-type ved fortryd. JSON-`null` (og manglende input) → NA i feltets type.
 #' @noRd
-bulk_untext_value <- function(kind, text) {
-  if (length(text) == 0L || is.na(text)) {
-    return(switch(kind, bool = NA, fk = NA_integer_, NA_character_))
-  }
+bulk_json_to_value <- function(kind, json) {
+  tom <- switch(kind, bool = NA, fk = NA_integer_, NA_character_)
+  if (length(json) == 0L || is.na(json)) return(tom)
+  v <- jsonlite::fromJSON(json)
+  if (is.null(v) || length(v) == 0L || is.na(v)) return(tom)
   switch(kind,
-    bool = identical(text, "TRUE"),
-    fk = as.integer(text),
-    text
+    bool = isTRUE(as.logical(v)),
+    fk = as.integer(v),
+    as.character(v)
   )
 }

@@ -252,10 +252,12 @@
   `bulk_update`/`bulk_undo` (fct_db.R): én transaktion pr. batch med
   `SELECT … FOR UPDATE` i stabil id-rækkefølge, førværdi-sammenligning mod
   det UI'et sidst viste (stale → hele batchen afvises), og fortryd der
-  afviser fuldt ved konflikt i stedet for delvis rollback. Peger på det
-  kommende `audit`-schema (Leverance 3); integrationstests kører indtil
-  videre mod engangstabeller efter `dev/bulk_probe.R`-mønstret, inkl.
-  tvungen fejl midt i en batch med bevis for fuld rollback.
+  afviser fuldt ved konflikt i stedet for delvis rollback. Ændringer
+  auditeres i `audit."tblAendringslog"` — den log der faktisk er deployeret
+  (`migration/07_migration.sql`); designets oprindelige skitse med to
+  tabeller blev aldrig oprettet. Integrationstests kører mod engangstabeller
+  efter `dev/bulk_probe.R`-mønstret, inkl. tvungen fejl midt i en batch med
+  bevis for fuld rollback.
 
 ## Bug fixes
 * **Siden kunne ikke scrolles efter at en indikator var redigeret i modalen.**

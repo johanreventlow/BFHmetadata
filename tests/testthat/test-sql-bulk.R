@@ -69,21 +69,40 @@ test_that("bulk_coerce_value: text tillader blank uden allow_blank", {
   expect_identical(bulk_coerce_value(fld, NA_character_, allow_blank = TRUE), NA_character_)
 })
 
-test_that("bulk_value_to_text / bulk_untext_value er rundtursstabile", {
-  expect_identical(bulk_value_to_text("bool", TRUE), "TRUE")
-  expect_identical(bulk_value_to_text("bool", FALSE), "FALSE")
-  expect_identical(bulk_value_to_text("bool", NA), NA_character_)
-  expect_identical(bulk_untext_value("bool", "TRUE"), TRUE)
-  expect_identical(bulk_untext_value("bool", "FALSE"), FALSE)
-  expect_identical(bulk_untext_value("bool", NA_character_), NA)
+test_that("bulk_value_to_json / bulk_json_to_value er rundtursstabile", {
+  expect_identical(bulk_value_to_json("bool", TRUE), "true")
+  expect_identical(bulk_value_to_json("bool", FALSE), "false")
+  expect_identical(bulk_json_to_value("bool", "true"), TRUE)
+  expect_identical(bulk_json_to_value("bool", "false"), FALSE)
 
-  expect_identical(bulk_value_to_text("fk", 7L), "7")
-  expect_identical(bulk_untext_value("fk", "7"), 7L)
-  expect_identical(bulk_untext_value("fk", NA_character_), NA_integer_)
+  expect_identical(bulk_value_to_json("fk", 7L), "7")
+  expect_identical(bulk_json_to_value("fk", "7"), 7L)
 
-  expect_identical(bulk_value_to_text("text", "hej"), "hej")
-  expect_identical(bulk_untext_value("text", "hej"), "hej")
-  expect_identical(bulk_untext_value("text", NA_character_), NA_character_)
+  expect_identical(bulk_value_to_json("text", "hej"), "\"hej\"")
+  expect_identical(bulk_json_to_value("text", "\"hej\""), "hej")
+})
+
+test_that("manglende vaerdi bliver JSON-null, ikke SQL NULL", {
+  # vaerdi_foer/vaerdi_efter er jsonb NOT NULL i audit-skemaet: en tom vaerdi
+  # SKAL derfor serialiseres som JSON-null, ellers afviser databasen raekken.
+  expect_identical(bulk_value_to_json("bool", NA), "null")
+  expect_identical(bulk_value_to_json("fk", NA_integer_), "null")
+  expect_identical(bulk_value_to_json("text", NA_character_), "null")
+
+  # Og retur: JSON-null re-types til feltets egen NA, ikke til strengen "null"
+  expect_identical(bulk_json_to_value("bool", "null"), NA)
+  expect_identical(bulk_json_to_value("fk", "null"), NA_integer_)
+  expect_identical(bulk_json_to_value("text", "null"), NA_character_)
+})
+
+test_that("tekstvaerdier med JSON-metategn overlever rundturen", {
+  # Uden ordentlig escaping ville et anfoerselstegn braekke jsonb-casten og
+  # vaelte hele batchen — eller i vaerste fald aendre den gemte vaerdi.
+  for (v in c('citat "her"', "backslash \\ midt i", "linje\nskift",
+              "unicode: æøå")) {
+    expect_identical(bulk_json_to_value("text", bulk_value_to_json("text", v)), v,
+                     info = v)
+  }
 })
 
 test_that("build_bulk_lock_sql/build_bulk_update_sql bruger FOR UPDATE + array-literal", {
@@ -97,30 +116,43 @@ test_that("build_bulk_lock_sql/build_bulk_update_sql bruger FOR UPDATE + array-l
     'UPDATE "tblIndikatorer" SET "kontaktperson" = $1 WHERE "id" = ANY($2::int[])')
 })
 
-test_that("build_audit_batch_insert_sql genererer batch_id server-side", {
-  sql <- build_audit_batch_insert_sql('"audit"."tbl_batch"')
-  expect_match(sql, "gen_random_uuid\\(\\)")
-  expect_match(sql, 'INSERT INTO "audit"\\."tbl_batch"')
-  expect_match(sql, "RETURNING \"batch_id\"")
+test_that("audit-buildere peger paa den deployerede tblAendringslog", {
+  # Designdokumentets tbl_batch/tbl_batch_raekke findes ikke i databasen —
+  # kun audit."tblAendringslog". Peger builderne forkert, fejler alt bulk
+  # foerst mod produktion.
+  expect_identical(.AUDIT_LOG_TABLE, '"audit"."tblAendringslog"')
+  expect_match(build_audit_batch_id_sql(), "gen_random_uuid\\(\\)")
+  # batch_id kommer fra sin EGEN forespoergsel, ikke fra en kolonne-default:
+  # en default ville give nyt uuid pr. raekke og oedelaegge grupperingen.
+  expect_no_match(build_audit_log_insert_sql(1, "t"), "gen_random_uuid")
 })
 
-test_that("build_audit_row_insert_sql bygger N tupler med korrekt placeholder-offset", {
-  sql1 <- build_audit_row_insert_sql(1, '"audit"."tbl_batch_raekke"')
+test_that("build_audit_log_insert_sql deler batch-faelles felter og caster jsonb", {
+  sql1 <- build_audit_log_insert_sql(1, '"audit"."tblAendringslog"')
   expect_identical(sql1, paste0(
-    'INSERT INTO "audit"."tbl_batch_raekke" ',
-    '("batch_id", "row_id", "vaerdi_foer", "vaerdi_efter") VALUES ($1, $2, $3, $4)'
+    'INSERT INTO "audit"."tblAendringslog" ("batch_id", "bruger", "tabel", ',
+    '"kolonne", "vaerdi_type", "post_id", "vaerdi_foer", "vaerdi_efter") ',
+    'VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb)'
   ))
 
-  sql3 <- build_audit_row_insert_sql(3, '"audit"."tbl_batch_raekke"')
-  expect_match(sql3, "\\(\\$1, \\$2, \\$3, \\$4\\), \\(\\$1, \\$5, \\$6, \\$7\\), \\(\\$1, \\$8, \\$9, \\$10\\)")
+  # $1-$5 er faelles for hele batchen; kun de tre sidste rykker pr. raekke.
+  sql3 <- build_audit_log_insert_sql(3, "t")
+  expect_match(sql3, "\\(\\$1, \\$2, \\$3, \\$4, \\$5, \\$6, \\$7::jsonb, \\$8::jsonb\\)")
+  expect_match(sql3, "\\(\\$1, \\$2, \\$3, \\$4, \\$5, \\$9, \\$10::jsonb, \\$11::jsonb\\)")
+  expect_match(sql3, "\\(\\$1, \\$2, \\$3, \\$4, \\$5, \\$12, \\$13::jsonb, \\$14::jsonb\\)")
 })
 
-test_that("audit-select/mark-undone-buildere refererer den rette batch_id-kolonne", {
-  expect_match(build_audit_batch_select_sql('"audit"."tbl_batch"'), 'WHERE "batch_id" = \\$1')
-  expect_match(build_audit_rows_select_sql('"audit"."tbl_batch_raekke"'),
-               'ORDER BY "row_id"')
-  expect_match(build_audit_mark_undone_sql('"audit"."tbl_batch"'),
-               'SET "fortrudt_ts" = now\\(\\) WHERE "batch_id" = \\$1')
+test_that("audit-select/mark-undone matcher tblAendringslog's kolonnenavne", {
+  sel <- build_audit_batch_select_sql('"audit"."tblAendringslog"')
+  expect_match(sel, 'WHERE "batch_id" = \\$1')
+  expect_match(sel, 'ORDER BY "post_id"')
+  expect_match(sel, '"fortrudt_tidspunkt"')
+  # jsonb laeses som text, saa R-siden selv styrer parsningen (fromJSON)
+  expect_match(sel, '"vaerdi_foer"::text')
+  expect_match(sel, '"vaerdi_efter"::text')
+
+  expect_match(build_audit_mark_undone_sql('"audit"."tblAendringslog"'),
+               'SET "fortrudt_tidspunkt" = now\\(\\), "fortrudt_af" = \\$2')
 })
 
 test_that(".bulk_update_impl afviser ukendt tabel/felt FØR nogen DB-forbindelse bruges", {
