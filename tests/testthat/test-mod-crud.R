@@ -24,7 +24,7 @@ fake_db <- function() {
   )
   calls <- list(
     created = NULL, updated = NULL, deleted = NULL, junction = list(),
-    diagram_created = NULL, diagram_updated = NULL
+    diagram_created = NULL, diagram_updated = NULL, hard_deleted = NULL
   )
   diagrams <- data.frame(
     diagram_id = 7L, indikator = 1L, organisatorisk_navn_teknisk = 20L,
@@ -60,6 +60,15 @@ fake_db <- function() {
     },
     soft_delete = function(id, active = FALSE) {
       calls$deleted <<- list(id, active)
+      1L
+    },
+    # Slet-guard: taeller mod det samme diagram-fixture som modalen bruger,
+    # saa guarden testes mod realistiske data (indikator 1 HAR et diagram).
+    indikator_diagram_count = function(id) {
+      sum(diagrams$indikator == id)
+    },
+    delete_indikator = function(id) {
+      calls$hard_deleted <<- id
       1L
     },
     get_junction = function(indikator_id, key) jstore[[key]],
@@ -312,6 +321,54 @@ test_that("soft_delete viser bekræftelsesdialog og skriver først ved bekræfte
     expect_null(db$.calls()$deleted) # kun dialog vist endnu
     session$setInputs(soft_delete_confirm = 1)
     expect_equal(db$.calls()$deleted[[2]], FALSE)
+  })
+})
+
+test_that("hard_delete blokeres når indikatoren har diagrammer", {
+  db <- fake_db() # fixture: indikator 1 har diagram 7
+  testServer(mod_indikator_crud_server, args = list(db = db), {
+    session$setInputs(tbl = .tbl_select(0))
+    session$setInputs(hard_delete = 1)
+    # Hverken dialog eller skrivning: guarden stopper flowet før begge dele.
+    expect_null(db$.calls()$hard_deleted)
+    expect_match(status_msg(), "diagram")
+  })
+})
+
+test_that("hard_delete kræver bekræftelse og sletter først derefter", {
+  db <- fake_db()
+  # Ingen diagrammer på indikatoren → guarden slipper den igennem
+  db$indikator_diagram_count <- function(id) 0L
+  testServer(mod_indikator_crud_server, args = list(db = db), {
+    session$setInputs(tbl = .tbl_select(0))
+    session$setInputs(hard_delete = 1)
+    expect_null(db$.calls()$hard_deleted) # kun dialog vist endnu
+    session$setInputs(hard_delete_confirm = 1)
+    expect_equal(db$.calls()$hard_deleted, 1L)
+  })
+})
+
+test_that("hard_delete uden selektion skriver ikke", {
+  db <- fake_db()
+  db$indikator_diagram_count <- function(id) 0L
+  testServer(mod_indikator_crud_server, args = list(db = db), {
+    session$setInputs(hard_delete = 1)
+    expect_null(db$.calls()$hard_deleted)
+    expect_match(status_msg(), "Vælg en række")
+  })
+})
+
+test_that("hard_delete afviser når diagram-tællingen fejler (DB-udfald)", {
+  db <- fake_db()
+  # NA fra guarden må ALDRIG læses som "ingen diagrammer" — så ville et
+  # DB-udfald åbne for sletning af en indikator der har diagrammer.
+  db$indikator_diagram_count <- function(id) stop("DB nede")
+  testServer(mod_indikator_crud_server, args = list(db = db), {
+    session$setInputs(tbl = .tbl_select(0))
+    session$setInputs(hard_delete = 1)
+    expect_null(db$.calls()$hard_deleted)
+    session$setInputs(hard_delete_confirm = 1) # dialogen blev aldrig vist
+    expect_null(db$.calls()$hard_deleted)
   })
 })
 

@@ -414,3 +414,26 @@ test_that("fk-options-byggere kan medtage parent-kolonne til trae-dropdowns", {
   # Uden parent_col: uaendret form (bagudkompatibel)
   expect_no_match(build_fk_options_sql("t", '"x"'), "parent_id")
 })
+
+test_that("indikator-slet: guard-taelling og DELETE rammer de rigtige tabeller", {
+  expect_equal(
+    build_indikator_diagram_count_sql(),
+    'SELECT count(*) AS n FROM "tblDiagrammer" WHERE "indikator" = $1'
+  )
+  expect_equal(
+    build_indikator_delete_sql(),
+    'DELETE FROM "tblIndikatorer" WHERE "id" = $1'
+  )
+  # Sletningen MAA vaere pk-bundet — en DELETE uden WHERE ville toemme tabellen
+  expect_match(build_indikator_delete_sql(), 'WHERE "id" = \\$1')
+})
+
+test_that("junction-delete daekker alle tre m2m-relationer for en indikator", {
+  # delete_indikator rydder junctions foer selve raekken; alle tre skal have en
+  # builder der filtrerer paa indikator_id, ellers ville FK'en blokere slettet.
+  for (key in names(INDIKATOR_JUNCTIONS)) {
+    sql <- build_junction_delete_sql(INDIKATOR_JUNCTIONS[[key]])
+    expect_match(sql, '^DELETE FROM "tblForbind', info = key)
+    expect_match(sql, 'WHERE "indikator_id" = \\$1', info = key)
+  }
+})

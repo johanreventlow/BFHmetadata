@@ -123,6 +123,24 @@ build_soft_delete_sql <- function() {
   'UPDATE "tblIndikatorer" SET "aktiv_indikator" = $1 WHERE "id" = $2'
 }
 
+#' Antal diagrammer der peger paa indikatoren. Slet-guard: databasens FK
+#' (tblDiagrammer.indikator) ville afvise sletningen alligevel, men et taelletal
+#' foer forsoeget giver brugeren en besked de kan handle paa i stedet for en
+#' raa constraint-fejl. Samme moenster som build_hierarchy_child_count_sql og
+#' build_lookup_refcount_sql.
+#' @noRd
+build_indikator_diagram_count_sql <- function() {
+  'SELECT count(*) AS n FROM "tblDiagrammer" WHERE "indikator" = $1'
+}
+
+#' Fysisk sletning af én indikator. Junction-raekkerne skal slettes foerst i
+#' samme transaktion (se delete_indikator i fct_db.R) — de er rene relationer
+#' ejet af indikatoren, og deres FK ville ellers blokere sletningen.
+#' @noRd
+build_indikator_delete_sql <- function() {
+  'DELETE FROM "tblIndikatorer" WHERE "id" = $1'
+}
+
 #' SELECT parent-ids for én indikators junction-rækker
 #' @noRd
 build_junction_select_sql <- function(j) {

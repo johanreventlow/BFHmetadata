@@ -267,6 +267,29 @@ make_db <- function(pool) {
       assert_write_enabled()
       DBI::dbExecute(pool, build_soft_delete_sql(), params = list(active, id))
     },
+    indikator_diagram_count = function(id) {
+      as.integer(DBI::dbGetQuery(pool, build_indikator_diagram_count_sql(),
+        params = list(id)
+      )$n[1])
+    },
+    # Fysisk sletning: junction-raekkerne (faggrupper/dataprodukter/
+    # organisation) og selve indikatoren i ÉN transaktion — ellers kunne et
+    # udfald midtvejs efterlade en indikator uden relationer. Diagrammer
+    # slettes IKKE med: modulet blokerer paa indikator_diagram_count foerst, saa
+    # en indikator med diagrammer aldrig naar hertil, og DB'ens FK er den
+    # autoritative sidste barriere hvis den alligevel gjorde.
+    delete_indikator = function(id) {
+      assert_write_enabled()
+      pool::poolWithTransaction(pool, function(conn) {
+        for (key in names(INDIKATOR_JUNCTIONS)) {
+          DBI::dbExecute(conn,
+            build_junction_delete_sql(INDIKATOR_JUNCTIONS[[key]]),
+            params = list(id)
+          )
+        }
+        DBI::dbExecute(conn, build_indikator_delete_sql(), params = list(id))
+      })
+    },
     get_junction = function(indikator_id, key) {
       j <- INDIKATOR_JUNCTIONS[[key]]
       res <- DBI::dbGetQuery(pool, build_junction_select_sql(j),

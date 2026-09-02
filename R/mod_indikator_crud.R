@@ -87,6 +87,9 @@ mod_indikator_crud_ui <- function(id) {
       actionButton(ns("soft_delete"), "Deaktiv\u00E9r valgte",
         class = "btn-warning"
       ),
+      actionButton(ns("hard_delete"), "Slet valgte",
+        class = "btn-outline-danger"
+      ),
       actionButton(ns("select_all_visible"), "V\u00E6lg alle viste",
         class = "btn-outline-secondary"
       ),
@@ -984,6 +987,69 @@ mod_indikator_crud_server <- function(id, db) {
         fallback = status_msg("Fejl ved deaktivering")
       )
       pending_soft_delete_id(NULL)
+    })
+
+    # Fysisk sletning. Bevidst mere omstændelig end deaktivering: den kan ikke
+    # fortrydes, så der guardes FØR dialogen (en indikator med diagrammer kan
+    # slet ikke slettes), og pk'en fryses i pending_hard_delete_id som i
+    # soft-delete-flowet, så et selektionsskift bag dialogen ikke flytter målet.
+    pending_hard_delete_id <- reactiveVal(NULL)
+    observeEvent(input$hard_delete, {
+      sid <- selected_id()
+      if (is.null(sid)) {
+        status_msg("Vælg en række først")
+        return()
+      }
+      # Guard-tallet hentes friskt (ikke cachet) — et diagram oprettet af en
+      # anden bruger skal blokere med det samme. NA = DB svarede ikke; så
+      # afvises sletningen hellere end at gætte på at der ingen diagrammer er.
+      n <- safe_operation("diagram-antal",
+        db$indikator_diagram_count(sid),
+        fallback = NA_integer_
+      )
+      if (is.na(n)) {
+        status_msg("Kunne ikke tjekke indikatorens diagrammer — prøv igen")
+        return()
+      }
+      if (n > 0) {
+        status_msg(sprintf(paste(
+          "Indikatoren har %d diagram(mer) — slet dem først,",
+          "eller deaktivér indikatoren i stedet."
+        ), n))
+        return()
+      }
+      pending_hard_delete_id(sid)
+      showModal(build_confirm_modal(
+        title = "Slet indikator permanent?",
+        body = p(
+          "Indikatoren slettes fra databasen sammen med sine relationer",
+          "(faggrupper, dataprodukter, organisation)."
+        ),
+        confirm_id = session$ns("hard_delete_confirm"),
+        confirm_label = "Slet permanent",
+        warning = paste(
+          "Handlingen kan ikke fortrydes. Skal indikatoren blot skjules fra",
+          "aktive lister, så brug 'Deaktivér valgte' i stedet."
+        )
+      ))
+    })
+
+    observeEvent(input$hard_delete_confirm, {
+      sid <- pending_hard_delete_id()
+      removeModal()
+      if (is.null(sid)) {
+        return()
+      }
+      safe_operation("hard-delete",
+        med_ventevisning("Sletter…", {
+          db$delete_indikator(sid)
+          status_msg(paste("Slettet indikator", sid))
+          tbl_sel(character(0)) # rækken findes ikke længere — ryd selektionen
+          reload()
+        }),
+        fallback = status_msg("Fejl ved sletning (se log)")
+      )
+      pending_hard_delete_id(NULL)
     })
 
     # excelR sender BÅDE celle-ændringer og selektioner på input$tbl —

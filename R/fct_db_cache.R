@@ -49,7 +49,7 @@ cached_accessor <- function(fn, store = new_cache_store(), name = NULL) {
 # Accessors der skriver: efter disse ryddes hele læse-cachen.
 .WRITE_ACCESSORS <- c(
   "create_indikator", "create_indikator_full", "update_indikator",
-  "save_indikator", "soft_delete", "set_junction",
+  "save_indikator", "soft_delete", "delete_indikator", "set_junction",
   "create_diagram", "update_diagram", "delete_diagram",
   "add_median_break", "delete_median_break",
   "add_row", "update_cell", "delete_row",

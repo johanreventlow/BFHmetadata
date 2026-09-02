@@ -29,6 +29,15 @@
   grænse), så ingen knæk falder ud ved opgraderingen.
 
 ## Nye features
+* **Indikatorer kan nu slettes permanent.** Hidtil kunne en indikator kun
+  deaktiveres — en fejloprettet indikator blev derfor liggende for altid. Ny
+  knap "Slet valgte" på Indikatorer-fanen sletter den valgte indikator og dens
+  relationer (faggrupper, dataprodukter, organisation) i én transaktion.
+  Sletningen er guardet: har indikatoren diagrammer, blokeres den med besked om
+  hvor mange, så man selv tager stilling til diagrammerne først i stedet for at
+  få en rå constraint-fejl. Bekræftelsesdialogen fryser den valgte række og
+  siger tydeligt, at handlingen ikke kan fortrydes, og henviser til
+  "Deaktivér valgte" når indikatoren blot skal skjules.
 * **Grid'ene understøtter nu range-selektion af flere rækker** (klik +
   shift-klik / træk) i både indikator- og diagramtabellen, samt en knap
   "Vælg alle viste" der markerer alle rækker i det aktuelt filtrerede
