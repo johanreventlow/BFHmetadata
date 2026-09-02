@@ -274,8 +274,10 @@ HIERARCHY_TABLES <- list(
 # browser-events må ikke direkte afgøre SQL-kolonner). "kind" genbruger de
 # samme kategorier som INDIKATOR_FIELDS/mod_indikator_crud's
 # .IND_FK_FIELDS/.IND_BOOL_FIELDS: bool | fk | choice | text.
-# indikator_navn og navn_teknisk er UDELADT med vilje (parquet-nøgle,
-# readonly; et fælles navn på N rækker giver ingen mening).
+# indikator_navn og indikator_navn_teknisk er UDELADT med vilje: et fælles navn
+# på N rækker giver ingen mening, og navn_teknisk er parquet-nøglen — den kan
+# KUN ændres én ad gangen via indikator-modalen, bag en bekræftelsesdialog
+# (mod_indikator_crud: .byg_teknisk_confirm). Grid'et holder den readOnly.
 BULK_INDIKATOR_FIELDS <- list(
   list(col = "aktiv_indikator",          kind = "bool"),
   list(col = "nøgleindikator",           kind = "bool"),

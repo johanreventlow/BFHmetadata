@@ -715,3 +715,156 @@ test_that("Hierarki-placering-dropdown viser trae (depth-first + indrykning)", {
                      c("Datasaet X", paste0(strrep(" ", 2), "Inf.hyg")))
   })
 })
+
+# --- Indikator-id (indikator_navn_teknisk): redigerbart bag bekraeftelse -----
+# Feltet er parquet-noeglen — appen slaar datafilerne op paa praecis denne
+# streng. Det maa kunne rettes (id'er kan vaere forkerte fra start), men
+# aldrig ved et uheld: modalen er eneste indgang, og en aendring paa en
+# eksisterende indikator skal bekraeftes foer den skrives.
+
+test_that(".teknisk_uaendret: kun en reel omdoebning taeller som aendring", {
+  # tomme repraesentationer er samme vaerdi
+  expect_true(.teknisk_uaendret(NULL, NA))
+  expect_true(.teknisk_uaendret(NA_character_, ""))
+  expect_true(.teknisk_uaendret(character(0), NULL))
+  # whitespace i kanten er ikke en aendring (browseren kan tilfoeje den)
+  expect_true(.teknisk_uaendret("a", " a "))
+  expect_true(.teknisk_uaendret("a", "a"))
+  # reelle aendringer — inkl. case, da parquet-opslaget er case-sensitivt
+  expect_false(.teknisk_uaendret("a", "b"))
+  expect_false(.teknisk_uaendret("a", "A"))
+  expect_false(.teknisk_uaendret("a", NA)) # toemning bryder ogsaa koblingen
+  expect_false(.teknisk_uaendret(NA, "a")) # foerste udfyldning
+})
+
+test_that("indikator-id er med i modalens felter, men ikke i grid/bulk", {
+  expect_true("indikator_navn_teknisk" %in% INDIKATOR_MODAL_COLS)
+  # grid'et redigerer kun felter herfra — id'et maa ikke kunne rammes der
+  expect_false("indikator_navn_teknisk" %in% .INDIKATOR_GRID_FIELDS)
+  bulk <- vapply(BULK_INDIKATOR_FIELDS, function(f) f$col, "")
+  expect_false("indikator_navn_teknisk" %in% bulk)
+})
+
+test_that("gem uden aendret indikator-id skriver direkte (ingen dialog)", {
+  db <- fake_db()
+  testServer(mod_indikator_crud_server, args = list(db = db), {
+    session$setInputs(tbl = .tbl_select(0))
+    session$setInputs(open_selected = 1)
+    session$setInputs(
+      m_indikator_navn = "Nyt",
+      m_indikator_navn_teknisk = "a", # uaendret ift. fake_db's store
+      m_j_faggrupper = character(0),
+      m_j_dataprodukter = character(0),
+      m_j_organisation = character(0),
+      modal_save = 1
+    )
+    expect_null(pending_save()) # intet i vente → ingen bekraeftelse kraevet
+    u <- db$.calls()$updated
+    expect_false(is.null(u))
+    expect_identical(u[[2]]$indikator_navn_teknisk, "a")
+  })
+})
+
+test_that("aendret indikator-id skriver IKKE foer bekraeftelse", {
+  db <- fake_db()
+  testServer(mod_indikator_crud_server, args = list(db = db), {
+    session$setInputs(tbl = .tbl_select(0))
+    session$setInputs(open_selected = 1)
+    session$setInputs(
+      m_indikator_navn = "Nyt",
+      m_indikator_navn_teknisk = "a_rettet",
+      m_j_faggrupper = c("1", "2"),
+      m_j_dataprodukter = character(0),
+      m_j_organisation = character(0),
+      modal_save = 1
+    )
+    expect_null(db$.calls()$updated) # intet skrevet endnu
+    p <- pending_save()
+    expect_false(is.null(p))
+    expect_identical(p$vals$indikator_navn_teknisk, "a_rettet")
+    expect_equal(p$picks$faggrupper, c(1L, 2L)) # m2m-valg holdes i vente
+  })
+})
+
+test_that("bekraeftelse skriver det nye indikator-id og rydder ventende gem", {
+  db <- fake_db()
+  testServer(mod_indikator_crud_server, args = list(db = db), {
+    session$setInputs(tbl = .tbl_select(0))
+    session$setInputs(open_selected = 1)
+    session$setInputs(
+      m_indikator_navn = "Nyt",
+      m_indikator_navn_teknisk = "a_rettet",
+      m_j_faggrupper = character(0),
+      m_j_dataprodukter = character(0),
+      m_j_organisation = character(0),
+      modal_save = 1
+    )
+    session$setInputs(teknisk_confirm = 1)
+    u <- db$.calls()$updated
+    expect_false(is.null(u))
+    expect_equal(u[[1]], 1L)
+    expect_identical(u[[2]]$indikator_navn_teknisk, "a_rettet")
+    expect_null(pending_save()) # ryddet efter vellykket gem
+  })
+})
+
+test_that("fortryd skriver intet og rydder ventende gem", {
+  db <- fake_db()
+  testServer(mod_indikator_crud_server, args = list(db = db), {
+    session$setInputs(tbl = .tbl_select(0))
+    session$setInputs(open_selected = 1)
+    session$setInputs(
+      m_indikator_navn = "Nyt",
+      m_indikator_navn_teknisk = "a_rettet",
+      m_j_faggrupper = character(0),
+      m_j_dataprodukter = character(0),
+      m_j_organisation = character(0),
+      modal_save = 1
+    )
+    session$setInputs(teknisk_cancel = 1)
+    expect_null(db$.calls()$updated)
+    expect_null(pending_save())
+  })
+})
+
+test_that("ny indikator faar sit indikator-id uden bekraeftelse", {
+  db <- fake_db()
+  testServer(mod_indikator_crud_server, args = list(db = db), {
+    session$setInputs(new_modal = 1)
+    session$setInputs(
+      m_indikator_navn = "Ny",
+      m_indikator_navn_teknisk = "ny_indikator",
+      m_j_faggrupper = character(0),
+      m_j_dataprodukter = character(0),
+      m_j_organisation = character(0),
+      modal_save = 1
+    )
+    # Ingen data peger paa indikatoren endnu → intet at bryde, ingen dialog
+    expect_null(pending_save())
+    cr <- db$.calls()$created
+    expect_false(is.null(cr))
+    expect_identical(cr[[1]]$indikator_navn_teknisk, "ny_indikator")
+  })
+})
+
+test_that("bekraeftelsesdialogen viser fra/til og advarer om datakoblingen", {
+  html <- as.character(htmltools::renderTags(
+    .byg_teknisk_confirm("gammelt_id", "nyt_id", NS("x"))
+  )$html)
+  expect_match(html, "gammelt_id", fixed = TRUE)
+  expect_match(html, "nyt_id", fixed = TRUE)
+  expect_match(html, "alert-warning", fixed = TRUE)
+  expect_match(html, "parquet", fixed = TRUE)
+  # baade bekraeft og fortryd skal vaere rigtige inputs (fortryd genaabner
+  # formularen — en ren modalButton ville tabe brugerens indtastninger)
+  expect_match(html, 'id="x-teknisk_confirm"', fixed = TRUE)
+  expect_match(html, 'id="x-teknisk_cancel"', fixed = TRUE)
+})
+
+test_that("bekraeftelsesdialogen viser tom vaerdi som (tomt), ikke NA", {
+  html <- as.character(htmltools::renderTags(
+    .byg_teknisk_confirm(NA_character_, "", NS("x"))
+  )$html)
+  expect_match(html, "(tomt)", fixed = TRUE)
+  expect_false(grepl(">NA<", html, fixed = TRUE))
+})
