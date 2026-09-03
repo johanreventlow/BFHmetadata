@@ -299,7 +299,11 @@ BULK_DIAGRAM_FIELDS <- list(
   list(col = "direktionens_tavle",       kind = "bool"),
   list(col = "indgaar_i_aggregering",    kind = "bool"),
   list(col = "aggreger_egne_og_boern",   kind = "bool"),
-  list(col = "periode_aggregering",      kind = "text"),
+  # Kanonisk ordforråd, ikke fritekst: en bulk må ikke kunne plante en
+  # stavevariant ("måned") på N rækker, som pipelinen så ikke forstår.
+  # Legacy-værdier bevares i grid'ets egen dropdown (periode_choices()).
+  list(col = "periode_aggregering", kind = "choice",
+       choices = PERIODE_AGGREGERING_CHOICES),
   list(col = "maalgruppe",               kind = "fk"),
   list(col = "diagram_type",             kind = "fk")
 )

@@ -82,6 +82,57 @@ bulk_expected_before <- function(d, pk, fld) {
   )
 }
 
+# --- Diagram-specifikke guards ----------------------------------------------
+# Et diagram er kun gyldigt som HEL række (indikator + enhed + type skal alle
+# være sat), og duplikatnøglen går på tværs af tre felter. En bulk skal derfor
+# vurderes på den patchede række, ikke på det ene felt der ændres.
+
+# Felterne der tilsammen udgør duplikatnøglen. Kun når en bulk rammer ét af
+# dem, kan den skabe nye dubletter.
+.DIAGRAM_DUPLIKAT_NOEGLE <- c(
+  "indikator", "organisatorisk_navn_teknisk", "diagram_type"
+)
+
+#' Rammer bulk-feltet duplikatnøglen? Kun da er det meningsfuldt at køre
+#' duplikat-guarden bagefter.
+#' @noRd
+bulk_diagram_rammer_duplikatnoegle <- function(felt) {
+  isTRUE(felt %in% .DIAGRAM_DUPLIKAT_NOEGLE)
+}
+
+#' Validér en diagram-bulk FØR den skrives: hver ramt række patches med
+#' målværdien og valideres som HEL række (validate_diagram). Uden det kunne en
+#' bulk tavst "reparere" en række der mangler obligatoriske FK'er — eller
+#' omvendt gøre en gyldig række ugyldig — og fejlen ville først vise sig som en
+#' constraint-fejl midt i batchen.
+#'
+#' d = de frosne admin-rækker, felt = kolonnen der sættes, target = den typede
+#' målværdi. Returnerer data.frame(id, fejl) for de rækker der IKKE validerer
+#' (0 rækker = alt er i orden).
+#' @noRd
+bulk_diagram_validation_errors <- function(d, felt, target) {
+  tom <- data.frame(id = character(0), fejl = character(0),
+                    stringsAsFactors = FALSE)
+  if (is.null(d) || nrow(d) == 0) {
+    return(tom)
+  }
+  fejl <- lapply(seq_len(nrow(d)), function(i) {
+    vals <- .diagram_row_values(d[i, ])
+    vals[[felt]] <- target
+    errs <- validate_diagram(vals)
+    if (length(errs) == 0) {
+      return(NULL)
+    }
+    data.frame(
+      id = as.character(d[["diagram_id"]][i]),
+      fejl = paste(errs, collapse = "; "),
+      stringsAsFactors = FALSE
+    )
+  })
+  fejl <- Filter(Negate(is.null), fejl)
+  if (length(fejl) == 0) tom else do.call(rbind, fejl)
+}
+
 #' Kort dansk opsummering af en konflikt fra bulk_update/bulk_undo, til
 #' status-linjen. Rapporten skal kunne læses uden at kende id-numrene udenad,
 #' så antallet står først og id'erne begrænses.

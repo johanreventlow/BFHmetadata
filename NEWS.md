@@ -44,6 +44,16 @@
   stedet for at overskrive tavst. Efter en batch kan den fortrydes med
   "Fortryd seneste batch" — også fortryd afvises helt, hvis blot én række er
   ændret siden, så der aldrig opstår en halvt tilbagerullet tilstand.
+
+  Findes på **både Indikatorer- og Diagrammer-fanen**. Diagram-siden har to
+  ekstra værn, fordi et diagram kun er gyldigt som hel række: hver ramt række
+  valideres, som den ville se ud *efter* batchen, og ville en af dem blive
+  ugyldig, blokeres hele batchen med det samme i dialogen — en bulk kan
+  altså hverken smugle en ufuldstændig række videre eller "reparere" en.
+  Rammer feltet duplikatnøglen (indikator/enhed/type), køres duplikat-guarden
+  bagefter og advarer samlet, men blokerer ikke — som ved inline-redigering.
+  Periode-feltet kan kun sættes til det kanoniske ordforråd, så en bulk ikke
+  kan plante en stavevariant på mange rækker.
 * **Indikatorer kan nu slettes permanent.** Hidtil kunne en indikator kun
   deaktiveres — en fejloprettet indikator blev derfor liggende for altid. Ny
   knap "Slet valgte" på Indikatorer-fanen sletter den valgte indikator og dens
