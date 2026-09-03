@@ -24,7 +24,8 @@ fake_db <- function() {
   )
   calls <- list(
     created = NULL, updated = NULL, deleted = NULL, junction = list(),
-    diagram_created = NULL, diagram_updated = NULL, hard_deleted = NULL
+    diagram_created = NULL, diagram_updated = NULL, hard_deleted = NULL,
+    bulk = NULL, bulk_undo = NULL
   )
   diagrams <- data.frame(
     diagram_id = 7L, indikator = 1L, organisatorisk_navn_teknisk = 20L,
@@ -85,6 +86,17 @@ fake_db <- function() {
     create_indikator_full = function(values, picks) {
       calls$created <<- list(values, picks)
       99L
+    },
+    bulk_update = function(tabel_key, ids, felt, vaerdi, expected_before) {
+      calls$bulk <<- list(
+        tabel_key = tabel_key, ids = ids, felt = felt, vaerdi = vaerdi,
+        expected_before = expected_before
+      )
+      list(batch_id = "batch-0001-abcdef", n = length(ids), skipped = integer(0))
+    },
+    bulk_undo = function(batch_id) {
+      calls$bulk_undo <<- batch_id
+      list(batch_id = batch_id, n = 2L)
     },
     # Diagram-accessors (bruges af Diagrammer-sektionen i modalen)
     list_diagrams_admin = function() diagrams,
@@ -369,6 +381,85 @@ test_that("hard_delete afviser når diagram-tællingen fejler (DB-udfald)", {
     expect_null(db$.calls()$hard_deleted)
     session$setInputs(hard_delete_confirm = 1) # dialogen blev aldrig vist
     expect_null(db$.calls()$hard_deleted)
+  })
+})
+
+test_that("bulk_edit uden selektion skriver ikke", {
+  db <- .fake_db_3rows()
+  testServer(mod_indikator_crud_server, args = list(db = db), {
+    session$setInputs(bulk_edit = 1)
+    expect_null(db$.calls()$bulk)
+    expect_match(status_msg(), "Vælg mindst")
+  })
+})
+
+test_that("bulk-flow sender hele selektionen, feltet og den typede værdi", {
+  db <- .fake_db_3rows()
+  testServer(mod_indikator_crud_server, args = list(db = db), {
+    session$setInputs(tbl = .tbl_select_range(0, 2, c("1", "2", "3")))
+    session$setInputs(bulk_edit = 1)
+    session$setInputs(bulk_felt = "aktiv_indikator")
+    session$setInputs(bulk_v_aktiv_indikator = FALSE)
+    expect_null(db$.calls()$bulk) # forhåndsvisning endnu, ingen skrivning
+
+    session$setInputs(bulk_confirm = 1)
+    b <- db$.calls()$bulk
+    expect_identical(b$tabel_key, "indikator")
+    expect_identical(b$felt, "aktiv_indikator")
+    expect_identical(b$vaerdi, FALSE)
+    expect_setequal(b$ids, c(1L, 2L, 3L))
+    # Førværdierne SKAL følge med — de er stale-detektionens grundlag
+    expect_named(b$expected_before, c("1", "2", "3"))
+    expect_true(all(vapply(b$expected_before, isTRUE, logical(1))))
+  })
+})
+
+test_that("bulk-selektionen fryses ved modal-åbning", {
+  db <- .fake_db_3rows()
+  testServer(mod_indikator_crud_server, args = list(db = db), {
+    session$setInputs(tbl = .tbl_select_range(0, 1, c("1", "2", "3")))
+    session$setInputs(bulk_edit = 1) # fryser {1,2}
+    # Brugeren markerer noget andet BAG dialogen — målsættet må ikke flytte sig
+    session$setInputs(tbl = .tbl_select(2, c("1", "2", "3")))
+    session$setInputs(bulk_felt = "aktiv_indikator")
+    session$setInputs(bulk_v_aktiv_indikator = FALSE)
+    session$setInputs(bulk_confirm = 1)
+    expect_setequal(db$.calls()$bulk$ids, c(1L, 2L))
+  })
+})
+
+test_that("bulk-konflikt rapporteres læsbart og efterlader ingen batch at fortryde", {
+  db <- .fake_db_3rows()
+  db$bulk_update <- function(tabel_key, ids, felt, vaerdi, expected_before) {
+    stop(bulk_conflict("stale", "2"))
+  }
+  testServer(mod_indikator_crud_server, args = list(db = db), {
+    session$setInputs(tbl = .tbl_select_range(0, 2, c("1", "2", "3")))
+    session$setInputs(bulk_edit = 1)
+    session$setInputs(bulk_felt = "aktiv_indikator")
+    session$setInputs(bulk_v_aktiv_indikator = FALSE)
+    session$setInputs(bulk_confirm = 1)
+
+    expect_match(status_msg(), "Intet skrevet")
+    expect_match(status_msg(), "ændret af en anden")
+    expect_null(last_batch()) # intet at fortryde når intet blev skrevet
+  })
+})
+
+test_that("fortryd kalder bulk_undo med seneste batch og rydder den bagefter", {
+  db <- .fake_db_3rows()
+  testServer(mod_indikator_crud_server, args = list(db = db), {
+    session$setInputs(tbl = .tbl_select_range(0, 2, c("1", "2", "3")))
+    session$setInputs(bulk_edit = 1)
+    session$setInputs(bulk_felt = "aktiv_indikator")
+    session$setInputs(bulk_v_aktiv_indikator = FALSE)
+    session$setInputs(bulk_confirm = 1)
+    expect_identical(last_batch(), "batch-0001-abcdef")
+
+    session$setInputs(bulk_undo = 1)
+    expect_identical(db$.calls()$bulk_undo, "batch-0001-abcdef")
+    # En batch kan kun fortrydes én gang — knappen forsvinder igen
+    expect_null(last_batch())
   })
 })
 

@@ -29,6 +29,21 @@
   grænse), så ingen knæk falder ud ved opgraderingen.
 
 ## Nye features
+* **Bulk-redigering: sæt ét felt på mange indikatorer på én gang.** Markér
+  flere rækker (klik + shift-klik, eller "Vælg alle viste") og brug "Redigér
+  valgte (N)". Dialogen tilbyder kun felter fra en serverside-allowlist —
+  navn og indikator-id kan aldrig bulk-ændres — og viser en forhåndsvisning
+  med nuværende → ny værdi pr. række, hvor rækker der allerede har værdien
+  markeres som uændrede og ikke skrives. Målsættet fryses, når dialogen
+  åbnes, så et filterskift eller en ny markering bagved ikke flytter, hvad
+  der bliver skrevet.
+
+  Hele batchen skrives i én transaktion sammen med sin auditpost: enten
+  lykkes alt, eller også skrives intet. Har en anden ændret en af rækkerne
+  siden forhåndsvisningen, afvises hele batchen med en læsbar rapport i
+  stedet for at overskrive tavst. Efter en batch kan den fortrydes med
+  "Fortryd seneste batch" — også fortryd afvises helt, hvis blot én række er
+  ændret siden, så der aldrig opstår en halvt tilbagerullet tilstand.
 * **Indikatorer kan nu slettes permanent.** Hidtil kunne en indikator kun
   deaktiveres — en fejloprettet indikator blev derfor liggende for altid. Ny
   knap "Slet valgte" på Indikatorer-fanen sletter den valgte indikator og dens
