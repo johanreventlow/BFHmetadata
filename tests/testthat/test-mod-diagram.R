@@ -26,7 +26,8 @@ fake_diagram_db <- function(dup_count = 0L, median_count = 0L) {
     datasaet = c("Tryksår-datasæt", "Fald-datasæt"),
     datapakke = c("Kliniske indikatorer", "Kliniske indikatorer"),
     stringsAsFactors = FALSE)
-  calls <- list(created = NULL, updated = NULL, deleted = NULL)
+  calls <- list(created = NULL, updated = NULL, deleted = NULL,
+                bulk = NULL, bulk_undo = NULL)
   list(
     list_diagrams_admin = function() admin,
     diagram_form_options = function() list(
@@ -50,6 +51,7 @@ fake_diagram_db <- function(dup_count = 0L, median_count = 0L) {
       parent_id = c(NA, 19L, 19L, 21L)),
     diagram_periode_choices = function() c("måned", "uge"),
     diagram_duplicate_count = function(indikator, org, type, exclude_id = -1L) {
+      calls$dup_tjek <<- (calls$dup_tjek %||% 0L) + 1L
       dup_count
     },
     diagram_median_count = function(diagram_id) median_count,
@@ -58,8 +60,25 @@ fake_diagram_db <- function(dup_count = 0L, median_count = 0L) {
       calls$updated <<- list(id = id, values = values); 1L
     },
     delete_diagram = function(id) { calls$deleted <<- id; 1L },
+    bulk_update = function(tabel_key, ids, felt, vaerdi, expected_before) {
+      calls$bulk <<- list(tabel_key = tabel_key, ids = ids, felt = felt,
+                          vaerdi = vaerdi, expected_before = expected_before)
+      list(batch_id = "batch-diag-0001", n = length(ids), skipped = integer(0))
+    },
+    bulk_undo = function(batch_id) {
+      calls$bulk_undo <<- batch_id
+      list(batch_id = batch_id, n = 2L)
+    },
     .calls = function() calls
   )
+}
+
+# Range-selektion over flere raekker (klik + shift-klik)
+diagram_grid_select_range <- function(top, bottom, pks = c("1", "2")) {
+  list(forSelectedVals = TRUE,
+       selectedDataBoundary = list(borderTop = top, borderBottom = bottom,
+                                   borderLeft = 0, borderRight = 0),
+       fullData = list(data = lapply(pks, function(p) list(p))))
 }
 
 large_diagram_form_options <- function() {
@@ -693,5 +712,127 @@ test_that("Periode-valg omfatter dag og kvartal — også før nogen række brug
     expect_true("måned" %in% ids)   # legacy-værdi i brug bevares
     # Modal-formularens select bygges af samme opts$periode
     expect_true(all(c("dag", "kvartal") %in% opts$periode))
+  })
+})
+
+test_that("diagram-bulk sender selektion, felt og typet vaerdi", {
+  db <- fake_diagram_db()
+  testServer(mod_diagram_server, args = list(db = db), {
+    session$setInputs(filter_status = "alle") # begge raekker synlige
+    session$setInputs(tbl = diagram_grid_select_range(0, 1, c("1", "2")))
+    session$setInputs(bulk_edit = 1)
+    session$setInputs(bulk_felt = "direktionens_tavle")
+    session$setInputs(bulk_v_direktionens_tavle = TRUE)
+    expect_null(db$.calls()$bulk) # forhaandsvisning endnu
+
+    session$setInputs(bulk_confirm = 1)
+    b <- db$.calls()$bulk
+    expect_identical(b$tabel_key, "diagram")
+    expect_identical(b$felt, "direktionens_tavle")
+    expect_identical(b$vaerdi, TRUE)
+    expect_setequal(b$ids, c(1L, 2L))
+    expect_named(b$expected_before, c("1", "2"))
+  })
+})
+
+test_that("diagram-bulk fryser selektionen ved modal-aabning", {
+  db <- fake_diagram_db()
+  testServer(mod_diagram_server, args = list(db = db), {
+    session$setInputs(filter_status = "alle")
+    session$setInputs(tbl = diagram_grid_select(0, c("1", "2"))) # kun raekke 1
+    session$setInputs(bulk_edit = 1)
+    session$setInputs(tbl = diagram_grid_select(1, c("1", "2"))) # skift bagved
+    session$setInputs(bulk_felt = "direktionens_tavle")
+    session$setInputs(bulk_v_direktionens_tavle = TRUE)
+    session$setInputs(bulk_confirm = 1)
+    expect_setequal(db$.calls()$bulk$ids, 1L)
+  })
+})
+
+test_that("diagram-bulk skriver IKKE naar raekker ville blive ugyldige", {
+  db <- fake_diagram_db()
+  # Raekke 2 mangler enhed → den er ugyldig som hel raekke, og en bulk maa
+  # hverken skrive den videre eller "reparere" den tavst.
+  db$list_diagrams_admin <- function() {
+    d <- fake_diagram_db()$list_diagrams_admin()
+    d$organisatorisk_navn_teknisk[2] <- NA_integer_
+    d
+  }
+  testServer(mod_diagram_server, args = list(db = db), {
+    session$setInputs(filter_status = "alle")
+    session$setInputs(tbl = diagram_grid_select_range(0, 1, c("1", "2")))
+    session$setInputs(bulk_edit = 1)
+    session$setInputs(bulk_felt = "direktionens_tavle")
+    session$setInputs(bulk_v_direktionens_tavle = TRUE)
+    session$setInputs(bulk_confirm = 1)
+
+    expect_null(db$.calls()$bulk)
+    expect_match(status_msg(), "Intet skrevet")
+    expect_match(status_msg(), "ugyldige")
+  })
+})
+
+test_that("diagram-bulk advarer om dubletter naar feltet rammer noeglen", {
+  db <- fake_diagram_db(dup_count = 1L)
+  testServer(mod_diagram_server, args = list(db = db), {
+    session$setInputs(filter_status = "alle")
+    session$setInputs(tbl = diagram_grid_select_range(0, 1, c("1", "2")))
+    session$setInputs(bulk_edit = 1)
+    session$setInputs(bulk_felt = "diagram_type") # ER i duplikatnoeglen
+    session$setInputs(bulk_v_diagram_type = "1")
+    session$setInputs(bulk_confirm = 1)
+
+    expect_false(is.null(db$.calls()$bulk)) # advarslen blokerer ikke
+    expect_match(warn_msg(), "indikator, enhed og type")
+  })
+})
+
+test_that("diagram-bulk koerer ikke duplikat-tjek for felter uden for noeglen", {
+  db <- fake_diagram_db(dup_count = 1L)
+  testServer(mod_diagram_server, args = list(db = db), {
+    session$setInputs(filter_status = "alle")
+    session$setInputs(tbl = diagram_grid_select_range(0, 1, c("1", "2")))
+    session$setInputs(bulk_edit = 1)
+    session$setInputs(bulk_felt = "direktionens_tavle") # uden for noeglen
+    session$setInputs(bulk_v_direktionens_tavle = TRUE)
+    dup_foer <- db$.calls()$dup_tjek
+    session$setInputs(bulk_confirm = 1)
+    # Guarden koster ét DB-kald pr. raekke — den maa ikke koere naar feltet
+    # umuligt kan skabe en dublet.
+    expect_identical(db$.calls()$dup_tjek, dup_foer)
+  })
+})
+
+test_that("diagram-bulk: fortryd kalder bulk_undo og rydder batchen", {
+  db <- fake_diagram_db()
+  testServer(mod_diagram_server, args = list(db = db), {
+    session$setInputs(filter_status = "alle")
+    session$setInputs(tbl = diagram_grid_select_range(0, 1, c("1", "2")))
+    session$setInputs(bulk_edit = 1)
+    session$setInputs(bulk_felt = "direktionens_tavle")
+    session$setInputs(bulk_v_direktionens_tavle = TRUE)
+    session$setInputs(bulk_confirm = 1)
+    expect_identical(last_batch(), "batch-diag-0001")
+
+    session$setInputs(bulk_undo = 1)
+    expect_identical(db$.calls()$bulk_undo, "batch-diag-0001")
+    expect_null(last_batch())
+  })
+})
+
+test_that("diagram-bulk-konflikt rapporteres og efterlader ingen batch", {
+  db <- fake_diagram_db()
+  db$bulk_update <- function(tabel_key, ids, felt, vaerdi, expected_before) {
+    stop(bulk_conflict("stale", "2"))
+  }
+  testServer(mod_diagram_server, args = list(db = db), {
+    session$setInputs(filter_status = "alle")
+    session$setInputs(tbl = diagram_grid_select_range(0, 1, c("1", "2")))
+    session$setInputs(bulk_edit = 1)
+    session$setInputs(bulk_felt = "direktionens_tavle")
+    session$setInputs(bulk_v_direktionens_tavle = TRUE)
+    session$setInputs(bulk_confirm = 1)
+    expect_match(status_msg(), "Intet skrevet")
+    expect_null(last_batch())
   })
 })

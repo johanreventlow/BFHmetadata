@@ -123,6 +123,24 @@ build_soft_delete_sql <- function() {
   'UPDATE "tblIndikatorer" SET "aktiv_indikator" = $1 WHERE "id" = $2'
 }
 
+#' Antal diagrammer der peger paa indikatoren. Slet-guard: databasens FK
+#' (tblDiagrammer.indikator) ville afvise sletningen alligevel, men et taelletal
+#' foer forsoeget giver brugeren en besked de kan handle paa i stedet for en
+#' raa constraint-fejl. Samme moenster som build_hierarchy_child_count_sql og
+#' build_lookup_refcount_sql.
+#' @noRd
+build_indikator_diagram_count_sql <- function() {
+  'SELECT count(*) AS n FROM "tblDiagrammer" WHERE "indikator" = $1'
+}
+
+#' Fysisk sletning af én indikator. Junction-raekkerne skal slettes foerst i
+#' samme transaktion (se delete_indikator i fct_db.R) — de er rene relationer
+#' ejet af indikatoren, og deres FK ville ellers blokere sletningen.
+#' @noRd
+build_indikator_delete_sql <- function() {
+  'DELETE FROM "tblIndikatorer" WHERE "id" = $1'
+}
+
 #' SELECT parent-ids for én indikators junction-rækker
 #' @noRd
 build_junction_select_sql <- function(j) {
@@ -557,10 +575,14 @@ build_hierarchy_child_count_sql <- function(cfg) {
 # docs/plans/2026-08-30-bulk-redigering-design.md) ---------------------------
 # Tabel-/kolonnenavne kommer KUN fra BULK_TABLES/bulk_field_config
 # (metadata.R) — aldrig fra browser-payloads — double-quotes som de øvrige
-# byggere. audit-tabellernes navne (batch_tbl/row_tbl) sendes ind som
-# parametre frem for at være hardkodet: Leverance 3's migration findes endnu
-# ikke, så integrationstests i Leverance 2 peger på engangstabeller efter
-# dev/bulk_probe.R-mønstret.
+# byggere.
+#
+# Audit skrives til audit."tblAendringslog", som ER deployeret i Supabase
+# (migration/07_migration.sql). Designdokumentets skitse af to tabeller
+# (tbl_batch + tbl_batch_raekke) blev ALDRIG oprettet; den deployerede log er
+# én flad tabel med én række pr. ændret celle, hvor batch_id grupperer dem.
+# Logtabellens navn sendes ind som parameter, så integrationstests kan pege på
+# en engangstabel efter dev/bulk_probe.R-mønstret i stedet for produktionens.
 
 #' Lås målrækker i STABIL id-rækkefølge (ORDER BY pk) — forebygger deadlock
 #' mellem to samtidige batches der rammer overlappende id-sæt i modsat
@@ -582,51 +604,59 @@ build_bulk_update_sql <- function(table, pk, col) {
   sprintf('UPDATE "%s" SET "%s" = $1 WHERE "%s" = ANY($2::int[])', table, col, pk)
 }
 
-#' Audit-batch-header. batch_id genereres server-side med gen_random_uuid()
-#' (indbygget i Postgres ≥ 13 — ingen pgcrypto-extension nødvendig) og
-#' returneres, så R-siden aldrig selv skal generere/validere et UUID.
-#' $1 = tabel, $2 = felt.
+#' Ét batch-id til hele batchen. Logtabellens batch_id har BEVIDST ingen
+#' kolonne-default (en default ville give nyt uuid pr. række og dermed
+#' ødelægge grupperingen — se kommentaren i migration/07_migration.sql), så
+#' skriveren henter ét id og genbruger det for alle rækker i batchen.
+#' gen_random_uuid() er indbygget i Postgres ≥ 13 — ingen extension nødvendig.
 #' @noRd
-build_audit_batch_insert_sql <- function(batch_tbl) {
-  sprintf(
-    'INSERT INTO %s ("batch_id", "tabel", "felt") VALUES (gen_random_uuid(), $1, $2) RETURNING "batch_id"',
-    batch_tbl
-  )
+build_audit_batch_id_sql <- function() {
+  'SELECT gen_random_uuid() AS batch_id'
 }
 
-#' N audit-rækker i ÉT statement — samme batch_id ($1) genbruges for alle.
-#' Pr. række: row_id, vaerdi_foer, vaerdi_efter (begge text, se
-#' bulk_value_to_text() i metadata.R).
+#' N audit-rækker i ÉT statement. Hele batchen deler batch_id ($1), bruger
+#' ($2), tabel ($3), kolonne ($4) og vaerdi_type ($5) — kun post_id og
+#' før/efter-værdien varierer pr. række.
+#'
+#' vaerdi_foer/vaerdi_efter er jsonb NOT NULL i skemaet: en manglende værdi
+#' gemmes derfor som JSON-`null`, ALDRIG som SQL NULL (se bulk_value_to_json()
+#' i metadata.R). Casten er eksplicit, fordi Postgres ikke selv konverterer
+#' text til jsonb ved INSERT.
 #' @noRd
-build_audit_row_insert_sql <- function(n, row_tbl) {
+build_audit_log_insert_sql <- function(n, log_tbl) {
   vals <- vapply(seq_len(n), function(i) {
-    base <- 2L + 3L * (i - 1L)
-    sprintf("($1, $%d, $%d, $%d)", base, base + 1L, base + 2L)
+    base <- 6L + 3L * (i - 1L)
+    sprintf("($1, $2, $3, $4, $5, $%d, $%d::jsonb, $%d::jsonb)",
+            base, base + 1L, base + 2L)
   }, "")
   sprintf(
-    'INSERT INTO %s ("batch_id", "row_id", "vaerdi_foer", "vaerdi_efter") VALUES %s',
-    row_tbl, paste(vals, collapse = ", ")
+    paste0('INSERT INTO %s ("batch_id", "bruger", "tabel", "kolonne", ',
+           '"vaerdi_type", "post_id", "vaerdi_foer", "vaerdi_efter") VALUES %s'),
+    log_tbl, paste(vals, collapse = ", ")
   )
 }
 
-#' Batchens header (tabel/felt/fortrudt_ts) — indgang til fortryd-flowet.
+#' Batchens rækker, ordnet på post_id — samme stabile rækkefølge som selve
+#' batch-låsningen brugte. Der er ingen separat header-tabel: tabel/kolonne/
+#' vaerdi_type er ens på alle rækker i batchen, og fortrudt_tidspunkt fortæller
+#' om batchen allerede er rullet tilbage.
 #' @noRd
-build_audit_batch_select_sql <- function(batch_tbl) {
-  sprintf('SELECT "tabel", "felt", "fortrudt_ts" FROM %s WHERE "batch_id" = $1', batch_tbl)
-}
-
-#' Batchens rækker (row_id + før/efter-text), ordnet på row_id — samme
-#' stabile rækkefølge som selve batch-låsningen brugte.
-#' @noRd
-build_audit_rows_select_sql <- function(row_tbl) {
+build_audit_batch_select_sql <- function(log_tbl) {
   sprintf(
-    'SELECT "row_id", "vaerdi_foer", "vaerdi_efter" FROM %s WHERE "batch_id" = $1 ORDER BY "row_id"',
-    row_tbl
+    paste0('SELECT "post_id", "tabel", "kolonne", "vaerdi_type", ',
+           '"vaerdi_foer"::text AS "vaerdi_foer", ',
+           '"vaerdi_efter"::text AS "vaerdi_efter", "fortrudt_tidspunkt" ',
+           'FROM %s WHERE "batch_id" = $1 ORDER BY "post_id"'),
+    log_tbl
   )
 }
 
-#' Stempl batchen som fortrudt.
+#' Stempl hele batchen som fortrudt ($1 = batch_id, $2 = bruger).
 #' @noRd
-build_audit_mark_undone_sql <- function(batch_tbl) {
-  sprintf('UPDATE %s SET "fortrudt_ts" = now() WHERE "batch_id" = $1', batch_tbl)
+build_audit_mark_undone_sql <- function(log_tbl) {
+  sprintf(
+    paste0('UPDATE %s SET "fortrudt_tidspunkt" = now(), "fortrudt_af" = $2 ',
+           'WHERE "batch_id" = $1'),
+    log_tbl
+  )
 }

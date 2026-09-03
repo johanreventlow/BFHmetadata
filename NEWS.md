@@ -29,6 +29,40 @@
   grænse), så ingen knæk falder ud ved opgraderingen.
 
 ## Nye features
+* **Bulk-redigering: sæt ét felt på mange indikatorer på én gang.** Markér
+  flere rækker (klik + shift-klik, eller "Vælg alle viste") og brug "Redigér
+  valgte (N)". Dialogen tilbyder kun felter fra en serverside-allowlist —
+  navn og indikator-id kan aldrig bulk-ændres — og viser en forhåndsvisning
+  med nuværende → ny værdi pr. række, hvor rækker der allerede har værdien
+  markeres som uændrede og ikke skrives. Målsættet fryses, når dialogen
+  åbnes, så et filterskift eller en ny markering bagved ikke flytter, hvad
+  der bliver skrevet.
+
+  Hele batchen skrives i én transaktion sammen med sin auditpost: enten
+  lykkes alt, eller også skrives intet. Har en anden ændret en af rækkerne
+  siden forhåndsvisningen, afvises hele batchen med en læsbar rapport i
+  stedet for at overskrive tavst. Efter en batch kan den fortrydes med
+  "Fortryd seneste batch" — også fortryd afvises helt, hvis blot én række er
+  ændret siden, så der aldrig opstår en halvt tilbagerullet tilstand.
+
+  Findes på **både Indikatorer- og Diagrammer-fanen**. Diagram-siden har to
+  ekstra værn, fordi et diagram kun er gyldigt som hel række: hver ramt række
+  valideres, som den ville se ud *efter* batchen, og ville en af dem blive
+  ugyldig, blokeres hele batchen med det samme i dialogen — en bulk kan
+  altså hverken smugle en ufuldstændig række videre eller "reparere" en.
+  Rammer feltet duplikatnøglen (indikator/enhed/type), køres duplikat-guarden
+  bagefter og advarer samlet, men blokerer ikke — som ved inline-redigering.
+  Periode-feltet kan kun sættes til det kanoniske ordforråd, så en bulk ikke
+  kan plante en stavevariant på mange rækker.
+* **Indikatorer kan nu slettes permanent.** Hidtil kunne en indikator kun
+  deaktiveres — en fejloprettet indikator blev derfor liggende for altid. Ny
+  knap "Slet valgte" på Indikatorer-fanen sletter den valgte indikator og dens
+  relationer (faggrupper, dataprodukter, organisation) i én transaktion.
+  Sletningen er guardet: har indikatoren diagrammer, blokeres den med besked om
+  hvor mange, så man selv tager stilling til diagrammerne først i stedet for at
+  få en rå constraint-fejl. Bekræftelsesdialogen fryser den valgte række og
+  siger tydeligt, at handlingen ikke kan fortrydes, og henviser til
+  "Deaktivér valgte" når indikatoren blot skal skjules.
 * **Grid'ene understøtter nu range-selektion af flere rækker** (klik +
   shift-klik / træk) i både indikator- og diagramtabellen, samt en knap
   "Vælg alle viste" der markerer alle rækker i det aktuelt filtrerede
@@ -243,12 +277,31 @@
   `bulk_update`/`bulk_undo` (fct_db.R): én transaktion pr. batch med
   `SELECT … FOR UPDATE` i stabil id-rækkefølge, førværdi-sammenligning mod
   det UI'et sidst viste (stale → hele batchen afvises), og fortryd der
-  afviser fuldt ved konflikt i stedet for delvis rollback. Peger på det
-  kommende `audit`-schema (Leverance 3); integrationstests kører indtil
-  videre mod engangstabeller efter `dev/bulk_probe.R`-mønstret, inkl.
-  tvungen fejl midt i en batch med bevis for fuld rollback.
+  afviser fuldt ved konflikt i stedet for delvis rollback. Ændringer
+  auditeres i `audit."tblAendringslog"` — den log der faktisk er deployeret
+  (`migration/07_migration.sql`); designets oprindelige skitse med to
+  tabeller blev aldrig oprettet. Integrationstests kører mod engangstabeller
+  efter `dev/bulk_probe.R`-mønstret, inkl. tvungen fejl midt i en batch med
+  bevis for fuld rollback.
 
 ## Bug fixes
+* **Siden kunne ikke scrolles efter at en indikator var redigeret i modalen.**
+  Bootstrap låser sidescroll ved at sætte `overflow: hidden` på `<body>`, når
+  en modal åbnes, og ruller først låsen tilbage, når modalens lukke-event
+  fyrer. Udebliver det event, står låsen tilbage — sammen med en efterladt
+  backdrop, der ligger som et usynligt klik-skjold over siden. En vagt
+  (`bfh-modal-scroll-guard.js`) rydder nu body-tilstanden, når der ikke længere
+  er en synlig modal. Den lytter både på lukke-eventet og — fordi netop det
+  event kan udeblive — direkte på ændringer i `<body>`, og den rører intet, så
+  længe en modal stadig er åben, så bevidste modal-skift (bekræftelse af
+  ændret indikator-id, diagram-swap, fortryd) er uændrede.
+
+  Vagten fjerner symptomet, men **rodårsagen er ikke fastslået**: flere veje
+  kan efterlade låsen — `showModal()` oven på en åben modal (appen gør det
+  bevidst flere steder, og kompakterings-sweep'en kan gøre det uopfordret midt
+  i en redigering), eller en lukning der ikke når at afslutte sin transition,
+  fordi grid'et re-renderes tungt i samme runde. Findes årsagen senere, bør
+  den fixes ved kilden; vagten kan blive stående som værn.
 * Inline-redigeringer i grid'ene (Indikatorer, Indikator-hierarki,
   Organisation, opslagstabeller, Diagrammer) gik tabt, medmindre man
   bagefter klikkede i en checkbox: excelR sender celle-ændringer og

@@ -87,10 +87,14 @@ mod_indikator_crud_ui <- function(id) {
       actionButton(ns("soft_delete"), "Deaktiv\u00E9r valgte",
         class = "btn-warning"
       ),
+      actionButton(ns("hard_delete"), "Slet valgte",
+        class = "btn-outline-danger"
+      ),
       actionButton(ns("select_all_visible"), "V\u00E6lg alle viste",
         class = "btn-outline-secondary"
       ),
-      uiOutput(ns("bulk_edit_btn"), inline = TRUE)
+      uiOutput(ns("bulk_edit_btn"), inline = TRUE),
+      uiOutput(ns("bulk_undo_btn"), inline = TRUE)
     ),
     bslib::layout_columns(
       col_widths = c(4, 4, 4),
@@ -108,7 +112,8 @@ mod_indikator_crud_ui <- function(id) {
     p(class = "text-muted small", paste(
       "Dobbeltklik en celle for at redigere direkte.",
       "Klik en r\u00E6kke og brug '\u00C5bn valgte' for definitioner, relationer",
-      "og diagrammer \u2014 eller 'Deaktiv\u00E9r valgte'."
+      "og diagrammer. Mark\u00E9r flere r\u00E6kker (klik + shift-klik) og brug",
+      "'Redig\u00E9r valgte' for at s\u00E6tte \u00E9t felt p\u00E5 dem alle."
     )),
     uiOutput(ns("tbl_container")),
     verbatimTextOutput(ns("status"))
@@ -938,16 +943,17 @@ mod_indikator_crud_server <- function(id, db) {
       tbl_sel(as.character(tbl_rows()[["id"]]))
     })
 
-    # "Redigér valgte (N)" — knap-tekst reflekterer selektionen reaktivt, men
-    # selve bulk-flowet leveres først i en senere leverance (batch-kontrakt +
-    # audit i DB-laget) — knappen er derfor disabled her.
+    # "Redigér valgte (N)" — knap-tekst reflekterer selektionen reaktivt.
+    # Disabled uden selektion: en bulk uden målsæt giver ingen mening.
     output$bulk_edit_btn <- renderUI({
       ns <- session$ns
       n <- length(tbl_sel_visible())
       actionButton(ns("bulk_edit"),
         sprintf("Redigér valgte (%d)", n),
-        class = "btn-outline-secondary", disabled = "disabled",
-        title = "Kommer i en senere leverance"
+        class = if (n > 0) "btn-outline-primary" else "btn-outline-secondary",
+        disabled = if (n == 0) "disabled" else NULL,
+        title = if (n == 0) "Vælg mindst én række" else
+          "Sæt ét felt på alle valgte rækker"
       )
     })
 
@@ -984,6 +990,288 @@ mod_indikator_crud_server <- function(id, db) {
         fallback = status_msg("Fejl ved deaktivering")
       )
       pending_soft_delete_id(NULL)
+    })
+
+    # --- Bulk-redigering: sæt ét felt på hele selektionen -------------------
+    # Målsættet og førværdierne FRYSES ved modal-åbning (samme princip som
+    # pending_soft_delete_id): et filterskift eller en ny selektion bag
+    # dialogen må ikke flytte hvad der bliver skrevet.
+    bulk_frozen <- reactiveVal(NULL) # data.frame med de ramte rækker
+    last_batch <- reactiveVal(NULL) # seneste batch_id → "Fortryd"
+
+    # Det aktuelt valgte felts allowlist-element (NULL indtil et felt er valgt)
+    bulk_fld <- reactive({
+      felt <- input$bulk_felt
+      if (is.null(felt) || !nzchar(felt)) {
+        return(NULL)
+      }
+      bulk_field_config("indikator", felt)
+    })
+
+    # Den typede målværdi fra det typede input. Ugyldig værdi (fx tømt
+    # FK-dropdown) giver NULL, så forhåndsvisning og knap kan skjules i stedet
+    # for at lade brugeren trykke sig frem til en fejl.
+    bulk_target <- reactive({
+      fld <- bulk_fld()
+      if (is.null(fld)) {
+        return(NULL)
+      }
+      raa <- input[[paste0("bulk_v_", fld$col)]]
+      tryCatch(bulk_coerce_value(fld, raa), error = function(e) NULL)
+    })
+
+    bulk_preview <- reactive({
+      fld <- bulk_fld()
+      d <- bulk_frozen()
+      if (is.null(fld) || is.null(d) || nrow(d) == 0) {
+        return(NULL)
+      }
+      target <- bulk_target()
+      if (is.null(target)) {
+        return(NULL)
+      }
+      bulk_preview_df(d, "id", "indikator_navn", fld, target,
+        choices = fk_choices[[fld$col]]
+      )
+    })
+
+    observeEvent(input$bulk_edit, {
+      sel <- tbl_sel_visible()
+      if (length(sel) == 0) {
+        status_msg("Vælg mindst én række først")
+        return()
+      }
+      d <- tbl_rows()
+      bulk_frozen(d[as.character(d[["id"]]) %in% sel, , drop = FALSE])
+      ns <- session$ns
+      showModal(modalDialog(
+        title = sprintf("Redigér %d valgte indikatorer", length(sel)),
+        size = "l", easyClose = FALSE,
+        selectInput(ns("bulk_felt"), "Felt der skal sættes",
+          choices = c(
+            "(vælg felt)" = "",
+            bulk_field_choices("indikator", INDIKATOR_MODAL_LABELS)
+          )
+        ),
+        uiOutput(ns("bulk_value_ui")),
+        tags$hr(),
+        uiOutput(ns("bulk_preview_ui")),
+        footer = tagList(
+          modalButton("Annullér"),
+          uiOutput(ns("bulk_confirm_btn"), inline = TRUE)
+        )
+      ))
+    })
+
+    # Typet input for det valgte felt — genbruger .field_input, så bulk-inputtet
+    # ser ud og opfører sig som det tilsvarende felt i modalen.
+    output$bulk_value_ui <- renderUI({
+      fld <- bulk_fld()
+      if (is.null(fld)) {
+        return(NULL)
+      }
+      .field_input(session$ns, fld, fk_choices,
+        prefix = "bulk_v_",
+        label = INDIKATOR_MODAL_LABELS[[fld$col]] %||% fld$col
+      )
+    })
+
+    output$bulk_preview_ui <- renderUI({
+      fld <- bulk_fld()
+      if (is.null(fld)) {
+        return(p(class = "text-muted small", "Vælg et felt for at se ændringerne."))
+      }
+      pv <- bulk_preview()
+      if (is.null(pv)) {
+        return(p(class = "text-muted small", "Vælg en værdi for at se ændringerne."))
+      }
+      n_skriv <- sum(!pv$uaendret)
+      # Store batches: vis kun de første — hele listen ville skubbe knappen
+      # ud af skærmen uden at fortælle brugeren mere.
+      vis <- utils::head(pv, 50)
+      tagList(
+        p(class = "small", sprintf(
+          "%d af %d rækker ændres. %d har allerede værdien og springes over.",
+          n_skriv, nrow(pv), sum(pv$uaendret)
+        )),
+        if (nrow(pv) > nrow(vis)) {
+          p(class = "text-muted small",
+            sprintf("Viser de første %d af %d.", nrow(vis), nrow(pv)))
+        },
+        tags$table(class = "table table-sm small",
+          tags$thead(tags$tr(
+            tags$th("Indikator"), tags$th("Nu"), tags$th("Ny")
+          )),
+          tags$tbody(lapply(seq_len(nrow(vis)), function(i) {
+            tags$tr(
+              class = if (vis$uaendret[i]) "text-muted" else NULL,
+              tags$td(vis$indikator[i]),
+              tags$td(vis$nuvaerende[i]),
+              tags$td(if (vis$uaendret[i]) "(uændret)" else vis$ny[i])
+            )
+          }))
+        )
+      )
+    })
+
+    output$bulk_confirm_btn <- renderUI({
+      pv <- bulk_preview()
+      n <- if (is.null(pv)) 0L else sum(!pv$uaendret)
+      actionButton(session$ns("bulk_confirm"),
+        sprintf("Skriv %d ændringer", n),
+        class = "btn-primary",
+        disabled = if (n == 0) "disabled" else NULL
+      )
+    })
+
+    observeEvent(input$bulk_confirm, {
+      fld <- bulk_fld()
+      d <- bulk_frozen()
+      target <- bulk_target()
+      if (is.null(fld) || is.null(d) || is.null(target)) {
+        return()
+      }
+      removeModal()
+      # Konflikter er IKKE fejl i appen: de betyder at databasen har flyttet
+      # sig siden forhåndsvisningen, og brugeren skal have rapporten — ikke en
+      # generisk "der skete en fejl".
+      res <- tryCatch(
+        med_ventevisning("Skriver ændringer…", {
+          db$bulk_update("indikator", as.integer(d[["id"]]), fld$col, target,
+            bulk_expected_before(d, "id", fld)
+          )
+        }),
+        bulk_conflict = function(e) e,
+        error = function(e) e
+      )
+      bulk_frozen(NULL)
+      if (inherits(res, "bulk_conflict")) {
+        last_batch(NULL)
+        status_msg(bulk_conflict_text(res))
+        reload() # hent den friske tilstand, så grid'et ikke bliver ved at være stale
+        return()
+      }
+      if (inherits(res, "error")) {
+        last_batch(NULL)
+        status_msg("Fejl ved bulk-redigering (se log)")
+        message(sprintf("[ERROR] bulk-update: %s", conditionMessage(res)))
+        return()
+      }
+      sprunget <- if (length(res$skipped) > 0) {
+        sprintf(" (%d sprunget over)", length(res$skipped))
+      } else {
+        ""
+      }
+      if (res$n == 0 || is.na(res$batch_id)) {
+        # Alle rækker havde allerede værdien: intet blev skrevet, og der er
+        # derfor heller ingen batch at fortryde.
+        last_batch(NULL)
+        status_msg(sprintf("Ingen ændringer at skrive%s", sprunget))
+      } else {
+        last_batch(res$batch_id)
+        status_msg(sprintf("%d rækker opdateret%s. Batch %s kan fortrydes.",
+          res$n, sprunget, substr(res$batch_id, 1, 8)
+        ))
+      }
+      reload()
+    })
+
+    # "Fortryd seneste batch" — vises kun når der ER en batch at fortryde.
+    output$bulk_undo_btn <- renderUI({
+      if (is.null(last_batch())) {
+        return(NULL)
+      }
+      actionButton(session$ns("bulk_undo"), "Fortryd seneste batch",
+        class = "btn-outline-warning btn-sm"
+      )
+    })
+
+    observeEvent(input$bulk_undo, {
+      bid <- last_batch()
+      if (is.null(bid)) {
+        return()
+      }
+      res <- tryCatch(
+        med_ventevisning("Fortryder…", db$bulk_undo(bid)),
+        bulk_conflict = function(e) e,
+        error = function(e) e
+      )
+      if (inherits(res, "bulk_conflict")) {
+        status_msg(bulk_conflict_text(res))
+        reload()
+        return()
+      }
+      if (inherits(res, "error")) {
+        status_msg("Kunne ikke fortryde batchen (se log)")
+        message(sprintf("[ERROR] bulk-undo: %s", conditionMessage(res)))
+        return()
+      }
+      last_batch(NULL) # en batch kan kun fortrydes én gang
+      status_msg(sprintf("Fortrudt — %d rækker sat tilbage", res$n))
+      reload()
+    })
+
+    # Fysisk sletning. Bevidst mere omstændelig end deaktivering: den kan ikke
+    # fortrydes, så der guardes FØR dialogen (en indikator med diagrammer kan
+    # slet ikke slettes), og pk'en fryses i pending_hard_delete_id som i
+    # soft-delete-flowet, så et selektionsskift bag dialogen ikke flytter målet.
+    pending_hard_delete_id <- reactiveVal(NULL)
+    observeEvent(input$hard_delete, {
+      sid <- selected_id()
+      if (is.null(sid)) {
+        status_msg("Vælg en række først")
+        return()
+      }
+      # Guard-tallet hentes friskt (ikke cachet) — et diagram oprettet af en
+      # anden bruger skal blokere med det samme. NA = DB svarede ikke; så
+      # afvises sletningen hellere end at gætte på at der ingen diagrammer er.
+      n <- safe_operation("diagram-antal",
+        db$indikator_diagram_count(sid),
+        fallback = NA_integer_
+      )
+      if (is.na(n)) {
+        status_msg("Kunne ikke tjekke indikatorens diagrammer — prøv igen")
+        return()
+      }
+      if (n > 0) {
+        status_msg(sprintf(paste(
+          "Indikatoren har %d diagram(mer) — slet dem først,",
+          "eller deaktivér indikatoren i stedet."
+        ), n))
+        return()
+      }
+      pending_hard_delete_id(sid)
+      showModal(build_confirm_modal(
+        title = "Slet indikator permanent?",
+        body = p(
+          "Indikatoren slettes fra databasen sammen med sine relationer",
+          "(faggrupper, dataprodukter, organisation)."
+        ),
+        confirm_id = session$ns("hard_delete_confirm"),
+        confirm_label = "Slet permanent",
+        warning = paste(
+          "Handlingen kan ikke fortrydes. Skal indikatoren blot skjules fra",
+          "aktive lister, så brug 'Deaktivér valgte' i stedet."
+        )
+      ))
+    })
+
+    observeEvent(input$hard_delete_confirm, {
+      sid <- pending_hard_delete_id()
+      removeModal()
+      if (is.null(sid)) {
+        return()
+      }
+      safe_operation("hard-delete",
+        med_ventevisning("Sletter…", {
+          db$delete_indikator(sid)
+          status_msg(paste("Slettet indikator", sid))
+          tbl_sel(character(0)) # rækken findes ikke længere — ryd selektionen
+          reload()
+        }),
+        fallback = status_msg("Fejl ved sletning (se log)")
+      )
+      pending_hard_delete_id(NULL)
     })
 
     # excelR sender BÅDE celle-ændringer og selektioner på input$tbl —
@@ -1062,7 +1350,7 @@ mod_indikator_crud_server <- function(id, db) {
     # eksponér til test
     list(
       rows = rows, status_msg = status_msg, editing_id = editing_id,
-      return_ind = return_ind, tbl_sel = tbl_sel
+      return_ind = return_ind, tbl_sel = tbl_sel, last_batch = last_batch
     )
   })
 }

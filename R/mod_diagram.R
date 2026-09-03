@@ -274,7 +274,8 @@ mod_diagram_ui <- function(id) {
                    class = "btn-outline-danger"),
       actionButton(ns("select_all_visible"), "V\u00E6lg alle viste",
                    class = "btn-outline-secondary"),
-      uiOutput(ns("bulk_edit_btn"), inline = TRUE)),
+      uiOutput(ns("bulk_edit_btn"), inline = TRUE),
+      uiOutput(ns("bulk_undo_btn"), inline = TRUE)),
     bslib::layout_columns(
       col_widths = c(2, 2, 3, 3, 2),
       uiOutput(ns("filter_datapakke_ui")),
@@ -544,17 +545,291 @@ mod_diagram_server <- function(id, db) {
       grid_sel(as.character(filtered()$diagram_id))
     })
 
-    # "Redigér valgte (N)" — knap-tekst reflekterer selektionen reaktivt, men
-    # selve bulk-flowet leveres først i en senere leverance (batch-kontrakt +
-    # audit i DB-laget) — knappen er derfor disabled her.
+    # "Redigér valgte (N)" — knap-tekst reflekterer selektionen reaktivt.
     output$bulk_edit_btn <- renderUI({
       ns <- session$ns
       n <- length(grid_sel_visible())
       actionButton(ns("bulk_edit"),
         sprintf("Redig\u00E9r valgte (%d)", n),
-        class = "btn-outline-secondary", disabled = "disabled",
-        title = "Kommer i en senere leverance"
+        class = if (n > 0) "btn-outline-primary" else "btn-outline-secondary",
+        disabled = if (n == 0) "disabled" else NULL,
+        title = if (n == 0) "V\u00E6lg mindst \u00E9n r\u00E6kke" else
+          "S\u00E6t \u00E9t felt p\u00E5 alle valgte diagrammer"
       )
+    })
+
+    # --- Bulk-redigering: s\u00E6t \u00E9t felt p\u00E5 hele selektionen -------------------
+    # Samme kontrakt som indikator-fanen (frosset m\u00E5ls\u00E6t, forh\u00E5ndsvisning,
+    # atomisk batch med audit og fortryd), men med to diagram-specifikke
+    # guards: et diagram er kun gyldigt som HEL r\u00E6kke, og duplikatn\u00F8glen g\u00E5r
+    # p\u00E5 tv\u00E6rs af tre felter.
+    bulk_frozen <- reactiveVal(NULL)
+    last_batch <- reactiveVal(NULL)
+
+    # col \u2192 dansk label, genbrugt fra grid'ets egne kolonnetitler
+    bulk_labels <- stats::setNames(
+      names(.DIAGRAM_GRID_FIELDS), unname(.DIAGRAM_GRID_FIELDS)
+    )
+    # FK-valglister til det typede input (samme kilder som grid-dropdowns)
+    bulk_fk_choices <- list(
+      maalgruppe = stats::setNames(opts$maalgruppe$id, opts$maalgruppe$label),
+      diagram_type = stats::setNames(opts$type$id, opts$type$label)
+    )
+
+    bulk_fld <- reactive({
+      felt <- input$bulk_felt
+      if (is.null(felt) || !nzchar(felt)) {
+        return(NULL)
+      }
+      bulk_field_config("diagram", felt)
+    })
+
+    bulk_target <- reactive({
+      fld <- bulk_fld()
+      if (is.null(fld)) {
+        return(NULL)
+      }
+      raa <- input[[paste0("bulk_v_", fld$col)]]
+      tryCatch(bulk_coerce_value(fld, raa), error = function(e) NULL)
+    })
+
+    bulk_preview <- reactive({
+      fld <- bulk_fld()
+      d <- bulk_frozen()
+      target <- bulk_target()
+      if (is.null(fld) || is.null(d) || nrow(d) == 0 || is.null(target)) {
+        return(NULL)
+      }
+      bulk_preview_df(d, "diagram_id", ".bulk_label", fld, target,
+        choices = bulk_fk_choices[[fld$col]]
+      )
+    })
+
+    # R\u00E6kker der IKKE ville validere efter batchen. Beregnes reaktivt, s\u00E5
+    # brugeren ser problemet i dialogen frem for efter et klik.
+    bulk_valideringsfejl <- reactive({
+      fld <- bulk_fld()
+      d <- bulk_frozen()
+      target <- bulk_target()
+      if (is.null(fld) || is.null(d) || is.null(target)) {
+        return(NULL)
+      }
+      bulk_diagram_validation_errors(d, fld$col, target)
+    })
+
+    observeEvent(input$bulk_edit, {
+      sel <- grid_sel_visible()
+      if (length(sel) == 0) {
+        status_msg("V\u00E6lg mindst \u00E9n r\u00E6kke f\u00F8rst")
+        return()
+      }
+      d <- filtered()
+      fr <- d[as.character(d$diagram_id) %in% sel, , drop = FALSE]
+      # Sigende etiket i forh\u00E5ndsvisningen: diagram-id alene siger intet, s\u00E5
+      # r\u00E6kken vises som "indikator \u2014 enhed", ligesom grid'et g\u00F8r.
+      fr$.bulk_label <- paste(
+        ifelse(is.na(fr$indikator_navn), "?", fr$indikator_navn),
+        ifelse(is.na(fr$org_navn), "?", fr$org_navn),
+        sep = " \u2014 "
+      )
+      bulk_frozen(fr)
+      ns <- session$ns
+      showModal(modalDialog(
+        title = sprintf("Redig\u00E9r %d valgte diagrammer", length(sel)),
+        size = "l", easyClose = FALSE,
+        selectInput(ns("bulk_felt"), "Felt der skal s\u00E6ttes",
+          choices = c(
+            "(v\u00E6lg felt)" = "",
+            bulk_field_choices("diagram", bulk_labels)
+          )
+        ),
+        uiOutput(ns("bulk_value_ui")),
+        tags$hr(),
+        uiOutput(ns("bulk_preview_ui")),
+        footer = tagList(
+          modalButton("Annull\u00E9r"),
+          uiOutput(ns("bulk_confirm_btn"), inline = TRUE)
+        )
+      ))
+    })
+
+    output$bulk_value_ui <- renderUI({
+      fld <- bulk_fld()
+      if (is.null(fld)) {
+        return(NULL)
+      }
+      .field_input(session$ns, fld, bulk_fk_choices,
+        prefix = "bulk_v_",
+        label = bulk_labels[[fld$col]] %||% fld$col
+      )
+    })
+
+    output$bulk_preview_ui <- renderUI({
+      fld <- bulk_fld()
+      if (is.null(fld)) {
+        return(p(class = "text-muted small",
+                 "V\u00E6lg et felt for at se \u00E6ndringerne."))
+      }
+      pv <- bulk_preview()
+      if (is.null(pv)) {
+        return(p(class = "text-muted small",
+                 "V\u00E6lg en v\u00E6rdi for at se \u00E6ndringerne."))
+      }
+      fejl <- bulk_valideringsfejl()
+      vis <- utils::head(pv, 50)
+      tagList(
+        p(class = "small", sprintf(
+          "%d af %d r\u00E6kker \u00E6ndres. %d har allerede v\u00E6rdien og springes over.",
+          sum(!pv$uaendret), nrow(pv), sum(pv$uaendret)
+        )),
+        # Blokerende: hele batchen afvises, s\u00E5 brugeren skal se det F\u00D8R klik.
+        if (!is.null(fejl) && nrow(fejl) > 0) {
+          div(class = "alert alert-danger small",
+            sprintf(paste("%d r\u00E6kker ville blive ugyldige og blokerer",
+                          "hele batchen: %s"),
+                    nrow(fejl),
+                    paste(utils::head(fejl$fejl, 3), collapse = "; ")))
+        },
+        if (nrow(pv) > nrow(vis)) {
+          p(class = "text-muted small",
+            sprintf("Viser de f\u00F8rste %d af %d.", nrow(vis), nrow(pv)))
+        },
+        tags$table(class = "table table-sm small",
+          tags$thead(tags$tr(
+            tags$th("Diagram"), tags$th("Nu"), tags$th("Ny")
+          )),
+          tags$tbody(lapply(seq_len(nrow(vis)), function(i) {
+            tags$tr(
+              class = if (vis$uaendret[i]) "text-muted" else NULL,
+              tags$td(vis$indikator[i]),
+              tags$td(vis$nuvaerende[i]),
+              tags$td(if (vis$uaendret[i]) "(u\u00E6ndret)" else vis$ny[i])
+            )
+          }))
+        )
+      )
+    })
+
+    output$bulk_confirm_btn <- renderUI({
+      pv <- bulk_preview()
+      fejl <- bulk_valideringsfejl()
+      n <- if (is.null(pv)) 0L else sum(!pv$uaendret)
+      blokeret <- !is.null(fejl) && nrow(fejl) > 0
+      actionButton(session$ns("bulk_confirm"),
+        sprintf("Skriv %d \u00E6ndringer", n),
+        class = "btn-primary",
+        disabled = if (n == 0 || blokeret) "disabled" else NULL
+      )
+    })
+
+    observeEvent(input$bulk_confirm, {
+      fld <- bulk_fld()
+      d <- bulk_frozen()
+      target <- bulk_target()
+      if (is.null(fld) || is.null(d) || is.null(target)) {
+        return()
+      }
+      # Sidste kontrol server-side: knappen er disabled ved fejl, men et
+      # klient-manipuleret event m\u00E5 ikke kunne omg\u00E5 valideringen.
+      fejl <- bulk_diagram_validation_errors(d, fld$col, target)
+      if (nrow(fejl) > 0) {
+        status_msg(sprintf(
+          "Intet skrevet \u2014 %d r\u00E6kker ville blive ugyldige: %s",
+          nrow(fejl), paste(utils::head(fejl$fejl, 3), collapse = "; ")
+        ))
+        return()
+      }
+      removeModal()
+      res <- tryCatch(
+        med_ventevisning("Skriver \u00E6ndringer\u2026", {
+          db$bulk_update("diagram", as.integer(d$diagram_id), fld$col, target,
+            bulk_expected_before(d, "diagram_id", fld)
+          )
+        }),
+        bulk_conflict = function(e) e,
+        error = function(e) e
+      )
+      bulk_frozen(NULL)
+      if (inherits(res, "bulk_conflict")) {
+        last_batch(NULL)
+        status_msg(bulk_conflict_text(res))
+        reload()
+        return()
+      }
+      if (inherits(res, "error")) {
+        last_batch(NULL)
+        status_msg("Fejl ved bulk-redigering (se log)")
+        message(sprintf("[ERROR] bulk-update: %s", conditionMessage(res)))
+        return()
+      }
+      sprunget <- if (length(res$skipped) > 0) {
+        sprintf(" (%d sprunget over)", length(res$skipped))
+      } else {
+        ""
+      }
+      if (res$n == 0 || is.na(res$batch_id)) {
+        last_batch(NULL)
+        status_msg(sprintf("Ingen \u00E6ndringer at skrive%s", sprunget))
+      } else {
+        last_batch(res$batch_id)
+        status_msg(sprintf(
+          "%d r\u00E6kker opdateret%s. Batch %s kan fortrydes.",
+          res$n, sprunget, substr(res$batch_id, 1, 8)
+        ))
+        # Bl\u00F8d duplikat-guard: kun relevant n\u00E5r feltet indg\u00E5r i n\u00F8glen
+        # (indikator/enhed/type). Advarer samlet, blokerer ikke \u2014 som i dag.
+        if (bulk_diagram_rammer_duplikatnoegle(fld$col)) {
+          dubletter <- safe_operation("bulk-duplikat-tjek", {
+            sum(vapply(seq_len(nrow(d)), function(i) {
+              v <- .diagram_row_values(d[i, ])
+              v[[fld$col]] <- target
+              db$diagram_duplicate_count(v$indikator,
+                v$organisatorisk_navn_teknisk, v$diagram_type,
+                exclude_id = as.integer(d$diagram_id[i])
+              ) > 0
+            }, logical(1)))
+          }, fallback = 0L)
+          if (dubletter > 0) {
+            warn_msg(sprintf(paste("%d af r\u00E6kkerne deler nu indikator, enhed",
+                                   "og type med et andet diagram."), dubletter))
+          }
+        }
+      }
+      reload()
+    })
+
+    output$bulk_undo_btn <- renderUI({
+      if (is.null(last_batch())) {
+        return(NULL)
+      }
+      actionButton(session$ns("bulk_undo"), "Fortryd seneste batch",
+        class = "btn-outline-warning btn-sm"
+      )
+    })
+
+    observeEvent(input$bulk_undo, {
+      bid <- last_batch()
+      if (is.null(bid)) {
+        return()
+      }
+      res <- tryCatch(
+        med_ventevisning("Fortryder\u2026", db$bulk_undo(bid)),
+        bulk_conflict = function(e) e,
+        error = function(e) e
+      )
+      if (inherits(res, "bulk_conflict")) {
+        status_msg(bulk_conflict_text(res))
+        reload()
+        return()
+      }
+      if (inherits(res, "error")) {
+        status_msg("Kunne ikke fortryde batchen (se log)")
+        message(sprintf("[ERROR] bulk-undo: %s", conditionMessage(res)))
+        return()
+      }
+      last_batch(NULL)
+      status_msg(sprintf("Fortrudt \u2014 %d r\u00E6kker sat tilbage", res$n))
+      reload()
     })
 
     # "Nyt diagram"-modal: oprettelse kræver mange felter på én gang —
@@ -594,6 +869,6 @@ mod_diagram_server <- function(id, db) {
 
     # eksponér til test
     list(admin = admin, filtered = filtered, status_msg = status_msg,
-         warn_msg = warn_msg, grid_sel = grid_sel)
+         warn_msg = warn_msg, grid_sel = grid_sel, last_batch = last_batch)
   })
 }
